@@ -41,6 +41,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Export results + data to .xlsx in the exports folder (numbers stored as numbers)
 - [x] 51 tests
 
+## Phase 0.10: User-defined equations (done 2026-11-06)
+- [x] Type any equation (safe AST parser: arithmetic + whitelisted math functions only),
+      parameters detected automatically, starting values, constraints; 68 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

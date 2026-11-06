@@ -138,7 +138,7 @@ def custom_model(equation_text: str, initial: dict | None = None) -> dict:
     shown = equation_text.strip()
     if not shown.upper().startswith("Y"):
         shown = "Y = " + shown
-    return {"name": "User-defined equation", "short": "", "equation": shown, "params": names, "f": f,
+    return {"name": f"User-defined: {shown}", "short": "", "equation": shown, "params": names, "f": f,
             "guess": lambda x, y: [init.get(n, 1.0) for n in names], "log_x": False}
 
 

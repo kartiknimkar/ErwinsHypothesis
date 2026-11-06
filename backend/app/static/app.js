@@ -195,14 +195,20 @@
         return ["/api/fit", { x: s.data.map(r => num(r[0])), ys: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
           model: s.options.model, compare: s.options.model !== "linear" ? (s.options.compare || null) : null,
           fixed: Object.fromEntries(Object.entries((s.options.fixed || {})[s.options.model] || {}).filter(([, v]) => isNum(v)).map(([k, v]) => [k, Number(v)])),
+          equation: s.options.model === "custom" ? (s.options.equation || "") : null,
+          initial: s.options.model === "custom" ? Object.fromEntries(Object.entries(s.options.initial || {}).filter(([, v]) => isNum(v)).map(([k, v]) => [k, Number(v)])) : null,
           x_is_log: !!s.options.xIsLog, alpha: s.options.alpha }];
       },
       renderOptions(s) {
-        const m = modelInfo(s.options.model);
+        const custom = s.options.model === "custom";
+        const m = custom ? null : modelInfo(s.options.model);
         return `<div class="opt-label">Fit</div>
-          <select id="opt-model">${[["linear", "Straight line (linear regression + correlation)"], ...MODELS.map(m => [m.id, m.name])]
+          <select id="opt-model">${[["linear", "Straight line (linear regression + correlation)"], ...MODELS.map(m => [m.id, m.name]), ["custom", "User-defined equation…"]]
             .map(([v, l]) => `<option value="${v}" ${s.options.model === v ? "selected" : ""}>${l}</option>`).join("")}</select>
-          <div class="eqn">${m ? esc(m.equation) : "Y = Slope·X + Intercept"}</div>
+          ${custom ? `<textarea id="opt-equation" class="eq-input" rows="2" spellcheck="false" placeholder="Y = A*exp(-K*X) + C">${esc(s.options.equation || "")}</textarea>
+            <p class="hint">Use X, any parameter names, + − * / ^ and exp, ln, log10, sqrt, sin, cos, abs. Example: <code>Y = Top/(1+(X/EC50)^Hill)</code></p>
+            <div id="custom-params">${customParamsHTML(s)}</div>`
+          : `<div class="eqn">${m ? esc(m.equation) : "Y = Slope·X + Intercept"}</div>`}
           ${m ? `<div class="row"><label for="opt-compare">Compare with</label><select id="opt-compare"><option value="">No comparison</option>${MODELS
             .filter(o => o.id !== m.id && o.log_x === m.log_x).map(o => `<option value="${o.id}" ${s.options.compare === o.id ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select></div>` : ""}
           ${m && m.params ? `<details class="constrain" ${Object.values((s.options.fixed || {})[m.id] || {}).some(isNum) ? "open" : ""}>
@@ -269,6 +275,38 @@
       draw: drawContingency,
     },
   };
+
+  function customParamsHTML(s) {
+    const names = s.options.eqParams || [];
+    if (s.options.eqError) return `<p class="note warn">${esc(s.options.eqError)}</p>`;
+    if (!names.length) return "";
+    const fx = (s.options.fixed || {}).custom || {}, init = s.options.initial || {};
+    return `<div class="opt-label">Parameters: starting value and (optional) fixed value</div>
+      <div class="cgrid">${names.map(n => `<label>${esc(n)}<input type="text" data-init="${esc(n)}" value="${esc(init[n] ?? "")}" placeholder="start: 1" inputmode="decimal">
+        <input type="text" data-fix="${esc(n)}" value="${esc(fx[n] ?? "")}" placeholder="fit" inputmode="decimal"></label>`).join("")}</div>
+      <p class="hint">If the fit fails, give starting values close to what you expect.</p>`;
+  }
+  async function checkEquation(s) {
+    try {
+      const r = await api("/api/equation", { method: "POST", body: JSON.stringify({ equation: s.options.equation || "" }) });
+      s.options.eqParams = r.params; s.options.eqError = r.ok ? "" : r.error;
+    } catch { s.options.eqError = ""; }
+    const box = $("custom-params");
+    if (box && active() === s) { box.innerHTML = customParamsHTML(s); wireParamInputs(s); }
+  }
+  function wireParamInputs(s) {
+    $("options").querySelectorAll("[data-fix]").forEach(inp => inp.oninput = () => {
+      const f = (s.options.fixed = s.options.fixed || {}), mf = (f[s.options.model] = f[s.options.model] || {});
+      mf[inp.dataset.fix] = inp.value.trim();
+      inp.classList.toggle("bad", inp.value.trim() !== "" && !isNum(inp.value));
+      save(); scheduleRun();
+    });
+    $("options").querySelectorAll("[data-init]").forEach(inp => inp.oninput = () => {
+      (s.options.initial = s.options.initial || {})[inp.dataset.init] = inp.value.trim();
+      inp.classList.toggle("bad", inp.value.trim() !== "" && !isNum(inp.value));
+      save(); scheduleRun();
+    });
+  }
 
   const filledCols = s => s.cols.map((_, j) => j).filter(j => s.data.some(r => isNum(r[j])));
   const alphaSelect = s => `<div class="row"><label for="opt-alpha">Significance level α</label><select id="opt-alpha">${[0.05, 0.01, 0.1]
@@ -582,18 +620,20 @@
     const m = $("opt-model");
     if (m) m.onchange = e => {
       s.options.model = e.target.value;
+      if (s.options.model === "custom" && !s.options.equation) { s.options.equation = "Y = A*exp(-K*X) + C"; s.options.eqParams = null; }
       const info = modelInfo(s.options.model);
       s.graph.logX = !!(info && info.log_x && !s.options.xIsLog);
       const c = modelInfo(s.options.compare);
       if (!info || !c || c.id === info.id || c.log_x !== info.log_x) s.options.compare = "";
       save(); renderOptions(); renderFormat(); scheduleRun();
     };
-    box.querySelectorAll("[data-fix]").forEach(inp => inp.oninput = () => {
-      const f = (s.options.fixed = s.options.fixed || {}), mf = (f[s.options.model] = f[s.options.model] || {});
-      mf[inp.dataset.fix] = inp.value.trim();
-      inp.classList.toggle("bad", inp.value.trim() !== "" && !isNum(inp.value));
-      save(); scheduleRun();
-    });
+    wireParamInputs(s);
+    const eq = $("opt-equation");
+    if (eq) {
+      let t = null;
+      eq.oninput = () => { s.options.equation = eq.value; save(); clearTimeout(t); t = setTimeout(() => { checkEquation(s); scheduleRun(); }, 400); };
+      if (!s.options.eqParams) checkEquation(s);
+    }
     const cmp = $("opt-compare");
     if (cmp) cmp.onchange = e => { s.options.compare = e.target.value; save(); scheduleRun(); };
     const lg = $("opt-xislog");
