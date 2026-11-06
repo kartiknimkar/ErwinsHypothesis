@@ -36,6 +36,11 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Model comparison: extra sum-of-squares F test (nested pairs) + AICc; dashed second curve
 - [x] 49 tests
 
+## Phase 0.9: Constraints + Excel export (done 2026-11-06)
+- [x] Curve fits: hold any parameter fixed (e.g. Bottom = 0, Top = 100); df/AICc use free params only
+- [x] Export results + data to .xlsx in the exports folder (numbers stored as numbers)
+- [x] 51 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

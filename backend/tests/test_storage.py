@@ -57,3 +57,14 @@ def test_export_png_and_svg(client):
     r3 = c.post("/api/exports", json={"filename": "../../x", "data_url": svg}).json()
     assert (home / "exports" / r3["file"]).read_text() == "<svg></svg>"
     assert c.post("/api/exports", json={"filename": "x", "data_url": "data:text/html,hi"}).status_code == 400
+
+
+def test_results_xlsx(client):
+    import openpyxl
+    c, home = client
+    r = c.post("/api/exports/xlsx", json={"filename": "P - T", "title": "T", "results": [["P value", "0.003"], [], ["TUKEY"]],
+                                          "data_cols": ["A", "B"], "data_rows": [["1", "2.5"], ["", ""], ["x", "3"]]}).json()
+    wb = openpyxl.load_workbook(home / "exports" / r["file"])
+    assert wb.sheetnames == ["Results", "Data"]
+    assert wb["Results"]["B3"].value == 0.003  # stored as a real number
+    assert [[c.value for c in row] for row in wb["Data"].iter_rows()] == [["A", "B"], [1, 2.5], ["x", 3]]

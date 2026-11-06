@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import os
 import re
 import subprocess
@@ -153,3 +154,62 @@ def reveal(folder: str) -> None:
         subprocess.Popen(["open", str(target)])
     else:
         subprocess.Popen(["xdg-open", str(target)])
+
+
+def _number_or_text(v: str):
+    """Store numbers as real numbers in Excel so they can be used in formulas."""
+    s = str(v).strip()
+    try:
+        f = float(s)
+        if math.isfinite(f) and not s.lower().startswith(("nan", "inf", "-inf")):
+            return int(f) if re.fullmatch(r"-?\d+", s) else f
+    except ValueError:
+        pass
+    return s
+
+
+def save_results_xlsx(filename: str, title: str, results: list[list[str]], data_cols: list[str],
+                      data_rows: list[list[str]]) -> str:
+    """Write an analysis to <exports>/<filename>.xlsx with a Results sheet and a Data sheet."""
+    import openpyxl
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Results"
+    ws.append([title])
+    ws["A1"].font = Font(bold=True, size=14)
+    ws.append([])
+    head = PatternFill("solid", fgColor="E9EEFD")
+    for row in results:
+        ws.append([_number_or_text(c) for c in row])
+        r = ws.max_row
+        if len(row) == 1 and row[0]:
+            ws.cell(r, 1).font = Font(bold=True)
+            if row[0].isupper():
+                ws.cell(r, 1).fill = head
+    ws.column_dimensions["A"].width = 46
+    for col in "BCDEFGH":
+        ws.column_dimensions[col].width = 18
+    for row in ws.iter_rows(min_row=3):
+        for c in row[1:]:
+            c.alignment = Alignment(horizontal="right")
+    wd = wb.create_sheet("Data")
+    wd.append(list(data_cols))
+    for c in wd[1]:
+        c.font = Font(bold=True)
+    for row in data_rows:
+        if any(str(v).strip() for v in row):
+            wd.append([_number_or_text(v) if str(v).strip() else None for v in row])
+    for i in range(len(data_cols)):
+        wd.column_dimensions[openpyxl.utils.get_column_letter(i + 1)].width = 16
+
+    base = safe_name(filename, "results")
+    d = exports_dir()
+    path = d / f"{base}.xlsx"
+    i = 2
+    while path.exists():
+        path = d / f"{base} ({i}).xlsx"
+        i += 1
+    wb.save(_inside(path, d))
+    return path.name

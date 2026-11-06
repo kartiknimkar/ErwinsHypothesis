@@ -58,7 +58,7 @@ Every session starts by reading it and ends by updating it (then committing).
 - Sizes measured: ~266 MB (system Python), ~410 MB (private Python).
 
 ## Current state
-- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison (ROADMAP 0.6-0.8); 49 tests pass
+- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + Excel export (ROADMAP 0.6-0.9); 51 tests pass
 - [x] User confirmed the app runs on their Windows PC (C: drive, private Python fallback)
 - [x] Interface rewritten around a TYPES registry in `static/app.js` (each type: data layout,
       options, request, results renderer, graph drawer, format controls). Add new modules there.
@@ -66,9 +66,9 @@ Every session starts by reading it and ends by updating it (then committing).
 ## Next step (suggested order; confirm with user)
 1. (done) Two-way ANOVA + RM one-way / Friedman / Wilcoxon (`backend/app/anova2.py`, no new dependencies)
    Possible follow-ups: two-way with repeated measures, comparisons across rows / main-effect comparisons
-2. (done) More curve models + model comparison. Follow-ups: constraints (e.g. fix Bottom=0), user-defined equations, global fits sharing parameters across datasets
+2. (done) More curve models + model comparison. Constraints done (fit(fixed=...)). Follow-ups: user-defined equations, global fits sharing parameters across datasets
 3. Graph polish: per-group colors, legend editing, axis tick control, export size/DPI options
-4. (done) Excel/CSV import (`backend/app/importer.py`, /api/import). Follow-up: export results to .xlsx
+4. (done) Excel/CSV import (`backend/app/importer.py`, /api/import). Excel export done (storage.save_results_xlsx, /api/exports/xlsx)
 5. Package as a real desktop app (no browser): pywebview or Tauri
 6. Move UI to React only if app.js gets unwieldy (it's ~800 lines now, still fine)
 

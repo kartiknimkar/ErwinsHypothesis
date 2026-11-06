@@ -280,6 +280,23 @@ def export_save(body: ExportBody):
         raise HTTPException(400, str(e))
 
 
+class XlsxExportBody(BaseModel):
+    filename: str
+    title: str
+    results: list[list[str]]
+    data_cols: list[str]
+    data_rows: list[list[str]]
+
+
+@app.post("/api/exports/xlsx")
+def export_xlsx(body: XlsxExportBody):
+    try:
+        return {"file": storage.save_results_xlsx(body.filename, body.title, body.results, body.data_cols, body.data_rows),
+                "folder": str(storage.exports_dir())}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.post("/api/reveal/{folder}")
 def reveal(folder: str):
     if folder not in ("projects", "exports"):

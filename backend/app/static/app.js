@@ -1047,21 +1047,37 @@
   // ======================================================================
   // copy results (tab-separated, pastes cleanly into Excel / Word)
   // ======================================================================
-  async function copyResults() {
-    const box = $("results");
-    if (!box.textContent.trim()) return;
-    const lines = [`${active().title}`];
-    box.querySelectorAll(".summary, .opt-label, table.res tr, .note").forEach(el => {
-      if (el.tagName === "TR") lines.push([...el.children].map(td => td.textContent.trim()).join("\t"));
-      else lines.push("", el.textContent.trim());
+  function resultsRows() {
+    const rows = [];
+    $("results").querySelectorAll(".summary, .opt-label, table.res tr, .note").forEach(el => {
+      if (el.tagName === "TR") {
+        const cells = [...el.children].map(td => td.textContent.trim());
+        if (el.classList.contains("sec")) rows.push([], [cells[0].toUpperCase()]);
+        else rows.push(cells);
+      } else rows.push([], [el.textContent.trim()]);
     });
-    const text = lines.join("\n");
+    while (rows.length && !rows[0].length) rows.shift();
+    return rows;
+  }
+  async function copyResults() {
+    if (!$("results").textContent.trim()) return;
+    const text = [active().title, "", ...resultsRows().map(r => r.join("\t"))].join("\n");
     try { await navigator.clipboard.writeText(text); }
     catch {
       const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
       document.execCommand("copy"); ta.remove();
     }
     toast("Results copied. Paste into Excel, Word or an email.");
+  }
+  async function exportXlsx() {
+    if (!lastResult) { toast("Add some data first, then export."); return; }
+    const s = active();
+    try {
+      const res = await api("/api/exports/xlsx", { method: "POST", body: JSON.stringify({
+        filename: `${projectName} - ${s.title}`, title: s.title, results: resultsRows().map(r => r.map(String)),
+        data_cols: s.cols.map(String), data_rows: s.data.map(r => r.map(String)) }) });
+      toast(`Saved <b>${esc(res.file)}</b> to the exports folder`, "exports");
+    } catch (e) { toast(esc(e.message || "Export failed.")); }
   }
 
   // ======================================================================
@@ -1173,6 +1189,7 @@
   $("btn-png").onclick = () => exportPlot("png");
   $("btn-svg").onclick = () => exportPlot("svg");
   $("btn-copy").onclick = copyResults;
+  $("btn-xlsx").onclick = exportXlsx;
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") hideProjects();
     const mod = e.ctrlKey || e.metaKey;
