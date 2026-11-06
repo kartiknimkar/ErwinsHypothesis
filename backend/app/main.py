@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import contingency, curvefit, stats, storage, survival
+from . import anova2, contingency, curvefit, stats, storage, survival
 
 STATIC = Path(__file__).parent / "static"
 PLOTLY_JS = Path(plotly.__file__).parent / "package_data" / "plotly.min.js"
@@ -78,8 +78,10 @@ def run_compare(req: CompareRequest):
         names = [n for n, _ in cols]
         groups = [g for _, g in cols]
         if len(cols) == 2:
-            kind = req.kind if req.kind in ("unpaired", "welch", "paired", "mannwhitney") else "unpaired"
+            kind = req.kind if req.kind in ("unpaired", "welch", "paired", "wilcoxon", "mannwhitney") else "unpaired"
             res = stats.t_test(groups[0], groups[1], kind=kind, name_a=names[0], name_b=names[1], alpha=req.alpha)
+        elif req.kind in ("rm", "friedman"):
+            res = anova2.repeated_measures(groups, names, kind=req.kind, alpha=req.alpha)
         else:
             kind = req.kind if req.kind in ("ordinary", "welch", "kruskal") else "ordinary"
             res = stats.one_way_anova(groups, names, kind=kind, alpha=req.alpha)
@@ -126,6 +128,22 @@ def run_fit(req: FitRequest):
             res["model"] = "linear"
         else:
             res = curvefit.fit(px, py, req.model, x_is_log=req.x_is_log, alpha=req.alpha)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(_json_safe(res))
+
+
+class TwoWayRequest(BaseModel):
+    rows: list               # row-factor label for each data row (repeat a label for replicates)
+    columns: list            # one list of values per column-factor level
+    names: list[str]
+    alpha: float = 0.05
+
+
+@app.post("/api/twoway")
+def run_twoway(req: TwoWayRequest):
+    try:
+        res = anova2.two_way(req.rows, req.columns, req.names, alpha=req.alpha)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))

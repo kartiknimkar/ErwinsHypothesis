@@ -64,7 +64,7 @@ def t_test(a, b, kind: str = "unpaired", name_a: str = "A", name_b: str = "B",
     The difference is reported as mean(B) - mean(A).
     """
     raw_a, raw_b = list(a), list(b)
-    if kind == "paired":
+    if kind in ("paired", "wilcoxon"):
         # keep only rows where both values exist
         pairs = []
         for va, vb in zip(raw_a, raw_b):
@@ -128,6 +128,23 @@ def t_test(a, b, kind: str = "unpaired", name_a: str = "A", name_b: str = "B",
             ci_high=float(ci.high),
             n_pairs=len(diffs),
         )
+    elif kind == "wilcoxon":
+        diffs = xb - xa
+        if np.all(diffs == 0):
+            raise ValueError("All differences are zero, so there's nothing to test.")
+        r = stats.wilcoxon(diffs)
+        result.update(
+            test_name="Wilcoxon matched-pairs signed-rank test",
+            statistic_name="W",
+            statistic=float(r.statistic),
+            df=None,
+            p=float(r.pvalue),
+            difference=float(np.median(diffs)),
+            difference_label=f"Median of differences ({name_b} − {name_a})",
+            ci_low=None,
+            ci_high=None,
+            n_pairs=len(diffs),
+        )
     elif kind == "mannwhitney":
         r = stats.mannwhitneyu(xb, xa, alternative="two-sided")
         result.update(
@@ -146,7 +163,7 @@ def t_test(a, b, kind: str = "unpaired", name_a: str = "A", name_b: str = "B",
 
     result["stars"] = stars(result["p"])
     result["significant"] = result["p"] < alpha
-    if kind == "paired":
+    if kind in ("paired", "wilcoxon"):
         result["normality"] = [normality(xb - xa)]
         result["normality_of"] = "differences"
     else:
