@@ -3,3 +3,4 @@
 statsmodels
 pingouin
 scikit-posthocs
+lifelines

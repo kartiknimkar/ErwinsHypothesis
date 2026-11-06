@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import stats, storage
+from . import contingency, curvefit, stats, storage, survival
 
 STATIC = Path(__file__).parent / "static"
 PLOTLY_JS = Path(plotly.__file__).parent / "package_data" / "plotly.min.js"
@@ -84,6 +84,80 @@ def run_compare(req: CompareRequest):
             kind = req.kind if req.kind in ("ordinary", "welch", "kruskal") else "ordinary"
             res = stats.one_way_anova(groups, names, kind=kind, alpha=req.alpha)
         res["n_groups"] = len(cols)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(_json_safe(res))
+
+
+class FitRequest(BaseModel):
+    x: list
+    ys: list                 # one list per Y replicate column, same length as x
+    model: str = "linear"    # "linear" or a curvefit model id
+    x_is_log: bool = False
+    alpha: float = 0.05
+
+
+@app.get("/api/models")
+def models():
+    return {"models": curvefit.list_models()}
+
+
+def _flatten_xy(x, ys):
+    px, py = [], []
+    for col in ys:
+        for vx, vy in zip(x, col):
+            if vx is None or vy is None:
+                continue
+            try:
+                fx, fy = float(vx), float(vy)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(fx) and math.isfinite(fy):
+                px.append(fx); py.append(fy)
+    return px, py
+
+
+@app.post("/api/fit")
+def run_fit(req: FitRequest):
+    try:
+        px, py = _flatten_xy(req.x, req.ys)
+        if req.model == "linear":
+            res = stats.linear_regression(px, py, alpha=req.alpha)
+            res["model"] = "linear"
+        else:
+            res = curvefit.fit(px, py, req.model, x_is_log=req.x_is_log, alpha=req.alpha)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(_json_safe(res))
+
+
+class SurvivalRequest(BaseModel):
+    times: list
+    groups: list
+    names: list[str]
+    alpha: float = 0.05
+
+
+@app.post("/api/survival")
+def run_survival(req: SurvivalRequest):
+    try:
+        res = survival.analyze(req.times, dict(zip(req.names, req.groups)), alpha=req.alpha)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(_json_safe(res))
+
+
+class ContingencyRequest(BaseModel):
+    table: list
+    rows: list[str]
+    cols: list[str]
+    alpha: float = 0.05
+
+
+@app.post("/api/contingency")
+def run_contingency(req: ContingencyRequest):
+    try:
+        res = contingency.analyze(req.table, req.rows, req.cols, alpha=req.alpha)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))
