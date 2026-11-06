@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import anova2, contingency, curvefit, stats, storage, survival
+from . import anova2, contingency, curvefit, importer, stats, storage, survival
 
 STATIC = Path(__file__).parent / "static"
 PLOTLY_JS = Path(plotly.__file__).parent / "package_data" / "plotly.min.js"
@@ -147,6 +147,20 @@ def run_twoway(req: TwoWayRequest):
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))
+
+
+class ImportRequest(BaseModel):
+    filename: str
+    data: str                # base64 file contents
+    sheet: str | None = None
+
+
+@app.post("/api/import")
+def import_file(req: ImportRequest):
+    try:
+        return importer.read_table(req.filename, req.data, req.sheet)
+    except (ValueError, UnicodeDecodeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 class SurvivalRequest(BaseModel):

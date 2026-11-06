@@ -519,6 +519,45 @@
   }
 
   // ======================================================================
+  // import data from Excel / CSV
+  // ======================================================================
+  function readBase64(file) {
+    return new Promise((ok, fail) => {
+      const r = new FileReader();
+      r.onload = () => ok(String(r.result).split(",")[1] || "");
+      r.onerror = fail;
+      r.readAsDataURL(file);
+    });
+  }
+  async function importData(file) {
+    const s = active(), t = TYPES[s.type];
+    try {
+      const data = await readBase64(file);
+      let res = await api("/api/import", { method: "POST", body: JSON.stringify({ filename: file.name, data }) });
+      if (res.sheets && res.sheets.length > 1) {
+        const pick = prompt(`This workbook has ${res.sheets.length} sheets. Type the number of the one to import:\n\n` +
+          res.sheets.map((n, i) => `${i + 1}. ${n}`).join("\n"), "1");
+        if (pick === null) return;
+        const name = res.sheets[Math.max(0, Math.min(res.sheets.length - 1, (parseInt(pick, 10) || 1) - 1))];
+        if (name !== res.sheet) res = await api("/api/import", { method: "POST", body: JSON.stringify({ filename: file.name, data, sheet: name }) });
+      }
+      let rows = res.rows;
+      if (!rows.length) { toast("That file has no data."); return; }
+      if (s.data.some(r => r.some(v => String(v).trim() !== "")) && !confirm("Replace the data in this table with the file's data? (You can undo.)")) return;
+      // first row is a header if it has text where the rows below have numbers
+      const first = rows[0], rest = rows.slice(1);
+      const header = rest.length > 0 && first.some((v, j) => j !== t.textCol && v !== "" && !isNum(v) && rest.some(r => isNum(r[j])));
+      const width = Math.min(t.maxCols, Math.max(t.minCols, ...rows.map(r => r.length)));
+      recordUndo(true);
+      s.cols = Array.from({ length: width }, (_, j) => (header && first[j]) || (j < s.cols.length ? s.cols[j] : t.newColName(j)));
+      s.data = (header ? rest : rows).map(r => Array.from({ length: width }, (_, j) => r[j] ?? ""));
+      padRows(s); save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun();
+      const cut = Math.max(...rows.map(r => r.length)) > t.maxCols ? ` Only the first ${t.maxCols} columns fit this table.` : "";
+      toast(`Imported ${s.data.filter(r => r.some(v => v !== "")).length} rows from <b>${esc(file.name)}</b>${res.sheet ? ` (${esc(res.sheet)})` : ""}.${cut}`);
+    } catch (e) { toast(esc(e.message || "Import failed.")); }
+  }
+
+  // ======================================================================
   // options & graph format panel
   // ======================================================================
   function renderOptions() {
@@ -1069,6 +1108,8 @@
     project.activeId = project.sheets[0].id; save(); renderAll();
   };
   $("btn-addcol").onclick = addColumn;
+  $("btn-import-data").onclick = () => $("file-data").click();
+  $("file-data").onchange = e => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ""; };
   $("btn-example").onclick = () => { recordUndo(true); applyExample(active()); save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun(); };
   $("btn-clear").onclick = () => {
     const s = active();
