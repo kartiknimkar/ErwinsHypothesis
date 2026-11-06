@@ -1,0 +1,155 @@
+"""Everything the app saves lives inside the app folder.
+
+<app folder>/projects/   project files (*.ehp) + last-opened state
+<app folder>/exports/    exported graphs (PNG/SVG)
+
+The app folder defaults to the repository root and can be overridden with
+the EH_HOME environment variable (used by tests).
+"""
+from __future__ import annotations
+
+import base64
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+EXT = ".ehp"
+_SAFE = re.compile(r"[^A-Za-z0-9 _\-().,µ]+")
+
+
+def home() -> Path:
+    env = os.environ.get("EH_HOME")
+    return Path(env).resolve() if env else Path(__file__).resolve().parents[2]
+
+
+def projects_dir() -> Path:
+    d = home() / "projects"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def exports_dir() -> Path:
+    d = home() / "exports"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def safe_name(name: str, default: str = "Untitled") -> str:
+    """Make a user-typed name safe to use as a file name (no paths, no odd characters)."""
+    name = _SAFE.sub("", str(name or ""))
+    name = re.sub(r"\.{2,}", ".", name).strip().strip(".")
+    return name[:80] or default
+
+
+def _inside(path: Path, folder: Path) -> Path:
+    path = path.resolve()
+    if folder.resolve() not in path.parents:
+        raise ValueError("Invalid file name.")
+    return path
+
+
+# ---- projects ------------------------------------------------------------
+
+def list_projects() -> list[dict]:
+    out = []
+    for p in projects_dir().glob("*" + EXT):
+        st = p.stat()
+        out.append({"name": p.stem, "modified": datetime.fromtimestamp(st.st_mtime).isoformat(timespec="seconds"),
+                    "size": st.st_size})
+    out.sort(key=lambda d: d["modified"], reverse=True)
+    return out
+
+
+def project_path(name: str) -> Path:
+    return _inside(projects_dir() / (safe_name(name) + EXT), projects_dir())
+
+
+def load_project(name: str) -> dict:
+    p = project_path(name)
+    if not p.exists():
+        raise FileNotFoundError(name)
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def save_project(name: str, data: dict) -> str:
+    name = safe_name(name)
+    p = project_path(name)
+    tmp = p.with_suffix(".tmp")
+    # write then rename, so a crash mid-save never corrupts the file
+    tmp.write_text(json.dumps({"app": "Erwin's Hypothesis", "version": 1, **data}, indent=1), encoding="utf-8")
+    os.replace(tmp, p)
+    set_last_project(name)
+    return name
+
+
+def delete_project(name: str) -> None:
+    p = project_path(name)
+    if p.exists():
+        p.unlink()
+
+
+def rename_project(old: str, new: str) -> str:
+    new = safe_name(new)
+    src, dst = project_path(old), project_path(new)
+    if dst.exists() and dst != src:
+        raise FileExistsError(new)
+    if src.exists():
+        os.replace(src, dst)
+    set_last_project(new)
+    return new
+
+
+def _state_path() -> Path:
+    return projects_dir() / ".state.json"
+
+
+def get_last_project() -> str | None:
+    try:
+        name = json.loads(_state_path().read_text(encoding="utf-8")).get("last")
+        return name if name and project_path(name).exists() else None
+    except (OSError, ValueError):
+        return None
+
+
+def set_last_project(name: str) -> None:
+    _state_path().write_text(json.dumps({"last": safe_name(name)}), encoding="utf-8")
+
+
+# ---- exports -------------------------------------------------------------
+
+def save_export(filename: str, data_url: str) -> str:
+    """Save a graph sent from the interface as a data: URL. Returns the file name used."""
+    m = re.match(r"^data:image/(png|svg\+xml)(;base64)?,(.*)$", data_url, re.S)
+    if not m:
+        raise ValueError("Unsupported image data.")
+    ext = "png" if m.group(1) == "png" else "svg"
+    payload = m.group(3)
+    if m.group(2):
+        raw = base64.b64decode(payload)
+    else:
+        from urllib.parse import unquote
+        raw = unquote(payload).encode("utf-8")
+    base = safe_name(filename, "graph")
+    d = exports_dir()
+    path = d / f"{base}.{ext}"
+    i = 2
+    while path.exists():  # never overwrite an earlier export
+        path = d / f"{base} ({i}).{ext}"
+        i += 1
+    _inside(path, d).write_bytes(raw)
+    return path.name
+
+
+def reveal(folder: str) -> None:
+    """Open the projects or exports folder in Finder / File Explorer."""
+    target = projects_dir() if folder == "projects" else exports_dir()
+    if sys.platform.startswith("win"):
+        os.startfile(target)  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", str(target)])
+    else:
+        subprocess.Popen(["xdg-open", str(target)])

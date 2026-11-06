@@ -10,12 +10,37 @@
 <body>
   <header class="topbar">
     <div class="brand"><span class="logo">EH</span> Erwin's Hypothesis <span class="tag">preview</span></div>
+    <div class="project-name-wrap">
+      <span class="muted">Project</span>
+      <input id="project-name" class="project-name" spellcheck="false" aria-label="Project name" title="Click to rename this project">
+      <span id="save-status" class="save-status"></span>
+    </div>
     <div class="topbar-actions">
-      <button id="btn-open" class="ghost" title="Open a saved project file">Open project</button>
-      <button id="btn-save" class="ghost" title="Save this project to a file">Save project</button>
-      <input type="file" id="file-open" accept=".ehp,.json" hidden>
+      <button id="btn-projects" class="ghost">Projects…</button>
     </div>
   </header>
+
+  <div id="dialog-backdrop" class="backdrop" hidden>
+    <div class="dialog" role="dialog" aria-labelledby="dlg-title">
+      <div class="dialog-head">
+        <h3 id="dlg-title">Projects</h3>
+        <button id="dlg-close" class="ghost small" aria-label="Close">✕</button>
+      </div>
+      <p class="hint">Projects are saved automatically in the <b>projects</b> folder inside the app folder.</p>
+      <div class="row new-row">
+        <input id="new-project-name" type="text" placeholder="New project name" maxlength="80">
+        <button id="btn-new-project" class="primary small">Create</button>
+      </div>
+      <ul id="project-list" class="project-list"></ul>
+      <div class="dialog-foot">
+        <button id="btn-import" class="ghost small" title="Copy a project file from elsewhere into the projects folder">Import a project file…</button>
+        <button id="btn-show-projects" class="ghost small">Show projects folder</button>
+        <input type="file" id="file-import" accept=".ehp,.json" hidden>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
 
   <div class="layout">
     <aside class="sidebar">
@@ -30,7 +55,7 @@
         </div>
       </div>
       <ul id="sheet-list" class="sheet-list"></ul>
-      <div class="side-foot">Your work is saved automatically in this browser. Use <b>Save project</b> to keep a file.</div>
+      <div class="side-foot">Everything saves automatically to the <b>projects</b> folder. Graph exports go to the <b>exports</b> folder.</div>
     </aside>
 
     <main class="workspace">

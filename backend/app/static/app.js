@@ -3,7 +3,6 @@
   "use strict";
 
   // ---------- project model ----------
-  const STORE_KEY = "eh-project-v1";
   const MIN_ROWS = 15;
 
   const TYPES = {
@@ -73,12 +72,61 @@
     return project;
   }
 
-  function load() {
-    try { const raw = localStorage.getItem(STORE_KEY); return raw ? JSON.parse(raw) : null; }
-    catch { return null; }
+  // ---------- saving (to the app folder's "projects" directory) ----------
+  let projectName = null, saveTimer = null, saving = Promise.resolve();
+
+  function setStatus(text, err = false) {
+    const el = $("save-status");
+    el.textContent = text; el.classList.toggle("err", err);
   }
   function save() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(project)); } catch { /* storage unavailable */ }
+    // autosave shortly after each change
+    setStatus("Saving…");
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveNow, 500);
+  }
+  function saveNow() {
+    clearTimeout(saveTimer);
+    const name = projectName, body = JSON.stringify({ data: { sheets: project.sheets, activeId: project.activeId } });
+    saving = saving.then(async () => {
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(name)}`, { method: "PUT",
+          headers: { "Content-Type": "application/json" }, body });
+        if (!res.ok) throw new Error();
+        setStatus("✓ Saved");
+      } catch { setStatus("Not saved: is the app still running?", true); }
+    });
+    return saving;
+  }
+  async function api(url, opts = {}) {
+    const res = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.detail || "Something went wrong.");
+    return json;
+  }
+  async function openProject(name) {
+    await saveNow();
+    const data = await api(`/api/projects/${encodeURIComponent(name)}`);
+    if (!Array.isArray(data.sheets) || !data.sheets.length) throw new Error("This project has no analyses.");
+    project = { sheets: data.sheets, activeId: data.activeId || data.sheets[0].id };
+    projectName = name;
+    $("project-name").value = name;
+    setStatus("✓ Saved");
+    renderAll();
+  }
+  async function createProject(name, withExamples) {
+    const list = (await api("/api/projects")).projects.map(p => p.name.toLowerCase());
+    let n = name, i = 2;
+    while (list.includes(n.toLowerCase())) n = `${name} ${i++}`;
+    if (projectName) await saveNow();
+    project = withExamples ? newProject() : { sheets: [], activeId: null };
+    if (!withExamples) { const s = newSheet("ttest"); project.sheets.push(s); project.activeId = s.id; }
+    const saved = await api(`/api/projects/${encodeURIComponent(n)}`, { method: "PUT",
+      body: JSON.stringify({ data: project }) });
+    projectName = saved.name;
+    $("project-name").value = projectName;
+    setStatus("✓ Saved");
+    renderAll();
   }
   function active() { return project.sheets.find(s => s.id === project.activeId) || project.sheets[0]; }
 
@@ -418,30 +466,88 @@
     }
   }
 
-  function exportPlot(format) {
-    if (!lastResult) return;
-    const name = (active().title || "graph").replace(/[^\w\- ]+/g, "").trim() || "graph";
-    Plotly.downloadImage($("plot"), { format, filename: name, width: 900, height: 650, scale: format === "png" ? 3 : 1 });
+  async function exportPlot(format) {
+    if (!lastResult) { toast("Add some data first, then export the graph."); return; }
+    try {
+      const url = await Plotly.toImage($("plot"), { format, width: 900, height: 650, scale: format === "png" ? 3 : 1 });
+      const res = await api("/api/exports", { method: "POST",
+        body: JSON.stringify({ filename: `${projectName} - ${active().title}`, data_url: url }) });
+      toast(`Saved <b>${esc(res.file)}</b> to the exports folder`, "exports");
+    } catch (e) { toast(esc(e.message || "Export failed.")); }
   }
 
-  // ---------- project files ----------
-  function saveFile() {
-    const blob = new Blob([JSON.stringify({ app: "Erwin's Hypothesis", version: 1, ...project }, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "project.ehp";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  // ---------- toast ----------
+  let toastTimer = null;
+  function toast(html, folder) {
+    const el = $("toast");
+    el.innerHTML = `<span>${html}</span>` + (folder ? `<button data-reveal="${folder}">Show folder</button>` : "");
+    el.hidden = false;
+    const b = el.querySelector("button");
+    if (b) b.onclick = () => reveal(folder);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 6000);
   }
-  function openFile(file) {
+  function reveal(folder) {
+    api(`/api/reveal/${folder}`, { method: "POST" }).catch(() => toast("Couldn't open the folder."));
+  }
+
+  // ---------- projects dialog ----------
+  async function showProjects() {
+    $("dialog-backdrop").hidden = false;
+    $("new-project-name").value = "";
+    const ul = $("project-list");
+    ul.innerHTML = `<li class="emptyli">Loading…</li>`;
+    try {
+      const { projects } = await api("/api/projects");
+      if (!projects.length) { ul.innerHTML = `<li class="emptyli">No projects yet.</li>`; return; }
+      ul.innerHTML = projects.map(p => {
+        const cur = p.name === projectName;
+        const when = new Date(p.modified).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+        return `<li class="${cur ? "current" : ""}"><span class="pn">${esc(p.name)}</span><span class="pd">${when}</span>
+          ${cur ? `<span class="pd">open now</span>` : `<button class="ghost small" data-open="${esc(p.name)}">Open</button>
+          <button class="ghost small danger" data-del="${esc(p.name)}">Delete</button>`}</li>`;
+      }).join("");
+      ul.querySelectorAll("[data-open]").forEach(b => b.onclick = async () => {
+        try { await openProject(b.dataset.open); hideProjects(); } catch (e) { toast(esc(e.message)); }
+      });
+      ul.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+        if (!confirm(`Delete the project "${b.dataset.del}"? Its file will be removed from the projects folder.`)) return;
+        await api(`/api/projects/${encodeURIComponent(b.dataset.del)}`, { method: "DELETE" });
+        showProjects();
+      });
+    } catch (e) { ul.innerHTML = `<li class="emptyli">${esc(e.message)}</li>`; }
+  }
+  function hideProjects() { $("dialog-backdrop").hidden = true; }
+
+  async function renameProject(newName) {
+    newName = newName.trim();
+    if (!newName || newName === projectName) { $("project-name").value = projectName; return; }
+    try {
+      await saveNow();
+      const r = await api(`/api/projects/${encodeURIComponent(projectName)}/rename`, { method: "POST",
+        body: JSON.stringify({ new_name: newName }) });
+      projectName = r.name;
+      $("project-name").value = projectName;
+      toast(`Project renamed to <b>${esc(projectName)}</b>`);
+    } catch (e) { $("project-name").value = projectName; toast(esc(e.message)); }
+  }
+
+  function importFile(file) {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const p = JSON.parse(reader.result);
         if (!Array.isArray(p.sheets) || !p.sheets.length) throw new Error();
-        project = { sheets: p.sheets, activeId: p.activeId || p.sheets[0].id };
-        save(); renderAll();
-      } catch { alert("That file couldn't be opened. Is it an Erwin's Hypothesis project (.ehp)?"); }
+        const base = file.name.replace(/\.(ehp|json)$/i, "");
+        const list = (await api("/api/projects")).projects.map(x => x.name.toLowerCase());
+        let n = base, i = 2;
+        while (list.includes(n.toLowerCase())) n = `${base} ${i++}`;
+        const saved = await api(`/api/projects/${encodeURIComponent(n)}`, { method: "PUT",
+          body: JSON.stringify({ data: { sheets: p.sheets, activeId: p.activeId } }) });
+        await openProject(saved.name);
+        hideProjects();
+        toast(`Imported <b>${esc(saved.name)}</b> into the projects folder`);
+      } catch { toast("That file couldn't be imported. Is it an Erwin's Hypothesis project (.ehp)?"); }
     };
     reader.readAsText(file);
   }
@@ -485,10 +591,35 @@
   };
   $("btn-png").onclick = () => exportPlot("png");
   $("btn-svg").onclick = () => exportPlot("svg");
-  $("btn-save").onclick = saveFile;
-  $("btn-open").onclick = () => $("file-open").click();
-  $("file-open").onchange = e => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; };
+  $("btn-projects").onclick = showProjects;
+  $("dlg-close").onclick = hideProjects;
+  $("dialog-backdrop").onclick = e => { if (e.target.id === "dialog-backdrop") hideProjects(); };
+  document.addEventListener("keydown", e => { if (e.key === "Escape") hideProjects(); });
+  const doCreate = async () => {
+    const n = $("new-project-name").value.trim() || "Untitled project";
+    try { await createProject(n, false); hideProjects(); } catch (e) { toast(esc(e.message)); }
+  };
+  $("btn-new-project").onclick = doCreate;
+  $("new-project-name").onkeydown = e => { if (e.key === "Enter") doCreate(); };
+  $("btn-show-projects").onclick = () => reveal("projects");
+  $("btn-import").onclick = () => $("file-import").click();
+  $("file-import").onchange = e => { if (e.target.files[0]) importFile(e.target.files[0]); e.target.value = ""; };
+  $("project-name").addEventListener("change", e => renameProject(e.target.value));
+  $("project-name").addEventListener("keydown", e => { if (e.key === "Enter") e.target.blur(); });
+  window.addEventListener("beforeunload", () => { if (saveTimer) saveNow(); });
 
-  project = load() || newProject();
-  renderAll();
+  // start: reopen the last project, or create a first one with examples
+  (async () => {
+    try {
+      const { projects, last } = await api("/api/projects");
+      const pick = last || (projects[0] && projects[0].name);
+      if (pick) await openProject(pick);
+      else await createProject("My first project", true);
+    } catch {
+      project = newProject(); projectName = "Untitled";
+      $("project-name").value = projectName;
+      setStatus("Can't reach the app's engine", true);
+      renderAll();
+    }
+  })();
 })();

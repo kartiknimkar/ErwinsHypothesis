@@ -20,18 +20,30 @@ Every session starts by reading it and ends by updating it (then committing).
 5. Keep everything user-friendly: plain-language explanations, sensible defaults,
    helpful empty/error states (user's explicit request).
 
-## How the code is laid out (as of Phase 0.5)
+## Hard rule: everything stays inside the app folder (user requirement)
+- `projects/` (project files + `.state.json`), `exports/` (graphs), `runtime/` (venv,
+  optional private Python via uv, caches). All are git-ignored.
+- No localStorage, no browser downloads. All saving goes through `backend/app/storage.py`.
+- Launchers set PIP_CACHE_DIR / UV_CACHE_DIR / UV_PYTHON_INSTALL_DIR inside `runtime/`.
+- Tested: launcher with a fresh HOME wrote nothing to HOME (system-Python and private-Python routes).
+
+## How the code is laid out
 - `backend/app/stats.py`: all statistics (pure functions, lists in → dict out)
-- `backend/app/main.py`: FastAPI server, `/api/ttest`, `/api/regression`, serves UI
+- `backend/app/storage.py`: projects/exports, filename sanitizing, reveal folder
+- `backend/app/main.py`: FastAPI server + `main()` (opens browser when ready, detects already-running)
 - `backend/app/static/`: interface (vanilla JS, no build step): `index.html`, `style.css`, `app.js`
-- `backend/tests/`: pytest; run with `cd backend && python -m pytest -q`
-- `run.sh`: creates `.venv`, installs requirements, starts server on 127.0.0.1:8765, opens browser
+- `backend/tests/`: pytest (17 tests); run with `cd backend && python -m pytest -q`
+- `run.bat` (Windows), `run.sh` (Mac/Linux): use system Python ≥3.10 if present, else uv-managed
+  Python 3.12 in `runtime/python`; reinstall libs when `requirements.txt` changes.
+- Sizes measured: ~266 MB (system Python), ~410 MB (private Python).
 
 ## Current state
 - [x] Session 1: repo skeleton, roadmap, architecture decided
 - [x] GitHub access linked; pushing works
-- [x] Phase 0.5 preview app built, tested (9 tests pass), screenshots checked
-- [ ] User to try `./run.sh` on their Mac and give feedback
+- [x] Phase 0.5 preview app built, tested, screenshots checked
+- [x] Self-contained storage + Windows launcher (user is on Windows for now, Mac later)
+- [ ] `run.bat` not yet tested on a real Windows machine (written carefully; Linux run.sh path tested)
+- [ ] User to try it and give feedback
 
 ## Next step
 - Get the user's feedback on the preview (look, wording, workflow).
