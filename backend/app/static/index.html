@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Erwin's Hypothesis</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/vendor/plotly.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">EH</span> Erwin's Hypothesis <span class="tag">preview</span></div>
+    <div class="topbar-actions">
+      <button id="btn-open" class="ghost" title="Open a saved project file">Open project</button>
+      <button id="btn-save" class="ghost" title="Save this project to a file">Save project</button>
+      <input type="file" id="file-open" accept=".ehp,.json" hidden>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="side-head">
+        <span>Analyses</span>
+        <div class="new-wrap">
+          <button id="btn-new" class="primary small">+ New</button>
+          <div id="new-menu" class="menu" hidden>
+            <button data-type="ttest"><b>Compare two groups</b><small>t test, Mann-Whitney</small></button>
+            <button data-type="regression"><b>Fit a straight line</b><small>Linear regression</small></button>
+          </div>
+        </div>
+      </div>
+      <ul id="sheet-list" class="sheet-list"></ul>
+      <div class="side-foot">Your work is saved automatically in this browser. Use <b>Save project</b> to keep a file.</div>
+    </aside>
+
+    <main class="workspace">
+      <div class="sheet-header">
+        <input id="sheet-title" class="sheet-title" spellcheck="false" aria-label="Analysis name">
+        <span id="sheet-kind" class="pill"></span>
+        <button id="btn-delete" class="ghost danger small" title="Delete this analysis">Delete</button>
+      </div>
+
+      <div class="panes">
+        <section class="pane data-pane">
+          <div class="pane-head">
+            <h2>1 · Data</h2>
+            <div class="pane-actions">
+              <button id="btn-example" class="ghost small">Load example</button>
+              <button id="btn-clear" class="ghost small">Clear</button>
+            </div>
+          </div>
+          <p class="hint" id="data-hint"></p>
+          <div class="grid-wrap"><table id="grid" class="grid"></table></div>
+
+          <div class="pane-head"><h2>2 · Options</h2></div>
+          <div id="options" class="options"></div>
+        </section>
+
+        <section class="pane out-pane">
+          <div class="pane-head">
+            <h2>3 · Graph</h2>
+            <div class="pane-actions">
+              <button id="btn-png" class="ghost small">Export PNG</button>
+              <button id="btn-svg" class="ghost small">Export SVG</button>
+            </div>
+          </div>
+          <div id="graph-controls" class="graph-controls"></div>
+          <div id="plot" class="plot"></div>
+
+          <div class="pane-head"><h2>4 · Results</h2></div>
+          <div id="results" class="results"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

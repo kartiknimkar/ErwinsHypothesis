@@ -13,25 +13,40 @@ Every session starts by reading it and ends by updating it (then committing).
 
 ## Session protocol
 1. Read `HANDOFF.md`, then `ROADMAP.md`.
-2. Work in small chunks. After each chunk: run the tests, commit, update this file.
+2. Work in small chunks. After each chunk: run the tests, commit, update this file, push.
 3. If the user says **"stop now"**: finish the current file, commit, update
    "Current state" and "Next step" below, push.
 4. Never leave uncommitted work at the end of a turn.
+5. Keep everything user-friendly: plain-language explanations, sensible defaults,
+   helpful empty/error states (user's explicit request).
+
+## How the code is laid out (as of Phase 0.5)
+- `backend/app/stats.py`: all statistics (pure functions, lists in → dict out)
+- `backend/app/main.py`: FastAPI server, `/api/ttest`, `/api/regression`, serves UI
+- `backend/app/static/`: interface (vanilla JS, no build step): `index.html`, `style.css`, `app.js`
+- `backend/tests/`: pytest; run with `cd backend && python -m pytest -q`
+- `run.sh`: creates `.venv`, installs requirements, starts server on 127.0.0.1:8765, opens browser
 
 ## Current state
 - [x] Session 1: repo skeleton, roadmap, architecture decided
-- [ ] GitHub access linked (pending at end of session 1)
+- [x] GitHub access linked; pushing works
+- [x] Phase 0.5 preview app built, tested (9 tests pass), screenshots checked
+- [ ] User to try `./run.sh` on their Mac and give feedback
 
 ## Next step
-- Confirm the user's priority analyses (asked: dose-response/IC50, t-tests,
-  ANOVA, survival, correlation?) and reorder Phase 2 of `ROADMAP.md`.
-- Start Phase 1: data table model (backend) + data grid UI (frontend).
+- Get the user's feedback on the preview (look, wording, workflow).
+- Confirm priority analyses (dose-response/IC50, ANOVA, survival, correlation?) and
+  reorder Phase 2 of `ROADMAP.md`.
+- Then decide: keep growing the vanilla-JS UI, or move the UI to React (Phase 0)
+  before it gets large. Recommendation: move to React before Phase 1's richer data tables.
 
 ## Decisions log
 | Date | Decision | Why |
 |---|---|---|
 | 2026-11-06 | Python backend (FastAPI + SciPy/statsmodels/lmfit) | Well-tested statistical libraries; correctness matters most |
-| 2026-11-06 | React + TypeScript + Vite frontend | Modern, polished UI |
+| 2026-11-06 | React + TypeScript + Vite frontend (planned) | Modern, polished UI |
 | 2026-11-06 | Package as a Mac desktop app later (Tauri or Electron) | Runs fully locally, no browser tab needed |
 | 2026-11-06 | Own name and design, no Prism branding or file-format copying | Reimplement functionality only |
 | 2026-11-06 | Every statistical method validated against reference values in tests | Results must match established software |
+| 2026-11-06 | Phase 0.5 preview UI in plain JS, no Node needed | User wanted to see a working version quickly; only Python required to run |
+| 2026-11-06 | Difference reported as B − A (second group minus first) | Matches common convention of "treated minus control" |

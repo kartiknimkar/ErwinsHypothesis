@@ -2,6 +2,15 @@
 
 Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 
+## Phase 0.5: Simple preview version (done 2026-11-06)
+- [x] Stats engine: unpaired / Welch / paired t test, Mann-Whitney, linear regression (+95% band)
+- [x] Tests against hand-computed and published (Anscombe) reference values
+- [x] Local server serving the interface (fully offline; Plotly served from the installed package)
+- [x] Interface: analysis list, editable grid (paste from Excel), plain-language results,
+      dot/bar plots with significance bracket, regression plot, PNG/SVG export
+- [x] Autosave in browser + Save/Open project file (`.ehp`, JSON)
+- [x] `./run.sh` one-command launcher for macOS
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
