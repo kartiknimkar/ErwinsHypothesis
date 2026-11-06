@@ -9,14 +9,13 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="logo">EH</span> Erwin's Hypothesis <span class="tag">preview</span></div>
+    <div class="brand"><span class="logo">EH</span><span>Erwin's Hypothesis</span></div>
     <div class="project-name-wrap">
-      <span class="muted">Project</span>
-      <input id="project-name" class="project-name" spellcheck="false" aria-label="Project name" title="Click to rename this project">
+      <input id="project-name" class="project-name" spellcheck="false" aria-label="Project name" title="Project name: click to rename">
       <span id="save-status" class="save-status"></span>
     </div>
     <div class="topbar-actions">
-      <button id="btn-projects" class="ghost">Projects…</button>
+      <button id="btn-projects" class="ghost small">Projects</button>
     </div>
   </header>
 
@@ -24,16 +23,17 @@
     <div class="dialog" role="dialog" aria-labelledby="dlg-title">
       <div class="dialog-head">
         <h3 id="dlg-title">Projects</h3>
-        <button id="dlg-close" class="ghost small" aria-label="Close">✕</button>
+        <button id="dlg-close" class="icon" aria-label="Close">✕</button>
       </div>
-      <p class="hint">Projects are saved automatically in the <b>projects</b> folder inside the app folder.</p>
+      <p class="hint">Saved automatically in the <b>projects</b> folder inside the app folder.</p>
       <div class="row new-row">
         <input id="new-project-name" type="text" placeholder="New project name" maxlength="80">
         <button id="btn-new-project" class="primary small">Create</button>
       </div>
       <ul id="project-list" class="project-list"></ul>
       <div class="dialog-foot">
-        <button id="btn-import" class="ghost small" title="Copy a project file from elsewhere into the projects folder">Import a project file…</button>
+        <button id="btn-examples" class="ghost small" title="A project with an example of every analysis">New example project</button>
+        <button id="btn-import" class="ghost small">Import a project file…</button>
         <button id="btn-show-projects" class="ghost small">Show projects folder</button>
         <input type="file" id="file-import" accept=".ehp,.json" hidden>
       </div>
@@ -44,57 +44,68 @@
 
   <div class="layout">
     <aside class="sidebar">
-      <div class="side-head">
-        <span>Analyses</span>
-        <div class="new-wrap">
-          <button id="btn-new" class="primary small">+ New</button>
-          <div id="new-menu" class="menu" hidden>
-            <button data-type="ttest"><b>Compare two groups</b><small>t test, Mann-Whitney</small></button>
-            <button data-type="regression"><b>Fit a straight line</b><small>Linear regression</small></button>
-          </div>
+      <div class="new-wrap">
+        <button id="btn-new" class="primary block">+ New analysis</button>
+        <div id="new-menu" class="menu" hidden>
+          <button data-type="ttest"><span class="badge t-ttest">G</span><span><b>Compare groups</b><small>t tests · ANOVA · nonparametric</small></span></button>
+          <button data-type="regression"><span class="badge t-regression">XY</span><span><b>XY: curves &amp; regression</b><small>Linear · dose-response (IC50/EC50) · kinetics</small></span></button>
+          <button data-type="survival"><span class="badge t-survival">S</span><span><b>Survival</b><small>Kaplan-Meier · log-rank · hazard ratio</small></span></button>
+          <button data-type="contingency"><span class="badge t-contingency">#</span><span><b>Contingency table</b><small>Chi-square · Fisher's exact · odds ratio</small></span></button>
         </div>
       </div>
       <ul id="sheet-list" class="sheet-list"></ul>
-      <div class="side-foot">Everything saves automatically to the <b>projects</b> folder. Graph exports go to the <b>exports</b> folder.</div>
+      <div class="side-foot">Autosaved to <b>projects</b>. Exports go to <b>exports</b>.</div>
     </aside>
 
     <main class="workspace">
       <div class="sheet-header">
+        <span id="sheet-badge" class="badge"></span>
         <input id="sheet-title" class="sheet-title" spellcheck="false" aria-label="Analysis name">
         <span id="sheet-kind" class="pill"></span>
-        <button id="btn-delete" class="ghost danger small" title="Delete this analysis">Delete</button>
+        <div class="spacer"></div>
+        <button id="btn-undo" class="icon" title="Undo (Ctrl+Z)" disabled>↶</button>
+        <button id="btn-redo" class="icon" title="Redo (Ctrl+Y)" disabled>↷</button>
+        <button id="btn-delete" class="icon danger" title="Delete this analysis">🗑</button>
       </div>
 
       <div class="panes">
-        <section class="pane data-pane">
-          <div class="pane-head">
-            <h2>1 · Data</h2>
-            <div class="pane-actions">
-              <button id="btn-example" class="ghost small">Load example</button>
+        <section class="card data-card">
+          <div class="card-head">
+            <h2>Data</h2>
+            <div class="card-actions">
+              <button id="btn-addcol" class="ghost small"></button>
+              <button id="btn-example" class="ghost small">Example</button>
               <button id="btn-clear" class="ghost small">Clear</button>
             </div>
           </div>
           <p class="hint" id="data-hint"></p>
           <div class="grid-wrap"><table id="grid" class="grid"></table></div>
-
-          <div class="pane-head"><h2>2 · Options</h2></div>
+          <div class="card-head sub"><h2>Analysis</h2></div>
           <div id="options" class="options"></div>
         </section>
 
-        <section class="pane out-pane">
-          <div class="pane-head">
-            <h2>3 · Graph</h2>
-            <div class="pane-actions">
-              <button id="btn-png" class="ghost small">Export PNG</button>
-              <button id="btn-svg" class="ghost small">Export SVG</button>
+        <div class="right-col">
+          <section class="card">
+            <div class="card-head">
+              <h2>Graph</h2>
+              <div class="card-actions">
+                <button id="btn-format" class="ghost small" aria-expanded="false">Format ▾</button>
+                <button id="btn-png" class="ghost small">PNG</button>
+                <button id="btn-svg" class="ghost small">SVG</button>
+              </div>
             </div>
-          </div>
-          <div id="graph-controls" class="graph-controls"></div>
-          <div id="plot" class="plot"></div>
+            <div id="graph-format" class="graph-format" hidden></div>
+            <div id="plot" class="plot"></div>
+          </section>
 
-          <div class="pane-head"><h2>4 · Results</h2></div>
-          <div id="results" class="results"></div>
-        </section>
+          <section class="card">
+            <div class="card-head">
+              <h2>Results</h2>
+              <div class="card-actions"><button id="btn-copy" class="ghost small" title="Copy results to paste into Excel or Word">Copy</button></div>
+            </div>
+            <div id="results" class="results"></div>
+          </section>
+        </div>
       </div>
     </main>
   </div>

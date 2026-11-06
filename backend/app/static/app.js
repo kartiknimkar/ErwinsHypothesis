@@ -1,97 +1,338 @@
-/* Erwin's Hypothesis: preview interface (vanilla JS, no build step). */
+/* Erwin's Hypothesis interface (vanilla JS, no build step).
+ * Each analysis type is described in TYPES (data layout, options, request, results, graph). */
 (() => {
   "use strict";
 
-  // ---------- project model ----------
-  const MIN_ROWS = 15;
+  // ======================================================================
+  // helpers
+  // ======================================================================
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const isNum = v => String(v ?? "").trim() !== "" && !isNaN(Number(String(v).trim()));
+  const num = v => (isNum(v) ? Number(v) : null);
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  const letter = i => String.fromCharCode(65 + (i % 26));
+
+  function fmt(v, digits = 4) {
+    if (v === null || v === undefined || Number.isNaN(v)) return "—";
+    if (v === 0) return "0";
+    const a = Math.abs(v);
+    if (a >= 1e6 || a < 1e-4) return v.toExponential(2);
+    return Number(v.toPrecision(digits)).toString();
+  }
+  function fmtP(p) {
+    if (p === null || p === undefined) return "—";
+    if (p < 0.0001) return "P < 0.0001";
+    return "P = " + (p < 0.001 ? p.toFixed(4) : p < 0.01 ? p.toFixed(4) : p.toFixed(3));
+  }
+  const pOnly = p => fmtP(p).replace(/^P = /, "").replace(/^P < /, "< ");
+  const stars = p => p < 0.0001 ? "****" : p < 0.001 ? "***" : p < 0.01 ? "**" : p < 0.05 ? "*" : "ns";
+  const st = s => `<span class="st ${s === "ns" ? "ns" : ""}">${s}</span>`;
+  const ci = (lo, hi) => (lo === null || lo === undefined) ? "—" : `${fmt(lo)} to ${fmt(hi)}`;
+
+  // results table builder
+  const T = {
+    sec: t => `<tr class="sec"><td colspan="9">${t}</td></tr>`,
+    row: (l, v, cls = "") => `<tr class="${cls}"><td>${l}</td><td>${v}</td></tr>`,
+    table: rows => `<div class="tbl-wrap"><table class="res">${rows.join("")}</table></div>`,
+    multi: (head, rows) => `<div class="tbl-wrap"><table class="res multi"><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr>${rows.map(r => `<tr${r.cls ? ` class="${r.cls}"` : ""}>${(r.cells || r).map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}</table></div>`,
+    summary: (cls, html) => `<div class="summary ${cls}">${html}</div>`,
+  };
+
+  // ======================================================================
+  // graph styling shared by all types
+  // ======================================================================
+  const PALETTES = {
+    vivid: ["#2f5bea", "#e4572e", "#17a398", "#8b5cf6", "#f2a541", "#d6336c", "#2b9348", "#6c757d"],
+    colorblind: ["#0072B2", "#E69F00", "#009E73", "#CC79A7", "#56B4E9", "#D55E00", "#F0E442", "#000000"],
+    classic: ["#000000", "#d62728", "#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e", "#8c564b", "#7f7f7f"],
+    pastel: ["#7aa6f0", "#f4a582", "#80cdc1", "#c2a5cf", "#fdd49e", "#f1b6da", "#a6d96a", "#bababa"],
+    grayscale: ["#111111", "#666666", "#999999", "#444444", "#bbbbbb", "#222222", "#888888", "#555555"],
+  };
+  const color = (g, i) => (PALETTES[g.palette] || PALETTES.vivid)[i % 8];
+  const COMMON_GRAPH = { title: "", palette: "vivid", pointSize: 8, fontSize: 13, ymin: "", ymax: "", logY: false };
+
+  function axis(g, extra = {}) {
+    return { showline: true, linewidth: 1.5, linecolor: "#1b2130", ticks: "outside", tickwidth: 1.5, ticklen: 5,
+      showgrid: false, zeroline: false, automargin: true, ...extra };
+  }
+  function yAxis(g, titleText, extra = {}) {
+    const a = axis(g, { title: { text: esc(titleText || "") }, ...extra });
+    const cur = extra.range || [null, null];
+    if (g.logY) { a.type = "log"; delete a.range; }
+    const lo = num(g.ymin), hi = num(g.ymax);
+    if (lo !== null || hi !== null) {
+      const r = [lo ?? (g.logY ? null : cur[0]), hi ?? (g.logY ? null : cur[1])];
+      if (r[0] !== null && r[1] !== null) a.range = g.logY ? r.map(v => Math.log10(Math.max(v, 1e-12))) : r;
+      else { delete a.range; a.autorange = true; }
+    }
+    return a;
+  }
+  function baseLayout(g) {
+    return {
+      margin: { l: 60, r: 16, t: g.title ? 44 : 20, b: 52 },
+      paper_bgcolor: "#fff", plot_bgcolor: "#fff", showlegend: false,
+      font: { family: "-apple-system, Segoe UI, Helvetica, Arial, sans-serif", size: Number(g.fontSize) || 13, color: "#1b2130" },
+      title: g.title ? { text: esc(g.title), font: { size: (Number(g.fontSize) || 13) + 3 } } : undefined,
+    };
+  }
+  const PLOT_CONFIG = { displaylogo: false, responsive: true,
+    modeBarButtonsToRemove: ["select2d", "lasso2d", "autoScale2d", "toggleSpikelines"] };
+
+  // ======================================================================
+  // analysis types
+  // ======================================================================
+  const CHOICES2 = [
+    ["unpaired", "Unpaired t test", "Independent groups (different subjects), similar spread."],
+    ["welch", "Welch's t test", "Independent groups, spread may differ. Safe default."],
+    ["paired", "Paired t test", "Same subjects measured twice. Each row is a pair."],
+    ["mannwhitney", "Mann-Whitney test", "Nonparametric: compares ranks, no normality needed."],
+  ];
+  const CHOICES3 = [
+    ["ordinary", "One-way ANOVA + Tukey", "Compares all means; Tukey's test for every pair."],
+    ["welch", "Welch's ANOVA + Games-Howell", "When the groups' spreads differ."],
+    ["kruskal", "Kruskal-Wallis + Dunn's", "Nonparametric: compares ranks, no normality needed."],
+  ];
+  let MODELS = [
+    { id: "dr_inhibit", name: "Dose-response: inhibition (IC50)", log_x: true, equation: "Y = Bottom + (Top − Bottom) / (1 + 10^((LogIC50 − X)·HillSlope))" },
+    { id: "dr_stim", name: "Dose-response: stimulation (EC50)", log_x: true, equation: "Y = Bottom + (Top − Bottom) / (1 + 10^((LogEC50 − X)·HillSlope))" },
+    { id: "michaelis", name: "Michaelis-Menten (enzyme kinetics)", log_x: false, equation: "Y = Vmax·X / (Km + X)" },
+    { id: "exp_decay", name: "Exponential decay (one phase)", log_x: false, equation: "Y = (Y0 − Plateau)·exp(−K·X) + Plateau" },
+    { id: "exp_growth", name: "Exponential growth", log_x: false, equation: "Y = Y0·exp(K·X)" },
+    { id: "assoc", name: "One-phase association", log_x: false, equation: "Y = Y0 + (Plateau − Y0)·(1 − exp(−K·X))" },
+  ];
+  const modelInfo = id => MODELS.find(m => m.id === id);
 
   const TYPES = {
+    // ---------------------------------------------------------------- groups
     ttest: {
-      label: "Compare two groups",
+      label: "Compare groups", newTitle: "Group comparison",
+      minCols: 2, maxCols: 12, fixedCols: 0, textCol: -1, addLabel: "+ Group", minRows: 15,
+      colKind: j => `Group ${letter(j)}`, newColName: j => `Group ${letter(j)}`,
+      hint: "One column per group, one value per cell. Paste straight from Excel. Click a column name to rename it.",
       cols: ["Control", "Treated"],
-      colKind: ["Group A", "Group B"],
-      hint: "Type or paste the values for each group into its column, one value per cell. Click a column name to rename it. Groups can have different numbers of values (except for a paired test).",
-      example: {
+      options: { kind2: "welch", kind3: "ordinary", alpha: 0.05 },
+      graph: { ylabel: "Response", style: "dots", err: "sd", brackets: "sig", showPoints: true },
+      examples: s => s.cols.length >= 3 ? {
+        cols: ["Vehicle", "Drug 10 µM", "Drug 50 µM"],
+        rows: [[10.2, 13.4, 18.2], [11.5, 14.8, 17.1], [9.8, 12.9, 19.5], [12.1, 15.2, 16.8], [10.9, 14.1, 18.9], [11.3, 13.7, 17.6]],
+      } : {
         cols: ["Control", "Treated"],
         rows: [[4.2, 6.1], [5.1, 7.3], [3.8, 6.8], [4.9, 5.9], [5.5, 7.9], [4.4, 6.5], [4.0, 7.0], [5.2, 6.2]],
       },
-      options: { kind: "unpaired", alpha: 0.05 },
-      graph: { title: "", ylabel: "Response", style: "dots", err: "sd" },
+      request(s) {
+        return ["/api/compare", { groups: s.cols.map((_, j) => s.data.map(r => num(r[j]))), names: s.cols.map((c, j) => c || `Group ${letter(j)}`),
+          kind: filledCols(s).length >= 3 ? s.options.kind3 : s.options.kind2, alpha: s.options.alpha }];
+      },
+      renderOptions(s) {
+        const n = filledCols(s).length;
+        const three = n >= 3;
+        const list = three ? CHOICES3 : CHOICES2, key = three ? "kind3" : "kind2";
+        return `<div class="opt-label">${three ? `${n} groups: compare all` : "2 groups"}</div>` +
+          list.map(([k, name, d]) => `<label class="choice ${s.options[key] === k ? "on" : ""}"><input type="radio" name="${key}" value="${k}" ${s.options[key] === k ? "checked" : ""}><span><b>${name}</b><small>${d}</small></span></label>`).join("") +
+          (three ? "" : `<p class="hint">Have 3 or more groups? Click <b>+ Group</b> to add a column.</p>`) + alphaSelect(s);
+      },
+      graphControls: s => [
+        sel("style", "Style", [["dots", "Dots + mean"], ["bars", "Bars + dots"], ["box", "Box plot"]]),
+        sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
+        sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]),
+        txt("ylabel", "Y axis label"), chk("showPoints", "Show points"),
+      ],
+      renderResults: renderGroupResults,
+      draw: drawGroups,
     },
+    // ---------------------------------------------------------------- XY
     regression: {
-      label: "Fit a straight line",
+      label: "XY: curves & regression", newTitle: "XY analysis",
+      minCols: 2, maxCols: 13, fixedCols: 1, textCol: -1, addLabel: "+ Replicate", minRows: 15,
+      colKind: j => j === 0 ? "X" : `Y${j}`, newColName: j => `Y${j}`,
+      hint: "X in the first column; Y values to the right. Add Y columns for replicates (each row = one X). Rename columns by clicking their names.",
       cols: ["X", "Y"],
-      colKind: ["X values", "Y values"],
-      hint: "Put the independent variable (what you set or measured first, e.g. concentration) in X and the outcome in Y. Each row is one point. Click a column name to rename it.",
-      example: {
+      options: { model: "linear", xIsLog: false, alpha: 0.05 },
+      graph: { xlabel: "", ylabel: "", band: true, showEq: true, repMode: "mean", logX: false, xmin: "", xmax: "" },
+      examples: s => (modelInfo(s.options.model)?.log_x) ? {
+        cols: ["Concentration (µM)", "Response %", "Rep 2", "Rep 3"],
+        rows: [[0.01, 98.1, 101.2, 97.4], [0.03, 96.0, 99.5, 95.8], [0.1, 92.7, 88.9, 93.4], [0.3, 80.3, 75.6, 77.9],
+          [1, 50.1, 55.8, 52.0], [3, 30.2, 26.9, 29.4], [10, 12.8, 15.1, 13.0], [30, 7.5, 9.2, 6.9], [100, 6.4, 4.8, 6.1]],
+      } : {
         cols: ["Concentration (µg/mL)", "Absorbance"],
         rows: [[0, 0.02], [5, 0.11], [10, 0.21], [20, 0.39], [40, 0.83], [60, 1.18], [80, 1.62]],
       },
+      request(s) {
+        return ["/api/fit", { x: s.data.map(r => num(r[0])), ys: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
+          model: s.options.model, x_is_log: !!s.options.xIsLog, alpha: s.options.alpha }];
+      },
+      renderOptions(s) {
+        const m = modelInfo(s.options.model);
+        return `<div class="opt-label">Fit</div>
+          <select id="opt-model">${[["linear", "Straight line (linear regression + correlation)"], ...MODELS.map(m => [m.id, m.name])]
+            .map(([v, l]) => `<option value="${v}" ${s.options.model === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+          <div class="eqn">${m ? esc(m.equation) : "Y = Slope·X + Intercept"}</div>
+          ${m && m.log_x ? `<label class="check"><input type="checkbox" id="opt-xislog" ${s.options.xIsLog ? "checked" : ""}> X values are already log10(concentration)</label>
+            <p class="hint">Otherwise X is concentration and the app takes the log for you (X = 0 is left out, as it has no log).</p>` : ""}
+          ${alphaSelect(s)}`;
+      },
+      graphControls: s => [
+        txt("xlabel", "X axis label", s.cols[0]), txt("ylabel", "Y axis label", s.cols[1]),
+        ...(s.cols.length > 2 ? [sel("repMode", "Replicates", [["mean", "Mean ± SD"], ["sem", "Mean ± SEM"], ["all", "All points"]])] : []),
+        txt("xmin", "X min", "auto"), txt("xmax", "X max", "auto"),
+        chk("logX", "Log X axis"), chk("band", "95% confidence band"), chk("showEq", "Show equation"),
+      ],
+      renderResults: renderXYResults,
+      draw: drawXY,
+    },
+    // ---------------------------------------------------------------- survival
+    survival: {
+      label: "Survival", newTitle: "Survival",
+      minCols: 2, maxCols: 13, fixedCols: 1, textCol: -1, addLabel: "+ Group", minRows: 20,
+      colKind: j => j === 0 ? "Time" : `Group ${letter(j - 1)}`, newColName: j => `Group ${letter(j - 1)}`,
+      hint: "One row per subject. Time in the first column. In that subject's group column enter 1 if the event happened (e.g. death) or 0 if censored (still alive / lost to follow-up). Leave other groups blank.",
+      cols: ["Days", "Treated", "Control"],
       options: { alpha: 0.05 },
-      graph: { title: "", band: true },
+      graph: { xlabel: "", ylabel: "Percent survival", showCI: false, showCensor: true },
+      examples: () => {
+        const T1 = [6, 6, 6, 7, 10, 13, 16, 22, 23, 6, 9, 10, 11, 17, 19, 20, 25, 32, 32, 34, 35];
+        const E1 = [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        const T2 = [1, 1, 2, 2, 3, 4, 4, 5, 5, 8, 8, 8, 8, 11, 11, 12, 12, 15, 17, 22, 23];
+        return { cols: ["Weeks", "6-MP", "Placebo"], rows: [...T1.map((t, i) => [t, E1[i], ""]), ...T2.map(t => [t, "", 1])] };
+      },
+      request(s) {
+        return ["/api/survival", { times: s.data.map(r => num(r[0])), groups: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
+          names: s.cols.slice(1).map((c, j) => c || `Group ${letter(j)}`), alpha: s.options.alpha }];
+      },
+      renderOptions: s => `<p class="hint">Kaplan-Meier survival curves for each group. With 2 or more groups, the log-rank (Mantel-Cox) test compares them; with 2 groups you also get the hazard ratio.</p>${alphaSelect(s)}`,
+      graphControls: s => [txt("xlabel", "X axis label", s.cols[0]), txt("ylabel", "Y axis label"),
+        chk("showCensor", "Mark censored"), chk("showCI", "95% confidence bands")],
+      renderResults: renderSurvivalResults,
+      draw: drawSurvival,
+    },
+    // ---------------------------------------------------------------- contingency
+    contingency: {
+      label: "Contingency table", newTitle: "Contingency",
+      minCols: 3, maxCols: 9, fixedCols: 1, textCol: 0, addLabel: "+ Outcome", minRows: 6,
+      colKind: j => j === 0 ? "Row name" : `Outcome ${j}`, newColName: j => `Outcome ${j}`,
+      hint: "Each row is a group (type its name in the first column). Enter counts (number of subjects) in the outcome columns.",
+      cols: ["Group", "Outcome 1", "Outcome 2"],
+      options: { alpha: 0.05 },
+      graph: { ylabel: "", mode: "pct" },
+      examples: () => ({ cols: ["Group", "Responded", "No response"], rows: [["Treated", 38, 12], ["Placebo", 23, 27]] }),
+      request(s) {
+        const rows = s.data.filter(r => r.slice(1).some(isNum));
+        return ["/api/contingency", { table: rows.map(r => r.slice(1).map(v => num(v))), rows: rows.map((r, i) => String(r[0] || `Row ${i + 1}`)),
+          cols: s.cols.slice(1).map((c, j) => c || `Outcome ${j + 1}`), alpha: s.options.alpha }];
+      },
+      renderOptions: s => `<p class="hint">2×2 tables: Fisher's exact test, odds ratio and relative risk. Larger tables: chi-square test.</p>${alphaSelect(s)}`,
+      graphControls: () => [sel("mode", "Show", [["pct", "Percent of each row"], ["count", "Counts"]]), txt("ylabel", "Y axis label")],
+      renderResults: renderContingencyResults,
+      draw: drawContingency,
     },
   };
 
-  let project = null;
-  let runTimer = null;
+  const filledCols = s => s.cols.map((_, j) => j).filter(j => s.data.some(r => isNum(r[j])));
+  const alphaSelect = s => `<div class="row"><label for="opt-alpha">Significance level α</label><select id="opt-alpha">${[0.05, 0.01, 0.1]
+    .map(a => `<option value="${a}" ${s.options.alpha === a ? "selected" : ""}>${a}</option>`).join("")}</select></div>`;
 
-  function uid() { return Math.random().toString(36).slice(2, 10); }
-  function blankRows(n, c) { return Array.from({ length: n }, () => Array(c).fill("")); }
+  // graph format control descriptors
+  const sel = (k, label, opts) => ({ k, label, kind: "select", opts });
+  const txt = (k, label, ph = "") => ({ k, label, kind: "text", ph });
+  const chk = (k, label) => ({ k, label, kind: "check" });
+
+  // ======================================================================
+  // project model
+  // ======================================================================
+  let project = null;
+  const blankRows = (n, c) => Array.from({ length: n }, () => Array(c).fill(""));
 
   function newSheet(type, withExample = false) {
     const t = TYPES[type];
-    const count = project ? project.sheets.filter(s => s.type === type).length + 1 : 1;
-    const s = {
-      id: uid(), type,
-      title: (type === "ttest" ? "Two-group comparison " : "Linear regression ") + count,
-      cols: [...t.cols],
-      data: blankRows(MIN_ROWS, 2),
-      options: { ...t.options },
-      graph: { ...t.graph },
-    };
+    const count = project ? project.sheets.filter(x => x.type === type).length + 1 : 1;
+    const s = { id: uid(), type, title: `${t.newTitle} ${count}`, cols: [...t.cols], data: blankRows(t.minRows, t.cols.length),
+      options: { ...t.options }, graph: { ...COMMON_GRAPH, ...t.graph } };
     if (withExample) applyExample(s);
     return s;
   }
-
+  function normalize(s) {
+    // upgrade sheets saved by older versions
+    const t = TYPES[s.type] || TYPES.ttest;
+    if (!TYPES[s.type]) s.type = "ttest";
+    s.options = { ...t.options, ...(s.options || {}) };
+    if (s.type === "ttest" && s.options.kind && !s.options.kind2Set) { s.options.kind2 = s.options.kind; s.options.kind2Set = true; }
+    s.graph = { ...COMMON_GRAPH, ...t.graph, ...(s.graph || {}) };
+    s.data = (s.data || []).map(r => s.cols.map((_, j) => r[j] ?? ""));
+    padRows(s);
+    return s;
+  }
   function applyExample(s) {
-    const ex = TYPES[s.type].example;
+    const ex = TYPES[s.type].examples(s);
     s.cols = [...ex.cols];
-    s.data = ex.rows.map(r => r.map(String));
+    s.data = ex.rows.map(r => r.map(v => String(v)));
     padRows(s);
   }
-
-  function newProject() {
+  function examplesProject() {
     project = { sheets: [] };
-    const a = newSheet("ttest", true);
-    a.title = "Example: Control vs Treated";
-    project.sheets.push(a);
-    const b = newSheet("regression", true);
-    b.title = "Example: Standard curve";
-    project.sheets.push(b);
-    project.activeId = a.id;
+    const add = (type, title, tweak) => { const s = newSheet(type); if (tweak) tweak(s); applyExample(s); s.title = title; project.sheets.push(s); return s; };
+    const first = add("ttest", "Example: two groups");
+    add("ttest", "Example: three groups (ANOVA)", s => { s.cols = ["A", "B", "C"]; });
+    add("regression", "Example: dose-response (IC50)", s => { s.options.model = "dr_inhibit"; s.graph.logX = true; });
+    add("regression", "Example: standard curve");
+    add("survival", "Example: survival");
+    add("contingency", "Example: contingency");
+    project.activeId = first.id;
     return project;
   }
+  const active = () => project.sheets.find(s => s.id === project.activeId) || project.sheets[0];
+  function padRows(s) {
+    let last = -1;
+    s.data.forEach((r, i) => { if (r.some(v => String(v).trim() !== "")) last = i; });
+    const want = Math.max(TYPES[s.type].minRows, last + 4);
+    while (s.data.length < want) s.data.push(Array(s.cols.length).fill(""));
+  }
 
-  // ---------- saving (to the app folder's "projects" directory) ----------
+  // ======================================================================
+  // undo / redo (per analysis, kept in memory)
+  // ======================================================================
+  const history = {};
+  let groupOpen = false, groupTimer = null;
+  const snap = s => JSON.stringify({ cols: s.cols, data: s.data });
+  function hist(s) { return history[s.id] || (history[s.id] = { undo: [], redo: [] }); }
+  function recordUndo(force = false) {
+    const s = active(), h = hist(s);
+    if (groupOpen && !force) { clearTimeout(groupTimer); groupTimer = setTimeout(() => (groupOpen = false), 800); return; }
+    h.undo.push(snap(s)); if (h.undo.length > 200) h.undo.shift();
+    h.redo = [];
+    groupOpen = !force;
+    clearTimeout(groupTimer); groupTimer = setTimeout(() => (groupOpen = false), 800);
+    updateUndoButtons();
+  }
+  function undoRedo(dir) {
+    const s = active(), h = hist(s);
+    const from = dir === "undo" ? h.undo : h.redo, to = dir === "undo" ? h.redo : h.undo;
+    if (!from.length) return;
+    to.push(snap(s));
+    const st = JSON.parse(from.pop());
+    s.cols = st.cols; s.data = st.data;
+    groupOpen = false;
+    save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun(); updateUndoButtons();
+  }
+  function updateUndoButtons() {
+    const h = hist(active());
+    $("btn-undo").disabled = !h.undo.length;
+    $("btn-redo").disabled = !h.redo.length;
+  }
+
+  // ======================================================================
+  // saving (to the app folder's "projects" directory)
+  // ======================================================================
   let projectName = null, saveTimer = null, saving = Promise.resolve();
-
-  function setStatus(text, err = false) {
-    const el = $("save-status");
-    el.textContent = text; el.classList.toggle("err", err);
-  }
-  function save() {
-    // autosave shortly after each change
-    setStatus("Saving…");
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveNow, 500);
-  }
+  function setStatus(text, err = false) { const el = $("save-status"); el.textContent = text; el.classList.toggle("err", err); }
+  function save() { setStatus("Saving…"); clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 500); }
   function saveNow() {
-    clearTimeout(saveTimer);
+    clearTimeout(saveTimer); saveTimer = null;
+    if (!projectName) return saving;
     const name = projectName, body = JSON.stringify({ data: { sheets: project.sheets, activeId: project.activeId } });
     saving = saving.then(async () => {
       try {
-        const res = await fetch(`/api/projects/${encodeURIComponent(name)}`, { method: "PUT",
-          headers: { "Content-Type": "application/json" }, body });
+        const res = await fetch(`/api/projects/${encodeURIComponent(name)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body });
         if (!res.ok) throw new Error();
         setStatus("✓ Saved");
       } catch { setStatus("Not saved: is the app still running?", true); }
@@ -108,458 +349,567 @@
     await saveNow();
     const data = await api(`/api/projects/${encodeURIComponent(name)}`);
     if (!Array.isArray(data.sheets) || !data.sheets.length) throw new Error("This project has no analyses.");
-    project = { sheets: data.sheets, activeId: data.activeId || data.sheets[0].id };
-    projectName = name;
-    $("project-name").value = name;
-    setStatus("✓ Saved");
+    project = { sheets: data.sheets.map(normalize), activeId: data.activeId || data.sheets[0].id };
+    projectName = name; $("project-name").value = name; setStatus("✓ Saved");
     renderAll();
+  }
+  async function uniqueName(base) {
+    const list = (await api("/api/projects")).projects.map(p => p.name.toLowerCase());
+    let n = base, i = 2;
+    while (list.includes(n.toLowerCase())) n = `${base} ${i++}`;
+    return n;
   }
   async function createProject(name, withExamples) {
-    const list = (await api("/api/projects")).projects.map(p => p.name.toLowerCase());
-    let n = name, i = 2;
-    while (list.includes(n.toLowerCase())) n = `${name} ${i++}`;
+    const n = await uniqueName(name);
     if (projectName) await saveNow();
-    project = withExamples ? newProject() : { sheets: [], activeId: null };
-    if (!withExamples) { const s = newSheet("ttest"); project.sheets.push(s); project.activeId = s.id; }
-    const saved = await api(`/api/projects/${encodeURIComponent(n)}`, { method: "PUT",
-      body: JSON.stringify({ data: project }) });
-    projectName = saved.name;
-    $("project-name").value = projectName;
-    setStatus("✓ Saved");
+    if (withExamples) examplesProject();
+    else { project = { sheets: [] }; const s = newSheet("ttest"); project.sheets.push(s); project.activeId = s.id; }
+    const saved = await api(`/api/projects/${encodeURIComponent(n)}`, { method: "PUT", body: JSON.stringify({ data: project }) });
+    projectName = saved.name; $("project-name").value = projectName; setStatus("✓ Saved");
     renderAll();
   }
-  function active() { return project.sheets.find(s => s.id === project.activeId) || project.sheets[0]; }
 
-  function padRows(s) {
-    // keep a few empty rows at the bottom so there is always room to type
-    let lastFilled = -1;
-    s.data.forEach((r, i) => { if (r.some(v => String(v).trim() !== "")) lastFilled = i; });
-    const want = Math.max(MIN_ROWS, lastFilled + 4);
-    while (s.data.length < want) s.data.push(Array(s.cols.length).fill(""));
-  }
-
-  // ---------- helpers ----------
-  const $ = id => document.getElementById(id);
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const isNum = v => String(v).trim() !== "" && !isNaN(Number(String(v).trim()));
-
-  function fmt(v, digits = 4) {
-    if (v === null || v === undefined || Number.isNaN(v)) return "—";
-    if (v === 0) return "0";
-    const a = Math.abs(v);
-    if (a >= 1e5 || a < 1e-4) return v.toExponential(2);
-    return Number(v.toPrecision(digits)).toString();
-  }
-  function fmtP(p) {
-    if (p === null || p === undefined) return "—";
-    if (p < 0.0001) return "P < 0.0001";
-    return "P = " + (p < 0.001 ? p.toFixed(4) : p.toFixed(p < 0.01 ? 4 : 3));
-  }
-
-  const pOnly = p => fmtP(p).replace(/^P = /, "").replace(/^P < /, "< ");
-
-  // ---------- sidebar ----------
+  // ======================================================================
+  // sidebar & header
+  // ======================================================================
   function renderSidebar() {
-    const list = $("sheet-list");
-    list.innerHTML = "";
-    project.sheets.forEach(s => {
-      const li = document.createElement("li");
-      li.className = s.id === project.activeId ? "active" : "";
-      li.innerHTML = `<span class="t">${esc(s.title)}</span><span class="k">${TYPES[s.type].label}</span>`;
-      li.onclick = () => { project.activeId = s.id; save(); renderAll(); };
-      list.appendChild(li);
-    });
+    $("sheet-list").innerHTML = project.sheets.map(s =>
+      `<li data-id="${s.id}" class="${s.id === project.activeId ? "active" : ""}" title="${esc(TYPES[s.type].label)}">
+        <span class="badge t-${s.type}">${badgeText(s.type)}</span><span class="t">${esc(s.title)}</span></li>`).join("");
+    $("sheet-list").querySelectorAll("li").forEach(li => li.onclick = () => { project.activeId = li.dataset.id; save(); renderAll(); });
   }
+  const badgeText = t => ({ ttest: "G", regression: "XY", survival: "S", contingency: "#" }[t]);
 
-  // ---------- grid ----------
+  // ======================================================================
+  // data grid
+  // ======================================================================
   function renderGrid() {
-    const s = active();
+    const s = active(), t = TYPES[s.type];
     padRows(s);
-    const t = TYPES[s.type];
-    const grid = $("grid");
-    let html = "<thead><tr><th class='rownum'></th>";
+    const canRemove = j => j >= t.fixedCols && s.cols.length > t.minCols;
+    let h = "<thead><tr><th class='rownum'></th>";
     s.cols.forEach((c, j) => {
-      html += `<th><span class="colkind">${t.colKind[j]}</span><input data-head="${j}" value="${esc(c)}" spellcheck="false" aria-label="${t.colKind[j]} name"></th>`;
+      h += `<th><div class="colkind">${esc(t.colKind(j))}${canRemove(j) ? `<button class="rm" data-rm="${j}" title="Remove this column">✕</button>` : ""}</div>
+        <div class="colhead"><input data-head="${j}" value="${esc(c)}" spellcheck="false" aria-label="${esc(t.colKind(j))} name"></div></th>`;
     });
-    html += "</tr></thead><tbody>";
+    h += "</tr></thead><tbody>";
     s.data.forEach((r, i) => {
-      html += `<tr><td class="rownum">${i + 1}</td>`;
+      h += `<tr><td class="rownum">${i + 1}</td>`;
       r.forEach((v, j) => {
-        const bad = String(v).trim() !== "" && !isNum(v) ? " bad" : "";
-        html += `<td><input class="cell${bad}" data-r="${i}" data-c="${j}" value="${esc(v)}" inputmode="decimal" spellcheck="false"></td>`;
+        const text = j === t.textCol;
+        const bad = !text && String(v).trim() !== "" && !isNum(v) ? " bad" : "";
+        h += `<td><input class="cell${text ? " txt" : ""}${bad}" data-r="${i}" data-c="${j}" value="${esc(v)}" ${text ? "" : 'inputmode="decimal"'} spellcheck="false"></td>`;
       });
-      html += "</tr>";
+      h += "</tr>";
     });
-    grid.innerHTML = html + "</tbody>";
+    $("grid").innerHTML = h + "</tbody>";
     $("data-hint").textContent = t.hint;
+    const add = $("btn-addcol");
+    add.textContent = t.addLabel;
+    add.disabled = s.cols.length >= t.maxCols;
   }
-
-  function cellAt(r, c) { return $("grid").querySelector(`input[data-r="${r}"][data-c="${c}"]`); }
+  const cellAt = (r, c) => $("grid").querySelector(`input[data-r="${r}"][data-c="${c}"]`);
 
   function onGridInput(e) {
-    const el = e.target, s = active();
+    const el = e.target, s = active(), t = TYPES[s.type];
     if (el.dataset.head !== undefined) {
+      recordUndo();
       s.cols[+el.dataset.head] = el.value;
-      save(); scheduleRun(); renderOptions();
+      save(); scheduleRun();
       return;
     }
     if (el.dataset.r === undefined) return;
-    s.data[+el.dataset.r][+el.dataset.c] = el.value;
-    el.classList.toggle("bad", el.value.trim() !== "" && !isNum(el.value));
+    recordUndo();
+    const c = +el.dataset.c;
+    s.data[+el.dataset.r][c] = el.value;
+    el.classList.toggle("bad", c !== t.textCol && el.value.trim() !== "" && !isNum(el.value));
     const before = s.data.length;
     padRows(s);
-    if (s.data.length !== before) { renderGrid(); cellAt(+el.dataset.r, +el.dataset.c).focus(); }
+    if (s.data.length !== before) { renderGrid(); cellAt(+el.dataset.r, c).focus(); }
     save(); scheduleRun();
   }
-
   function onGridPaste(e) {
     const el = e.target;
     if (el.dataset.r === undefined) return;
     const text = (e.clipboardData || window.clipboardData).getData("text");
-    if (!/[\t\n\r]/.test(text)) return; // single value: normal paste
+    if (!/[\t\n\r]/.test(text)) return;
     e.preventDefault();
-    const s = active();
+    const s = active(), t = TYPES[s.type];
+    recordUndo(true);
     const rows = text.replace(/\r/g, "").replace(/\n+$/, "").split("\n").map(l => l.split("\t"));
     const r0 = +el.dataset.r, c0 = +el.dataset.c;
+    const need = Math.min(t.maxCols, c0 + Math.max(...rows.map(r => r.length)));
+    while (s.cols.length < need) { s.cols.push(t.newColName(s.cols.length)); s.data.forEach(r => r.push("")); }
     rows.forEach((row, i) => {
       while (s.data.length <= r0 + i) s.data.push(Array(s.cols.length).fill(""));
       row.forEach((v, j) => { if (c0 + j < s.cols.length) s.data[r0 + i][c0 + j] = v.trim(); });
     });
-    padRows(s); save(); renderGrid(); scheduleRun();
+    padRows(s); save(); renderGrid(); renderOptions(); scheduleRun();
   }
-
   function onGridKey(e) {
     const el = e.target;
     if (el.dataset.r === undefined) return;
     const r = +el.dataset.r, c = +el.dataset.c;
     let target = null;
-    if (e.key === "Enter" || (e.key === "ArrowDown")) target = cellAt(r + 1, c);
+    if (e.key === "Enter" || e.key === "ArrowDown") target = cellAt(r + 1, c);
     else if (e.key === "ArrowUp") target = cellAt(r - 1, c);
     else if (e.key === "ArrowRight" && el.selectionStart === el.value.length) target = cellAt(r, c + 1);
     else if (e.key === "ArrowLeft" && el.selectionStart === 0) target = cellAt(r, c - 1);
     if (target) { e.preventDefault(); target.focus(); target.select(); }
   }
-
-  // ---------- options ----------
-  const TEST_CHOICES = [
-    ["unpaired", "Unpaired t test", "Two independent groups (different subjects). Assumes similar spread in both groups."],
-    ["welch", "Welch's t test", "Independent groups that may have different spread. A safe default when unsure."],
-    ["paired", "Paired t test", "The same subjects measured twice (before/after). Each row is one pair."],
-    ["mannwhitney", "Mann-Whitney test", "Nonparametric: no normality assumption. Compares ranks instead of means."],
-  ];
-
-  function renderOptions() {
-    const s = active(), box = $("options");
-    let html = "";
-    if (s.type === "ttest") {
-      html += TEST_CHOICES.map(([k, name, desc]) =>
-        `<label class="choice ${s.options.kind === k ? "on" : ""}"><input type="radio" name="kind" value="${k}" ${s.options.kind === k ? "checked" : ""}>
-         <span><b>${name}</b><small>${desc}</small></span></label>`).join("");
-    }
-    html += `<div class="row"><label for="opt-alpha">Significance level (α)</label>
-      <select id="opt-alpha">${[0.05, 0.01, 0.1].map(a => `<option value="${a}" ${s.options.alpha === a ? "selected" : ""}>${a}</option>`).join("")}</select></div>`;
-    box.innerHTML = html;
-    box.querySelectorAll("input[name=kind]").forEach(r => r.onchange = () => {
-      s.options.kind = r.value; save(); renderOptions(); scheduleRun();
-    });
-    $("opt-alpha").onchange = e => { s.options.alpha = Number(e.target.value); save(); scheduleRun(); };
+  function onGridClick(e) {
+    const b = e.target.closest("[data-rm]");
+    if (!b) return;
+    const s = active(), j = +b.dataset.rm;
+    const hasData = s.data.some(r => String(r[j]).trim() !== "");
+    if (hasData && !confirm(`Remove the column "${s.cols[j]}" and its data? (You can undo.)`)) return;
+    recordUndo(true);
+    s.cols.splice(j, 1); s.data.forEach(r => r.splice(j, 1));
+    save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun();
+  }
+  function addColumn() {
+    const s = active(), t = TYPES[s.type];
+    if (s.cols.length >= t.maxCols) return;
+    recordUndo(true);
+    s.cols.push(t.newColName(s.cols.length)); s.data.forEach(r => r.push(""));
+    save(); renderGrid(); renderOptions(); renderFormat();
+    const inp = $("grid").querySelector(`input[data-head="${s.cols.length - 1}"]`);
+    if (inp) { inp.focus(); inp.select(); }
   }
 
-  // ---------- graph controls ----------
-  function renderGraphControls() {
-    const s = active(), g = s.graph, box = $("graph-controls");
-    let html = `<label>Title<input data-g="title" value="${esc(g.title || "")}" placeholder="(none)"></label>`;
-    if (s.type === "ttest") {
-      html += `<label>Y axis label<input data-g="ylabel" value="${esc(g.ylabel || "")}"></label>
-        <label>Style<select data-g="style">
-          <option value="dots" ${g.style === "dots" ? "selected" : ""}>Dots + mean</option>
-          <option value="bars" ${g.style === "bars" ? "selected" : ""}>Bars + dots</option></select></label>
-        <label>Error bars<select data-g="err">
-          <option value="sd" ${g.err === "sd" ? "selected" : ""}>Mean ± SD</option>
-          <option value="sem" ${g.err === "sem" ? "selected" : ""}>Mean ± SEM</option></select></label>`;
-    } else {
-      html += `<label>Confidence band<select data-g="band">
-          <option value="1" ${g.band ? "selected" : ""}>Show 95% band</option>
-          <option value="" ${!g.band ? "selected" : ""}>Hide</option></select></label>`;
-    }
-    box.innerHTML = html;
-    box.querySelectorAll("[data-g]").forEach(el => {
+  // ======================================================================
+  // options & graph format panel
+  // ======================================================================
+  function renderOptions() {
+    const s = active(), box = $("options");
+    box.innerHTML = TYPES[s.type].renderOptions(s);
+    box.querySelectorAll("input[type=radio]").forEach(r => r.onchange = () => { s.options[r.name] = r.value; save(); renderOptions(); scheduleRun(); });
+    const a = $("opt-alpha"); if (a) a.onchange = e => { s.options.alpha = Number(e.target.value); save(); scheduleRun(); };
+    const m = $("opt-model");
+    if (m) m.onchange = e => {
+      s.options.model = e.target.value;
+      const info = modelInfo(s.options.model);
+      s.graph.logX = !!(info && info.log_x && !s.options.xIsLog);
+      save(); renderOptions(); renderFormat(); scheduleRun();
+    };
+    const lg = $("opt-xislog");
+    if (lg) lg.onchange = e => { s.options.xIsLog = e.target.checked; s.graph.logX = !e.target.checked; save(); renderFormat(); scheduleRun(); };
+  }
+
+  function renderFormat() {
+    const s = active(), g = s.graph;
+    const ctrls = [txt("title", "Graph title"), ...TYPES[s.type].graphControls(s),
+      txt("ymin", "Y min", "auto"), txt("ymax", "Y max", "auto"), chk("logY", "Log Y axis"),
+      sel("palette", "Colors", [["vivid", "Vivid"], ["colorblind", "Colorblind-safe"], ["classic", "Classic"], ["pastel", "Pastel"], ["grayscale", "Grayscale"]]),
+      { k: "pointSize", label: "Point size", kind: "range", min: 3, max: 16 },
+      { k: "fontSize", label: "Font size", kind: "range", min: 9, max: 22 }];
+    $("graph-format").innerHTML = ctrls.map(c => {
+      const v = g[c.k];
+      if (c.kind === "select") return `<label>${c.label}<select data-g="${c.k}">${c.opts.map(([o, l]) => `<option value="${o}" ${v === o ? "selected" : ""}>${l}</option>`).join("")}</select></label>`;
+      if (c.kind === "check") return `<label class="check"><input type="checkbox" data-g="${c.k}" ${v ? "checked" : ""}> ${c.label}</label>`;
+      if (c.kind === "range") return `<label>${c.label} <input type="range" data-g="${c.k}" min="${c.min}" max="${c.max}" value="${v}"></label>`;
+      return `<label>${c.label}<input type="text" data-g="${c.k}" value="${esc(v ?? "")}" placeholder="${esc(c.ph || "")}"></label>`;
+    }).join("");
+    $("graph-format").querySelectorAll("[data-g]").forEach(el => {
       el.oninput = el.onchange = () => {
-        const k = el.dataset.g;
-        g[k] = k === "band" ? !!el.value : el.value;
+        g[el.dataset.g] = el.type === "checkbox" ? el.checked : el.type === "range" ? Number(el.value) : el.value;
         save(); drawPlot();
       };
     });
   }
 
-  // ---------- run analysis ----------
-  let lastResult = null, lastError = null;
-
+  // ======================================================================
+  // running analyses
+  // ======================================================================
+  let lastResult = null, lastError = null, runTimer = null, runSeq = 0;
   function scheduleRun() { clearTimeout(runTimer); runTimer = setTimeout(run, 250); }
-
   async function run() {
-    const s = active();
-    const colVals = j => s.data.map(r => r[j]);
-    let url, body;
-    if (s.type === "ttest") {
-      url = "/api/ttest";
-      body = { a: colVals(0), b: colVals(1), name_a: s.cols[0] || "A", name_b: s.cols[1] || "B",
-               kind: s.options.kind, alpha: s.options.alpha };
-    } else {
-      url = "/api/regression";
-      body = { x: colVals(0), y: colVals(1), alpha: s.options.alpha };
-    }
-    // non-numeric cells are flagged in the grid and skipped
-    const clean = arr => arr.map(v => (isNum(v) ? Number(v) : null));
-    Object.keys(body).forEach(k => { if (Array.isArray(body[k])) body[k] = clean(body[k]); });
-
-    const sheetId = s.id;
+    const s = active(), seq = ++runSeq;
+    const [url, body] = TYPES[s.type].request(s);
     try {
       const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const json = await res.json();
-      if (active().id !== sheetId) return; // user switched sheets meanwhile
+      if (seq !== runSeq) return;
       if (!res.ok) { lastResult = null; lastError = json.detail || "Something went wrong."; }
       else { lastResult = json; lastError = null; }
-    } catch {
-      lastResult = null; lastError = "Can't reach the analysis engine. Is the app still running?";
-    }
+    } catch { if (seq !== runSeq) return; lastResult = null; lastError = "Can't reach the analysis engine. Is the app still running?"; }
+    if (s.type === "ttest") renderOptions(); // options depend on number of filled groups
     renderResults(); drawPlot();
   }
 
-  // ---------- results ----------
   function renderResults() {
     const s = active(), box = $("results");
-    if (lastError) {
-      box.innerHTML = `<div class="summary err"><b>Not enough to analyze yet.</b> ${esc(lastError)}</div>`;
-      return;
-    }
-    const r = lastResult;
-    if (!r) { box.innerHTML = ""; return; }
-    const pct = Math.round((1 - r.alpha) * 100);
-    let html = "";
-    if (s.type === "ttest") {
-      const [a, b] = r.groups;
-      const dir = r.difference > 0 ? "higher" : "lower";
-      const what = r.kind === "mannwhitney" ? "median" : "mean";
-      html += r.significant
-        ? `<div class="summary sig"><b>Significant difference</b> (${fmtP(r.p)}, ${r.stars}). The ${what} of <b>${esc(b.name)}</b> is ${fmt(Math.abs(r.difference))} ${dir} than <b>${esc(a.name)}</b>${r.ci_low !== null ? ` (${pct}% CI of the difference: ${fmt(r.ci_low)} to ${fmt(r.ci_high)})` : ""}.</div>`
-        : `<div class="summary ns"><b>No significant difference</b> (${fmtP(r.p)}, ns). The data don't show convincing evidence that <b>${esc(a.name)}</b> and <b>${esc(b.name)}</b> differ. That isn't proof they're the same; a larger sample might detect a smaller effect.</div>`;
-      html += `<table class="res">
-        <tr class="sec"><td colspan="2">${esc(r.test_name)}</td></tr>
-        <tr><td>P value</td><td>${pOnly(r.p)}</td></tr>
-        <tr><td>Significance (α = ${r.alpha})</td><td>${r.stars}</td></tr>
-        <tr><td>${r.statistic_name}${r.df !== null ? ", df" : ""}</td><td>${r.statistic_name} = ${fmt(r.statistic)}${r.df !== null ? `, df = ${fmt(r.df)}` : ""}</td></tr>
-        <tr><td>${esc(r.difference_label)}</td><td>${fmt(r.difference)}</td></tr>
-        ${r.ci_low !== null ? `<tr><td>${pct}% confidence interval</td><td>${fmt(r.ci_low)} to ${fmt(r.ci_high)}</td></tr>` : ""}
-        ${r.n_pairs ? `<tr><td>Number of pairs</td><td>${r.n_pairs}</td></tr>` : ""}
-        <tr class="sec"><td colspan="2">Descriptive statistics</td></tr>
-        <tr><td></td><td>${esc(a.name)} &nbsp;·&nbsp; ${esc(b.name)}</td></tr>
-        ${[["n", "n"], ["Mean", "mean"], ["SD", "sd"], ["SEM", "sem"], ["Median", "median"], ["Min", "min"], ["Max", "max"]]
-          .map(([l, k]) => `<tr><td>${l}</td><td>${fmt(a[k])} &nbsp;·&nbsp; ${fmt(b[k])}</td></tr>`).join("")}
-      </table>`;
-      if (r.variance_check && r.variance_check.p < 0.05) {
-        html += `<p class="note">⚠︎ The two groups have significantly different spread (F test ${fmtP(r.variance_check.p)}). Consider Welch's t test, which doesn't assume equal variances.</p>`;
-      }
-    } else {
-      const xName = esc(s.cols[0] || "X"), yName = esc(s.cols[1] || "Y");
-      html += r.significant
-        ? `<div class="summary sig"><b>Significant relationship</b> (${fmtP(r.p)}, ${r.stars}). ${yName} changes by ${fmt(r.slope)} for each 1-unit increase in ${xName}. R² = ${fmt(r.r_squared, 3)}: about ${(r.r_squared * 100).toFixed(r.r_squared > 0.99 ? 1 : 0)}% of the variation in ${yName} is explained by the line.</div>`
-        : `<div class="summary ns"><b>No significant linear relationship</b> (${fmtP(r.p)}, ns). The slope is not distinguishable from zero with these data (R² = ${fmt(r.r_squared, 3)}).</div>`;
-      html += `<table class="res">
-        <tr class="sec"><td colspan="2">Best-fit line</td></tr>
-        <tr><td>Equation</td><td>${r.equation}</td></tr>
-        <tr><td>Slope</td><td>${fmt(r.slope)} ± ${fmt(r.slope_se)}</td></tr>
-        <tr><td>Y-intercept</td><td>${fmt(r.intercept)} ± ${fmt(r.intercept_se)}</td></tr>
-        <tr><td>X-intercept</td><td>${fmt(r.x_intercept)}</td></tr>
-        <tr class="sec"><td colspan="2">${pct}% confidence intervals</td></tr>
-        <tr><td>Slope</td><td>${fmt(r.slope_ci[0])} to ${fmt(r.slope_ci[1])}</td></tr>
-        <tr><td>Y-intercept</td><td>${fmt(r.intercept_ci[0])} to ${fmt(r.intercept_ci[1])}</td></tr>
-        <tr class="sec"><td colspan="2">Goodness of fit</td></tr>
-        <tr><td>R²</td><td>${fmt(r.r_squared)}</td></tr>
-        <tr><td>Sy.x (residual SD)</td><td>${fmt(r.sy_x)}</td></tr>
-        <tr class="sec"><td colspan="2">Is the slope different from zero?</td></tr>
-        <tr><td>F, df</td><td>F = ${fmt(r.F)}, df = 1, ${r.df}</td></tr>
-        <tr><td>P value</td><td>${pOnly(r.p)}</td></tr>
-        <tr><td>Number of points</td><td>${r.n}</td></tr>
-      </table>`;
-      html += `<p class="note">"±" values are standard errors.</p>`;
-    }
-    box.innerHTML = html;
+    if (lastError) { box.innerHTML = T.summary("err", `<b>Not enough to analyze yet.</b> ${esc(lastError)}`); return; }
+    if (!lastResult) { box.innerHTML = ""; return; }
+    box.innerHTML = TYPES[s.type].renderResults(lastResult, s);
   }
 
-  // ---------- plot ----------
-  const PALETTE = ["#2f5bea", "#e4572e", "#17a398", "#8b5cf6"];
-  const BASE_LAYOUT = {
-    margin: { l: 64, r: 20, t: 46, b: 56 },
-    paper_bgcolor: "#fff", plot_bgcolor: "#fff",
-    font: { family: "-apple-system, Helvetica, Arial, sans-serif", size: 13, color: "#1d2433" },
-    showlegend: false,
-  };
-  const AXIS = { showline: true, linewidth: 1.5, linecolor: "#1d2433", ticks: "outside", tickwidth: 1.5,
-    ticklen: 5, showgrid: false, zeroline: false };
+  // ---------------------------------------------------------------- groups
+  function normalityRows(r) {
+    if (!r.normality) return [];
+    const names = r.normality_of === "differences" ? ["Differences"] : r.groups.map(g => g.name);
+    return [T.sec("Normality (Shapiro-Wilk)"), ...r.normality.map((n, i) => T.row(esc(names[i]),
+      n ? `W = ${fmt(n.W, 3)}, P = ${fmt(n.p, 3)} · ${n.normal ? "passed" : "<b>not normal</b>"}` : "needs 3+ values"))];
+  }
+  function descTable(groups) {
+    const keys = [["n", "n"], ["Mean", "mean"], ["SD", "sd"], ["SEM", "sem"], ["95% CI of mean", "ci95"], ["Median", "median"], ["Min", "min"], ["Max", "max"]];
+    return T.multi(["", ...groups.map(g => esc(g.name))], keys.map(([l, k]) => [l, ...groups.map(g =>
+      k === "ci95" ? (g.ci95 == null ? "—" : `${fmt(g.mean - g.ci95, 3)} – ${fmt(g.mean + g.ci95, 3)}`) : fmt(g[k]))]));
+  }
+  function renderGroupResults(r) {
+    const pct = Math.round((1 - r.alpha) * 100);
+    let h = "";
+    if (r.n_groups === 2) {
+      const [a, b] = r.groups, dir = r.difference > 0 ? "higher" : "lower", what = r.kind === "mannwhitney" ? "median" : "mean";
+      h += r.significant
+        ? T.summary("sig", `<b>Significant difference</b> (${fmtP(r.p)}, ${r.stars}). The ${what} of <b>${esc(b.name)}</b> is ${fmt(Math.abs(r.difference))} ${dir} than <b>${esc(a.name)}</b>${r.ci_low != null ? ` (${pct}% CI of the difference: ${ci(r.ci_low, r.ci_high)})` : ""}.`)
+        : T.summary("ns", `<b>No significant difference</b> (${fmtP(r.p)}). The data don't show convincing evidence that <b>${esc(a.name)}</b> and <b>${esc(b.name)}</b> differ. That isn't proof they're the same.`);
+      h += T.table([T.sec(esc(r.test_name)), T.row("P value", pOnly(r.p)), T.row(`Significant? (α = ${r.alpha})`, `${r.significant ? "Yes" : "No"} ${st(r.stars)}`),
+        T.row(`${r.statistic_name}${r.df != null ? ", df" : ""}`, `${r.statistic_name} = ${fmt(r.statistic)}${r.df != null ? `, df = ${fmt(r.df)}` : ""}`),
+        T.row(esc(r.difference_label), fmt(r.difference)), r.ci_low != null ? T.row(`${pct}% CI of difference`, ci(r.ci_low, r.ci_high)) : "",
+        r.n_pairs ? T.row("Number of pairs", r.n_pairs) : "", ...normalityRows(r)]);
+      if (r.variance_check && r.variance_check.p < 0.05) h += `<p class="note warn">⚠︎ The groups' spreads differ (F test ${fmtP(r.variance_check.p)}). Welch's t test is safer.</p>`;
+    } else {
+      const sigPairs = r.comparisons.filter(c => c.significant).length;
+      h += r.significant
+        ? T.summary("sig", `<b>The groups differ</b> (${esc(r.test_name)}, ${fmtP(r.p)}, ${r.stars}). ${sigPairs} of ${r.comparisons.length} pairs differ significantly (see ${esc(r.posthoc_name)} below).`)
+        : T.summary("ns", `<b>No significant difference among the ${r.k} groups</b> (${esc(r.test_name)}, ${fmtP(r.p)}).`);
+      const main = [T.sec(esc(r.test_name)), T.row("P value", pOnly(r.p)), T.row(`Significant? (α = ${r.alpha})`, `${r.significant ? "Yes" : "No"} ${st(r.stars)}`)];
+      if (r.kind === "kruskal") main.push(T.row("Kruskal-Wallis H, df", `H = ${fmt(r.H)}, df = ${r.df_between}`));
+      else main.push(T.row("F (DFn, DFd)", `F (${fmt(r.df_between)}, ${fmt(r.df_within)}) = ${fmt(r.F)}`));
+      if (r.r_squared != null) main.push(T.row("R²", fmt(r.r_squared)));
+      h += T.table(main);
+      if (r.table) h += T.multi(["ANOVA table", "SS", "DF", "MS"], r.table.map(t => [esc(t.source), fmt(t.SS), fmt(t.df), fmt(t.MS)]));
+      h += `<div class="opt-label" style="margin-top:10px">${esc(r.posthoc_name)}</div>`;
+      h += T.multi(["Comparison", esc(r.diff_label), r.kind === "kruskal" ? "" : `${pct}% CI`, "Adj. P", ""],
+        r.comparisons.map(c => ({ cls: c.significant ? "hl" : "", cells: [`${esc(c.a)} vs ${esc(c.b)}`, fmt(c.diff), r.kind === "kruskal" ? "" : ci(c.ci_low, c.ci_high), pOnly(c.p), st(c.stars)] })));
+      h += T.table(normalityRows(r));
+      if (r.variance_check && r.variance_check.p < 0.05) h += `<p class="note warn">⚠︎ The groups' spreads differ (Brown-Forsythe ${fmtP(r.variance_check.p)}). Welch's ANOVA is safer.</p>`;
+    }
+    h += `<div class="opt-label" style="margin-top:10px">Descriptive statistics</div>` + descTable(r.groups);
+    return h;
+  }
 
+  // ---------------------------------------------------------------- XY
+  function renderXYResults(r, s) {
+    const pct = Math.round((1 - r.alpha) * 100);
+    const xName = esc(s.cols[0] || "X"), yName = esc(s.cols[1] || "Y");
+    if (r.model === "linear") {
+      const c = r.correlation;
+      let h = r.significant
+        ? T.summary("sig", `<b>Significant linear relationship</b> (${fmtP(r.p)}, ${r.stars}). Y changes by ${fmt(r.slope)} per unit of X. R² = ${fmt(r.r_squared, 3)}.`)
+        : T.summary("ns", `<b>No significant linear relationship</b> (${fmtP(r.p)}). The slope isn't distinguishable from zero (R² = ${fmt(r.r_squared, 3)}).`);
+      h += T.table([T.sec("Best-fit line"), T.row("Equation", r.equation), T.row("Slope ± SE", `${fmt(r.slope)} ± ${fmt(r.slope_se)}`),
+        T.row("Y-intercept ± SE", `${fmt(r.intercept)} ± ${fmt(r.intercept_se)}`), T.row("X-intercept", fmt(r.x_intercept)),
+        T.row(`Slope ${pct}% CI`, ci(...r.slope_ci)), T.row(`Y-intercept ${pct}% CI`, ci(...r.intercept_ci)),
+        T.sec("Goodness of fit"), T.row("R²", fmt(r.r_squared)), T.row("Sy.x", fmt(r.sy_x)), T.row("Number of points", r.n),
+        T.sec("Is the slope non-zero?"), T.row("F (1, " + r.df + ")", fmt(r.F)), T.row("P value", `${pOnly(r.p)} ${st(r.stars)}`),
+        T.sec("Correlation"), T.row("Pearson r", `${fmt(c.pearson_r)}${c.pearson_ci ? ` (${pct}% CI ${ci(...c.pearson_ci)})` : ""}`),
+        T.row("Pearson P", pOnly(c.pearson_p)), T.row("Spearman r", fmt(c.spearman_r)), T.row("Spearman P", pOnly(c.spearman_p))]);
+      return h;
+    }
+    const key = r.derived && r.derived[0];
+    let h = T.summary("sig", `<b>${esc(r.model_name)}</b>: ${key && key.value != null ? `best-fit <b>${key.name} = ${fmt(key.value)}</b>${key.ci && key.ci[0] != null ? ` (${pct}% CI ${ci(key.ci[0], key.ci[1])})` : ""}, ` : ""}R² = ${fmt(r.r_squared, 4)}.`);
+    const rows = [T.sec("Best-fit values"), ...r.params.map(p => T.row(esc(p.name), `${fmt(p.value)} ± ${fmt(p.se)}`)),
+      ...r.derived.map(d => T.row(esc(d.name), fmt(d.value), "hl")),
+      T.sec(`${pct}% confidence intervals`), ...r.params.map(p => T.row(esc(p.name), ci(...p.ci))),
+      ...r.derived.filter(d => d.ci).map(d => T.row(esc(d.name), ci(d.ci[0], d.ci[1]))),
+      T.sec("Goodness of fit"), T.row("R²", fmt(r.r_squared)), T.row("Sy.x", fmt(r.sy_x)), T.row("Sum of squares", fmt(r.ss_res)),
+      T.row("Degrees of freedom", r.df), T.row("Number of points", r.n)];
+    h += T.table(rows);
+    h += `<p class="note">"±" values are standard errors. ${r.x_is_log ? "X was analyzed as log10(concentration). " : ""}${r.dropped ? `${r.dropped} point(s) with X ≤ 0 were left out (no logarithm).` : ""}</p>`;
+    return h;
+  }
+
+  // ---------------------------------------------------------------- survival
+  function renderSurvivalResults(r) {
+    let h = "";
+    const c = r.curves;
+    if (r.logrank) {
+      h += r.p < r.alpha
+        ? T.summary("sig", `<b>Survival differs between groups</b> (log-rank ${fmtP(r.p)}, ${stars(r.p)}).${r.hazard_ratio ? ` Hazard ratio ${esc(r.hazard_ratio.label)}: <b>${fmt(r.hazard_ratio.value, 3)}</b>.` : ""}`)
+        : T.summary("ns", `<b>No significant difference in survival</b> (log-rank ${fmtP(r.p)}).`);
+    } else h += T.summary("ns", `Kaplan-Meier estimate for one group. Add another group column to compare.`);
+    h += T.multi(["", ...c.map(x => esc(x.name))], [["Subjects", ...c.map(x => x.n)], ["Events", ...c.map(x => x.events)],
+      ["Censored", ...c.map(x => x.n - x.events)], ["Median survival", ...c.map(x => x.median == null ? "Undefined" : fmt(x.median))]]);
+    if (r.logrank) {
+      const rows = [T.sec("Log-rank (Mantel-Cox) test"), T.row("Chi-square, df", `${fmt(r.logrank.chi2)}, ${r.logrank.df}`),
+        T.row("P value", `${pOnly(r.p)} ${st(stars(r.p))}`)];
+      if (r.hazard_ratio) rows.push(T.sec("Hazard ratio (Mantel-Haenszel)"), T.row(esc(r.hazard_ratio.label), fmt(r.hazard_ratio.value)),
+        T.row("95% CI", ci(...r.hazard_ratio.ci)));
+      if (r.median_ratio) rows.push(T.row("Ratio of medians", fmt(r.median_ratio)));
+      h += T.table(rows);
+    }
+    h += `<p class="note">"Undefined" median: survival never fell to 50%.</p>`;
+    return h;
+  }
+
+  // ---------------------------------------------------------------- contingency
+  function renderContingencyResults(r) {
+    const pct = Math.round((1 - r.alpha) * 100);
+    const sig = r.p < r.alpha;
+    let h = sig
+      ? T.summary("sig", `<b>Significant association</b> between group and outcome (${esc(r.primary)}, ${fmtP(r.p)}, ${stars(r.p)}).`)
+      : T.summary("ns", `<b>No significant association</b> between group and outcome (${esc(r.primary)}, ${fmtP(r.p)}).`);
+    h += T.multi(["", ...r.cols.map(esc), "Total"], r.table.map((row, i) => [esc(r.rows[i]),
+      ...row.map((v, j) => `${v} <span class="pd">(${fmt(r.row_pct[i][j], 3)}%)</span>`), row.reduce((a, b) => a + b, 0)]));
+    const rows = [];
+    if (r.fisher) rows.push(T.sec("Fisher's exact test"), T.row("P value (two-sided)", `${pOnly(r.fisher.p)} ${st(stars(r.fisher.p))}`));
+    rows.push(T.sec("Chi-square test"), T.row("Chi-square, df", `${fmt(r.chi_square.chi2)}, ${r.chi_square.df}`), T.row("P value", pOnly(r.chi_square.p)));
+    if (r.odds_ratio) {
+      rows.push(T.sec("Effect size"), T.row("Odds ratio", fmt(r.odds_ratio.value)), T.row(`${pct}% CI`, ci(...r.odds_ratio.ci)),
+        T.row(`Relative risk (${esc(r.cols[0])})`, fmt(r.relative_risk.value)), T.row(`${pct}% CI`, ci(...r.relative_risk.ci)),
+        T.row("Risk difference", fmt(r.risk_difference.value)));
+    }
+    h += T.table(rows);
+    if (r.chi_square.min_expected < 5 && !r.fisher) h += `<p class="note warn">⚠︎ Some expected counts are below 5, so the chi-square P value is approximate.</p>`;
+    if (r.odds_ratio) h += `<p class="note">Odds ratio and relative risk compare the first row with the second, for the outcome in the first column.</p>`;
+    return h;
+  }
+
+  // ======================================================================
+  // graphs
+  // ======================================================================
   function drawPlot() {
     const s = active(), el = $("plot");
-    const r = lastResult;
-    if (!r) {
+    if (!lastResult) {
       Plotly.purge(el);
-      el.innerHTML = `<div class="empty"><div>Your graph will appear here once there is enough data.<br>Try <b>Load example</b> to see how it works.</div></div>`;
+      el.innerHTML = `<div class="empty"><div>Your graph appears here once there is enough data.<br>Click <b>Example</b> to see how it works.</div></div>`;
       return;
     }
     if (el.querySelector(".empty")) el.innerHTML = "";
-    const g = s.graph;
-    const config = { displaylogo: false, responsive: true,
-      modeBarButtonsToRemove: ["select2d", "lasso2d", "autoScale2d", "toggleSpikelines"] };
-    const title = g.title ? { text: g.title, font: { size: 16 } } : undefined;
+    TYPES[s.type].draw(el, lastResult, s);
+  }
 
-    if (s.type === "ttest") {
-      const traces = [], shapes = [], annotations = [];
-      let ymax = -Infinity, ymin = Infinity;
-      const groups = [0, 1].map(j => s.data.map(row => row[j]).filter(isNum).map(Number));
-      groups.forEach((vals, j) => {
-        const st = r.groups[j], color = PALETTE[j];
-        const err = g.err === "sem" ? st.sem : st.sd;
-        // deterministic jitter so dots don't sit on top of each other
-        const xs = vals.map((_, i) => j + ((i * 0.618) % 1 - 0.5) * 0.28);
-        vals.forEach(v => { ymax = Math.max(ymax, v); ymin = Math.min(ymin, v); });
-        ymax = Math.max(ymax, st.mean + (err || 0));
-        if (g.style === "bars") {
-          traces.push({ type: "bar", x: [j], y: [st.mean], width: 0.55, marker: { color: color + "33", line: { color, width: 1.5 } },
-            error_y: { type: "data", array: [err || 0], visible: true, color: "#1d2433", thickness: 1.5, width: 10 }, hoverinfo: "skip" });
-        }
-        traces.push({ type: "scatter", mode: "markers", x: xs, y: vals,
-          marker: { color, size: 9, opacity: 0.85, line: { color: "#fff", width: 1 } },
-          hovertemplate: `${esc(st.name)}: %{y}<extra></extra>` });
-        if (g.style !== "bars") {
-          traces.push({ type: "scatter", mode: "markers", x: [j], y: [st.mean],
-            marker: { symbol: "line-ew", size: 44, line: { width: 3, color: "#1d2433" } },
-            error_y: { type: "data", array: [err || 0], visible: true, color: "#1d2433", thickness: 1.5, width: 12 },
-            hovertemplate: `Mean ${fmt(st.mean)} ± ${fmt(err)}<extra></extra>` });
-        }
-      });
-      // significance bracket
-      const span = (ymax - Math.min(0, ymin)) || 1;
-      const yb = ymax + span * 0.08, tick = span * 0.03;
-      shapes.push({ type: "path", path: `M 0 ${yb - tick} L 0 ${yb} L 1 ${yb} L 1 ${yb - tick}`, line: { color: "#1d2433", width: 1.5 } });
-      annotations.push({ x: 0.5, y: yb, text: r.stars, showarrow: false, yanchor: "bottom", font: { size: r.stars === "ns" ? 13 : 18 } });
-      const yrange = g.style === "bars" ? [Math.min(0, ymin - span * 0.05), yb + span * 0.14] : [ymin - span * 0.1, yb + span * 0.14];
-      Plotly.react(el, traces, { ...BASE_LAYOUT, title, shapes, annotations,
-        xaxis: { ...AXIS, tickvals: [0, 1], ticktext: r.groups.map(x => esc(x.name)), range: [-0.6, 1.6] },
-        yaxis: { ...AXIS, title: { text: esc(g.ylabel || "") }, range: yrange } }, config);
-    } else {
-      const traces = [];
-      if (g.band) {
-        traces.push({ x: r.line.x, y: r.line.low, mode: "lines", line: { width: 0 }, hoverinfo: "skip" });
-        traces.push({ x: r.line.x, y: r.line.high, mode: "lines", line: { width: 0 }, fill: "tonexty",
-          fillcolor: "rgba(47,91,234,0.13)", hoverinfo: "skip" });
+  function bracketLayout(pairs, top, span) {
+    // stack brackets so overlapping ones sit on different levels
+    const levels = [];
+    const sorted = [...pairs].sort((a, b) => (a.j - a.i) - (b.j - b.i) || a.i - b.i);
+    const step = span * 0.085, out = [];
+    sorted.forEach(p => {
+      let lv = 0;
+      while ((levels[lv] || []).some(q => !(q.j < p.i || q.i > p.j))) lv++;
+      (levels[lv] = levels[lv] || []).push(p);
+      out.push({ ...p, y: top + step * (lv + 1) });
+    });
+    return { items: out, height: step * (levels.length + 1) };
+  }
+
+  function drawGroups(el, r, s) {
+    const g = s.graph, traces = [], shapes = [], annotations = [];
+    const cols = filledCols(s);
+    const groups = cols.map(j => s.data.map(row => num(row[j])).filter(v => v !== null));
+    let ymax = -Infinity, ymin = Infinity;
+    groups.forEach((vals, i) => {
+      const stt = r.groups[i] || {}, c = color(g, i);
+      const err = g.err === "sem" ? stt.sem : g.err === "ci95" ? stt.ci95 : g.err === "sd" ? stt.sd : 0;
+      vals.forEach(v => { ymax = Math.max(ymax, v); ymin = Math.min(ymin, v); });
+      ymax = Math.max(ymax, (stt.mean ?? 0) + (err || 0));
+      const xs = vals.map((_, k) => i + ((k * 0.618) % 1 - 0.5) * 0.3);
+      if (g.style === "box") {
+        traces.push({ type: "box", x: vals.map(() => i), y: vals, width: 0.5, boxpoints: g.showPoints ? "all" : false, jitter: 0.45, pointpos: 0,
+          marker: { color: c, size: g.pointSize * 0.8, opacity: 0.85 }, line: { color: c, width: 1.6 }, fillcolor: c + "22", hoverinfo: "y", name: esc(stt.name) });
+        return;
       }
-      traces.push({ x: r.line.x, y: r.line.y, mode: "lines", line: { color: PALETTE[0], width: 2.5 },
-        hovertemplate: "Fit: %{y:.4g}<extra></extra>" });
-      traces.push({ x: r.points.x, y: r.points.y, mode: "markers",
-        marker: { color: "#1d2433", size: 9, line: { color: "#fff", width: 1 } },
-        hovertemplate: "(%{x}, %{y})<extra></extra>" });
-      Plotly.react(el, traces, { ...BASE_LAYOUT, title,
-        annotations: [{ xref: "paper", yref: "paper", x: 0.02, y: 0.98, xanchor: "left", yanchor: "top", showarrow: false,
-          align: "left", text: `${r.equation}<br>R² = ${fmt(r.r_squared, 4)}`, font: { size: 12, color: "#667085" } }],
-        xaxis: { ...AXIS, title: { text: esc(s.cols[0] || "X") } },
-        yaxis: { ...AXIS, title: { text: esc(s.cols[1] || "Y") } } }, config);
+      if (g.style === "bars") traces.push({ type: "bar", x: [i], y: [stt.mean], width: 0.58, marker: { color: c + "30", line: { color: c, width: 1.6 } },
+        error_y: { type: "data", array: [err || 0], visible: g.err !== "none", color: "#1b2130", thickness: 1.5, width: 9 }, hoverinfo: "skip" });
+      if (g.showPoints) traces.push({ type: "scatter", mode: "markers", x: xs, y: vals,
+        marker: { color: c, size: g.pointSize, opacity: 0.85, line: { color: "#fff", width: 1 } }, hovertemplate: `${esc(stt.name)}: %{y}<extra></extra>` });
+      if (g.style === "dots") traces.push({ type: "scatter", mode: "markers", x: [i], y: [stt.mean],
+        marker: { symbol: "line-ew", size: 40, line: { width: 3, color: "#1b2130" } },
+        error_y: { type: "data", array: [err || 0], visible: g.err !== "none", color: "#1b2130", thickness: 1.5, width: 11 },
+        hovertemplate: `Mean ${fmt(stt.mean)}<extra></extra>` });
+    });
+    const span = (ymax - Math.min(0, ymin)) || 1;
+    let topExtra = span * 0.06;
+    if (g.brackets !== "none") {
+      const pairs = r.n_groups === 2 ? [{ i: 0, j: 1, stars: r.stars, significant: r.significant }]
+        : r.comparisons.map(c => ({ i: c.i, j: c.j, stars: c.stars, significant: c.significant }));
+      const show = pairs.filter(p => g.brackets === "all" || p.significant);
+      const { items, height } = bracketLayout(show, ymax, span);
+      const tick = span * 0.025;
+      items.forEach(p => {
+        shapes.push({ type: "path", path: `M ${p.i + 0.04} ${p.y - tick} L ${p.i + 0.04} ${p.y} L ${p.j - 0.04} ${p.y} L ${p.j - 0.04} ${p.y - tick}`, line: { color: "#1b2130", width: 1.3 } });
+        annotations.push({ x: (p.i + p.j) / 2, y: p.y, text: p.stars, showarrow: false, yanchor: "bottom", font: { size: p.stars === "ns" ? 11 : 16 } });
+      });
+      topExtra = Math.max(topExtra, height + span * 0.04);
     }
+    const lo = g.style === "bars" ? Math.min(0, ymin) : ymin - span * 0.08;
+    Plotly.react(el, traces, { ...baseLayout(g), shapes, annotations,
+      xaxis: axis(g, { tickvals: groups.map((_, i) => i), ticktext: r.groups.map(x => esc(x.name)), range: [-0.6, groups.length - 0.4] }),
+      yaxis: yAxis(g, g.ylabel, { range: [lo, ymax + topExtra] }) }, PLOT_CONFIG);
+  }
+
+  function drawXY(el, r, s) {
+    const g = s.graph, c0 = color(g, 0), traces = [];
+    const logFit = r.model !== "linear" && r.x_is_log && !s.options.xIsLog;
+    const tx = x => (logFit ? Math.pow(10, x) : x);
+    // data points (raw sheet values so the axis shows real concentrations)
+    const rows = s.data.map(row => ({ x: num(row[0]), ys: s.cols.slice(1).map((_, j) => num(row[j + 1])).filter(v => v !== null) }))
+      .filter(p => p.x !== null && p.ys.length && (!logFit || p.x > 0));
+    const reps = s.cols.length > 2 && g.repMode !== "all";
+    if (g.band && r.line) {
+      traces.push({ x: r.line.x, y: r.line.low, mode: "lines", line: { width: 0 }, hoverinfo: "skip" });
+      traces.push({ x: r.line.x, y: r.line.high, mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: c0 + "22", hoverinfo: "skip" });
+    }
+    const curve = r.model === "linear" ? r.line : r.curve;
+    traces.push({ x: curve.x.map(tx), y: curve.y, mode: "lines", line: { color: c0, width: 2.4 }, hovertemplate: "Fit: %{y:.4g}<extra></extra>" });
+    if (reps) {
+      const stats = rows.map(p => {
+        const n = p.ys.length, m = p.ys.reduce((a, b) => a + b, 0) / n;
+        const sd = n > 1 ? Math.sqrt(p.ys.reduce((a, b) => a + (b - m) ** 2, 0) / (n - 1)) : 0;
+        return { x: p.x, m, e: g.repMode === "sem" ? sd / Math.sqrt(n) : sd };
+      });
+      traces.push({ x: stats.map(p => p.x), y: stats.map(p => p.m), mode: "markers",
+        marker: { color: "#1b2130", size: g.pointSize, line: { color: "#fff", width: 1 } },
+        error_y: { type: "data", array: stats.map(p => p.e), color: "#1b2130", thickness: 1.4, width: 5 }, hovertemplate: "(%{x}, %{y:.4g})<extra></extra>" });
+    } else {
+      const pts = rows.flatMap(p => p.ys.map(y => [p.x, y]));
+      traces.push({ x: pts.map(p => p[0]), y: pts.map(p => p[1]), mode: "markers",
+        marker: { color: "#1b2130", size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: "(%{x}, %{y})<extra></extra>" });
+    }
+    const annotations = [];
+    if (g.showEq) {
+      let text = r.model === "linear" ? `${r.equation}<br>R² = ${fmt(r.r_squared, 4)}` : `${r.derived[0] ? `${r.derived[0].name} = ${fmt(r.derived[0].value)}<br>` : ""}R² = ${fmt(r.r_squared, 4)}`;
+      // put the label in the empty corner: top-left for rising curves, top-right for falling ones
+      const falling = curve.y[curve.y.length - 1] < curve.y[0];
+      annotations.push({ xref: "paper", yref: "paper", x: falling ? 0.98 : 0.02, y: 0.98, xanchor: falling ? "right" : "left", yanchor: "top",
+        showarrow: false, align: falling ? "right" : "left", text, bgcolor: "rgba(255,255,255,0.85)", font: { size: (g.fontSize || 13) - 1, color: "#6b7385" } });
+    }
+    const xa = axis(g, { title: { text: esc(g.xlabel || s.cols[0] || "X") } });
+    if (g.logX) xa.type = "log";
+    const xlo = num(g.xmin), xhi = num(g.xmax);
+    if (xlo !== null && xhi !== null) xa.range = g.logX ? [Math.log10(Math.max(xlo, 1e-12)), Math.log10(Math.max(xhi, 1e-12))] : [xlo, xhi];
+    Plotly.react(el, traces, { ...baseLayout(g), annotations, xaxis: xa, yaxis: yAxis(g, g.ylabel || s.cols[1] || "Y") }, PLOT_CONFIG);
+  }
+
+  function drawSurvival(el, r, s) {
+    const g = s.graph, traces = [];
+    const tmax = Math.max(...s.data.map(row => num(row[0]) ?? 0));
+    r.curves.forEach((c, i) => {
+      const col = color(g, i);
+      const xs = [...c.steps.map(p => p.t), tmax], ys = [...c.steps.map(p => p.s * 100), c.steps[c.steps.length - 1].s * 100];
+      if (g.showCI) {
+        traces.push({ x: xs, y: [...c.steps.map(p => p.lo * 100), c.steps[c.steps.length - 1].lo * 100], mode: "lines", line: { width: 0, shape: "hv" }, hoverinfo: "skip" });
+        traces.push({ x: xs, y: [...c.steps.map(p => p.hi * 100), c.steps[c.steps.length - 1].hi * 100], mode: "lines", line: { width: 0, shape: "hv" }, fill: "tonexty", fillcolor: col + "20", hoverinfo: "skip" });
+      }
+      traces.push({ x: xs, y: ys, mode: "lines", line: { color: col, width: 2.4, shape: "hv" }, name: esc(c.name), showlegend: true,
+        hovertemplate: `${esc(c.name)}: %{y:.1f}% at %{x}<extra></extra>` });
+      if (g.showCensor && c.censored.t.length) traces.push({ x: c.censored.t, y: c.censored.s.map(v => v * 100), mode: "markers", showlegend: false,
+        marker: { symbol: "line-ns", size: g.pointSize + 4, line: { color: col, width: 2 } }, hovertemplate: "Censored at %{x}<extra></extra>" });
+    });
+    Plotly.react(el, traces, { ...baseLayout(g), showlegend: true, legend: { x: 1, xanchor: "right", y: 1, bgcolor: "rgba(255,255,255,0.7)" },
+      xaxis: axis(g, { title: { text: esc(g.xlabel || s.cols[0] || "Time") }, rangemode: "tozero" }),
+      yaxis: yAxis(g, g.ylabel, { range: [0, 105] }) }, PLOT_CONFIG);
+  }
+
+  function drawContingency(el, r, s) {
+    const g = s.graph;
+    const traces = r.cols.map((c, j) => ({ type: "bar", name: esc(c), x: r.rows.map(esc), showlegend: true,
+      y: r.table.map((row, i) => g.mode === "count" ? row[j] : r.row_pct[i][j]),
+      marker: { color: color(g, j), line: { color: "#1b2130", width: 0.8 } },
+      hovertemplate: `${esc(c)}: %{y:.3g}${g.mode === "count" ? "" : "%"}<extra></extra>` }));
+    Plotly.react(el, traces, { ...baseLayout(g), barmode: "group", bargap: 0.3, showlegend: true,
+      legend: { orientation: "h", y: 1.08, x: 0 },
+      xaxis: axis(g), yaxis: yAxis(g, g.ylabel || (g.mode === "count" ? "Count" : "Percent of row")) }, PLOT_CONFIG);
   }
 
   async function exportPlot(format) {
     if (!lastResult) { toast("Add some data first, then export the graph."); return; }
     try {
       const url = await Plotly.toImage($("plot"), { format, width: 900, height: 650, scale: format === "png" ? 3 : 1 });
-      const res = await api("/api/exports", { method: "POST",
-        body: JSON.stringify({ filename: `${projectName} - ${active().title}`, data_url: url }) });
+      const res = await api("/api/exports", { method: "POST", body: JSON.stringify({ filename: `${projectName} - ${active().title}`, data_url: url }) });
       toast(`Saved <b>${esc(res.file)}</b> to the exports folder`, "exports");
     } catch (e) { toast(esc(e.message || "Export failed.")); }
   }
 
-  // ---------- toast ----------
+  // ======================================================================
+  // copy results (tab-separated, pastes cleanly into Excel / Word)
+  // ======================================================================
+  async function copyResults() {
+    const box = $("results");
+    if (!box.textContent.trim()) return;
+    const lines = [`${active().title}`];
+    box.querySelectorAll(".summary, .opt-label, table.res tr, .note").forEach(el => {
+      if (el.tagName === "TR") lines.push([...el.children].map(td => td.textContent.trim()).join("\t"));
+      else lines.push("", el.textContent.trim());
+    });
+    const text = lines.join("\n");
+    try { await navigator.clipboard.writeText(text); }
+    catch {
+      const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand("copy"); ta.remove();
+    }
+    toast("Results copied. Paste into Excel, Word or an email.");
+  }
+
+  // ======================================================================
+  // toast, projects dialog
+  // ======================================================================
   let toastTimer = null;
   function toast(html, folder) {
     const el = $("toast");
-    el.innerHTML = `<span>${html}</span>` + (folder ? `<button data-reveal="${folder}">Show folder</button>` : "");
+    el.innerHTML = `<span>${html}</span>` + (folder ? `<button>Show folder</button>` : "");
     el.hidden = false;
-    const b = el.querySelector("button");
-    if (b) b.onclick = () => reveal(folder);
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.hidden = true; }, 6000);
+    const b = el.querySelector("button"); if (b) b.onclick = () => reveal(folder);
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 5000);
   }
-  function reveal(folder) {
-    api(`/api/reveal/${folder}`, { method: "POST" }).catch(() => toast("Couldn't open the folder."));
-  }
+  const reveal = folder => api(`/api/reveal/${folder}`, { method: "POST" }).catch(() => toast("Couldn't open the folder."));
 
-  // ---------- projects dialog ----------
   async function showProjects() {
-    $("dialog-backdrop").hidden = false;
-    $("new-project-name").value = "";
+    $("dialog-backdrop").hidden = false; $("new-project-name").value = "";
     const ul = $("project-list");
     ul.innerHTML = `<li class="emptyli">Loading…</li>`;
     try {
       const { projects } = await api("/api/projects");
       if (!projects.length) { ul.innerHTML = `<li class="emptyli">No projects yet.</li>`; return; }
       ul.innerHTML = projects.map(p => {
-        const cur = p.name === projectName;
-        const when = new Date(p.modified).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+        const cur = p.name === projectName, when = new Date(p.modified).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
         return `<li class="${cur ? "current" : ""}"><span class="pn">${esc(p.name)}</span><span class="pd">${when}</span>
-          ${cur ? `<span class="pd">open now</span>` : `<button class="ghost small" data-open="${esc(p.name)}">Open</button>
-          <button class="ghost small danger" data-del="${esc(p.name)}">Delete</button>`}</li>`;
+          ${cur ? `<span class="pd">open</span>` : `<button class="ghost small" data-open="${esc(p.name)}">Open</button><button class="ghost small danger" data-del="${esc(p.name)}">Delete</button>`}</li>`;
       }).join("");
-      ul.querySelectorAll("[data-open]").forEach(b => b.onclick = async () => {
-        try { await openProject(b.dataset.open); hideProjects(); } catch (e) { toast(esc(e.message)); }
-      });
+      ul.querySelectorAll("[data-open]").forEach(b => b.onclick = async () => { try { await openProject(b.dataset.open); hideProjects(); } catch (e) { toast(esc(e.message)); } });
       ul.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
         if (!confirm(`Delete the project "${b.dataset.del}"? Its file will be removed from the projects folder.`)) return;
-        await api(`/api/projects/${encodeURIComponent(b.dataset.del)}`, { method: "DELETE" });
-        showProjects();
+        await api(`/api/projects/${encodeURIComponent(b.dataset.del)}`, { method: "DELETE" }); showProjects();
       });
     } catch (e) { ul.innerHTML = `<li class="emptyli">${esc(e.message)}</li>`; }
   }
-  function hideProjects() { $("dialog-backdrop").hidden = true; }
-
+  const hideProjects = () => { $("dialog-backdrop").hidden = true; };
   async function renameProject(newName) {
     newName = newName.trim();
     if (!newName || newName === projectName) { $("project-name").value = projectName; return; }
     try {
       await saveNow();
-      const r = await api(`/api/projects/${encodeURIComponent(projectName)}/rename`, { method: "POST",
-        body: JSON.stringify({ new_name: newName }) });
-      projectName = r.name;
-      $("project-name").value = projectName;
-      toast(`Project renamed to <b>${esc(projectName)}</b>`);
+      const r = await api(`/api/projects/${encodeURIComponent(projectName)}/rename`, { method: "POST", body: JSON.stringify({ new_name: newName }) });
+      projectName = r.name; $("project-name").value = projectName; toast(`Project renamed to <b>${esc(projectName)}</b>`);
     } catch (e) { $("project-name").value = projectName; toast(esc(e.message)); }
   }
-
   function importFile(file) {
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const p = JSON.parse(reader.result);
         if (!Array.isArray(p.sheets) || !p.sheets.length) throw new Error();
-        const base = file.name.replace(/\.(ehp|json)$/i, "");
-        const list = (await api("/api/projects")).projects.map(x => x.name.toLowerCase());
-        let n = base, i = 2;
-        while (list.includes(n.toLowerCase())) n = `${base} ${i++}`;
-        const saved = await api(`/api/projects/${encodeURIComponent(n)}`, { method: "PUT",
-          body: JSON.stringify({ data: { sheets: p.sheets, activeId: p.activeId } }) });
-        await openProject(saved.name);
-        hideProjects();
-        toast(`Imported <b>${esc(saved.name)}</b> into the projects folder`);
+        const n = await uniqueName(file.name.replace(/\.(ehp|json)$/i, ""));
+        const saved = await api(`/api/projects/${encodeURIComponent(n)}`, { method: "PUT", body: JSON.stringify({ data: { sheets: p.sheets, activeId: p.activeId } }) });
+        await openProject(saved.name); hideProjects(); toast(`Imported <b>${esc(saved.name)}</b>`);
       } catch { toast("That file couldn't be imported. Is it an Erwin's Hypothesis project (.ehp)?"); }
     };
     reader.readAsText(file);
   }
 
-  // ---------- wiring ----------
+  // ======================================================================
+  // wiring
+  // ======================================================================
   function renderAll() {
     const s = active();
     project.activeId = s.id;
     $("sheet-title").value = s.title;
     $("sheet-kind").textContent = TYPES[s.type].label;
+    $("sheet-badge").className = `badge t-${s.type}`; $("sheet-badge").textContent = badgeText(s.type);
     lastResult = null; lastError = null;
-    renderSidebar(); renderGrid(); renderOptions(); renderGraphControls(); renderResults(); drawPlot();
+    renderSidebar(); renderGrid(); renderOptions(); renderFormat(); renderResults(); drawPlot(); updateUndoButtons();
     run();
   }
 
@@ -567,14 +917,14 @@
   grid.addEventListener("input", onGridInput);
   grid.addEventListener("paste", onGridPaste);
   grid.addEventListener("keydown", onGridKey);
+  grid.addEventListener("click", onGridClick);
 
   $("sheet-title").addEventListener("input", e => { active().title = e.target.value; save(); renderSidebar(); });
   $("btn-new").onclick = e => { e.stopPropagation(); $("new-menu").hidden = !$("new-menu").hidden; };
   document.addEventListener("click", () => { $("new-menu").hidden = true; });
   $("new-menu").querySelectorAll("button").forEach(b => b.onclick = () => {
     const s = newSheet(b.dataset.type);
-    project.sheets.push(s); project.activeId = s.id; save(); renderAll();
-    $("new-menu").hidden = true;
+    project.sheets.push(s); project.activeId = s.id; save(); renderAll(); $("new-menu").hidden = true;
   });
   $("btn-delete").onclick = () => {
     const s = active();
@@ -583,43 +933,62 @@
     if (!project.sheets.length) project.sheets.push(newSheet("ttest"));
     project.activeId = project.sheets[0].id; save(); renderAll();
   };
-  $("btn-example").onclick = () => { applyExample(active()); save(); renderAll(); };
+  $("btn-addcol").onclick = addColumn;
+  $("btn-example").onclick = () => { recordUndo(true); applyExample(active()); save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun(); };
   $("btn-clear").onclick = () => {
     const s = active();
-    if (!confirm("Clear all data in this table?")) return;
-    s.data = blankRows(MIN_ROWS, s.cols.length); save(); renderAll();
+    recordUndo(true);
+    s.data = blankRows(TYPES[s.type].minRows, s.cols.length); save(); renderGrid(); scheduleRun();
+    toast("Data cleared. Press Ctrl+Z to undo.");
+  };
+  $("btn-undo").onclick = () => undoRedo("undo");
+  $("btn-redo").onclick = () => undoRedo("redo");
+  $("btn-format").onclick = () => {
+    const f = $("graph-format"); f.hidden = !f.hidden;
+    $("btn-format").classList.toggle("on", !f.hidden); $("btn-format").setAttribute("aria-expanded", String(!f.hidden));
   };
   $("btn-png").onclick = () => exportPlot("png");
   $("btn-svg").onclick = () => exportPlot("svg");
+  $("btn-copy").onclick = copyResults;
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") hideProjects();
+    const mod = e.ctrlKey || e.metaKey;
+    if (!mod) return;
+    const inGridOrBody = e.target === document.body || e.target.closest("#grid");
+    if (!inGridOrBody) return;
+    if (e.key.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); undoRedo("undo"); }
+    else if (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey)) { e.preventDefault(); undoRedo("redo"); }
+  });
+
   $("btn-projects").onclick = showProjects;
   $("dlg-close").onclick = hideProjects;
   $("dialog-backdrop").onclick = e => { if (e.target.id === "dialog-backdrop") hideProjects(); };
-  document.addEventListener("keydown", e => { if (e.key === "Escape") hideProjects(); });
   const doCreate = async () => {
-    const n = $("new-project-name").value.trim() || "Untitled project";
-    try { await createProject(n, false); hideProjects(); } catch (e) { toast(esc(e.message)); }
+    try { await createProject($("new-project-name").value.trim() || "Untitled project", false); hideProjects(); } catch (e) { toast(esc(e.message)); }
   };
   $("btn-new-project").onclick = doCreate;
   $("new-project-name").onkeydown = e => { if (e.key === "Enter") doCreate(); };
   $("btn-show-projects").onclick = () => reveal("projects");
+  $("btn-examples").onclick = async () => {
+    try { await createProject("Examples", true); hideProjects(); toast("Created a project with an example of every analysis."); } catch (e) { toast(esc(e.message)); }
+  };
   $("btn-import").onclick = () => $("file-import").click();
   $("file-import").onchange = e => { if (e.target.files[0]) importFile(e.target.files[0]); e.target.value = ""; };
   $("project-name").addEventListener("change", e => renameProject(e.target.value));
   $("project-name").addEventListener("keydown", e => { if (e.key === "Enter") e.target.blur(); });
   window.addEventListener("beforeunload", () => { if (saveTimer) saveNow(); });
 
-  // start: reopen the last project, or create a first one with examples
+  // start: reopen the last project, or create one full of examples
   (async () => {
+    api("/api/models").then(r => { if (r.models) MODELS = r.models; }).catch(() => {});
     try {
       const { projects, last } = await api("/api/projects");
       const pick = last || (projects[0] && projects[0].name);
       if (pick) await openProject(pick);
       else await createProject("My first project", true);
     } catch {
-      project = newProject(); projectName = "Untitled";
-      $("project-name").value = projectName;
-      setStatus("Can't reach the app's engine", true);
-      renderAll();
+      examplesProject(); projectName = "Untitled"; $("project-name").value = projectName;
+      setStatus("Can't reach the app's engine", true); renderAll();
     }
   })();
 })();

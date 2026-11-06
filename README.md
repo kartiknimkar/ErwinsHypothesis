@@ -4,8 +4,16 @@ A local statistics and scientific graphing application: data tables,
 statistical analyses, curve fitting and publication-quality graphs, with a
 clean, modern interface. Everything runs on your own computer.
 
-**Status:** early preview. Two-group comparisons (t tests, Mann-Whitney) and
-linear regression work today. See `ROADMAP.md` for what's coming.
+**Status:** early preview. Available today:
+
+- **Compare groups:** t tests (unpaired, Welch, paired), Mann-Whitney, one-way ANOVA + Tukey,
+  Welch's ANOVA + Games-Howell, Kruskal-Wallis + Dunn's, normality tests
+- **XY:** linear regression & correlation; curve fitting: dose-response (IC50/EC50),
+  Michaelis-Menten, exponential growth/decay, one-phase association
+- **Survival:** Kaplan-Meier curves, log-rank test, hazard ratio, median survival
+- **Contingency tables:** Fisher's exact, chi-square, odds ratio, relative risk
+
+See `ROADMAP.md` for what's coming.
 
 ## Everything stays in one folder
 

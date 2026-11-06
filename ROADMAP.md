@@ -11,6 +11,17 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Autosave in browser + Save/Open project file (`.ehp`, JSON)
 - [x] `./run.sh` one-command launcher for macOS
 
+## Phase 0.6: More modules + compact interface (done 2026-11-06)
+- [x] Compare groups: 2 groups (t tests, Mann-Whitney) or 3+ (one-way ANOVA+Tukey, Welch+Games-Howell,
+      Kruskal-Wallis+Dunn), Shapiro-Wilk normality, Brown-Forsythe/F variance warnings
+- [x] XY: linear regression + Pearson/Spearman; nonlinear fits (dose-response IC50/EC50,
+      Michaelis-Menten, exponential decay/growth, one-phase association) with replicate Y columns
+- [x] Survival: Kaplan-Meier (log-log CI), log-rank (k groups), Mantel-Haenszel hazard ratio, medians
+- [x] Contingency: chi-square, Fisher's exact, odds ratio, relative risk, risk difference
+- [x] UI: compact layout, typed sidebar, add/remove columns, undo/redo, Format panel (palettes,
+      point/font size, axis ranges, log axes, box plots, error-bar types, bracket stacking), Copy results
+- [x] Tests cross-check vs statsmodels, pingouin, scikit-posthocs, lifelines (35 tests)
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

@@ -45,29 +45,32 @@ Every session starts by reading it and ends by updating it (then committing).
 - Explain things in plain, non-technical language; user prefers simple step-by-step instructions.
 
 ## How the code is laid out
-- `backend/app/stats.py`: all statistics (pure functions, lists in → dict out)
+- `backend/app/stats.py`: t tests, ANOVA family, normality, correlation, linear regression
+- `backend/app/curvefit.py`: nonlinear models (MODELS dict) + fit()
+- `backend/app/survival.py`, `backend/app/contingency.py`
+- Endpoints: /api/compare, /api/fit, /api/models, /api/survival, /api/contingency (+ old /api/ttest, /api/regression)
 - `backend/app/storage.py`: projects/exports, filename sanitizing, reveal folder
 - `backend/app/main.py`: FastAPI server + `main()` (opens browser when ready, detects already-running)
 - `backend/app/static/`: interface (vanilla JS, no build step): `index.html`, `style.css`, `app.js`
-- `backend/tests/`: pytest (17 tests); run with `cd backend && python -m pytest -q`
+- `backend/tests/`: pytest (35 tests; dev cross-check packages in requirements-dev.txt); run with `cd backend && python -m pytest -q`
 - `run.bat` (Windows), `run.sh` (Mac/Linux): use system Python ≥3.10 if present, else uv-managed
   Python 3.12 in `runtime/python`; reinstall libs when `requirements.txt` changes.
 - Sizes measured: ~266 MB (system Python), ~410 MB (private Python).
 
 ## Current state
-- [x] Session 1: repo skeleton, roadmap, architecture decided
-- [x] GitHub access linked; pushing works
-- [x] Phase 0.5 preview app built, tested, screenshots checked
-- [x] Self-contained storage + Windows launcher (user is on Windows for now, Mac later)
-- [ ] `run.bat` not yet tested on a real Windows machine (written carefully; Linux run.sh path tested)
-- [ ] User to try it and give feedback
+- [x] Preview app with 4 analysis types (see ROADMAP Phase 0.6); 35 tests pass
+- [x] User confirmed the app runs on their Windows PC (C: drive, private Python fallback)
+- [x] Interface rewritten around a TYPES registry in `static/app.js` (each type: data layout,
+      options, request, results renderer, graph drawer, format controls). Add new modules there.
 
-## Next step
-- Get the user's feedback on the preview (look, wording, workflow).
-- Confirm priority analyses (dose-response/IC50, ANOVA, survival, correlation?) and
-  reorder Phase 2 of `ROADMAP.md`.
-- Then decide: keep growing the vanilla-JS UI, or move the UI to React (Phase 0)
-  before it gets large. Recommendation: move to React before Phase 1's richer data tables.
+## Next step (suggested order; confirm with user)
+1. Two-way ANOVA (grouped tables) + repeated-measures one-way ANOVA / Friedman
+   (would add statsmodels to requirements, ~40 MB; or implement balanced case by hand)
+2. More curve models (Gaussian, two-phase decay, dose-response fixed slope, Boltzmann) + model comparison (extra sum-of-squares F, AICc)
+3. Graph polish: per-group colors, legend editing, axis tick control, export size/DPI options
+4. Data import: CSV/Excel file import button; results export to CSV
+5. Package as a real desktop app (no browser): pywebview or Tauri
+6. Move UI to React only if app.js gets unwieldy (it's ~800 lines now, still fine)
 
 ## Decisions log
 | Date | Decision | Why |
