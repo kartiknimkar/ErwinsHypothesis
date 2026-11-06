@@ -130,14 +130,29 @@ def list_models():
              "log_x": m["log_x"], "params": m["params"]} for k, m in MODELS.items()]
 
 
+def custom_model(equation_text: str, initial: dict | None = None) -> dict:
+    """Build a model from a user-typed equation (see equation.py)."""
+    from .equation import compile_equation
+    f, names = compile_equation(equation_text)
+    init = {k: float(v) for k, v in (initial or {}).items() if v is not None and str(v).strip() != ""}
+    shown = equation_text.strip()
+    if not shown.upper().startswith("Y"):
+        shown = "Y = " + shown
+    return {"name": "User-defined equation", "short": "", "equation": shown, "params": names, "f": f,
+            "guess": lambda x, y: [init.get(n, 1.0) for n in names], "log_x": False}
+
+
 def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_points: int = 200,
-        fixed: dict | None = None) -> dict:
+        fixed: dict | None = None, equation: str | None = None, initial: dict | None = None) -> dict:
     """Fit a model to (x, y) points. For dose-response models, X is concentration unless
     x_is_log is True (then X is already log10 of concentration).
     fixed: {parameter name: value} to hold parameters constant (constraints), e.g. {"Bottom": 0}."""
-    if model not in MODELS:
+    if model == "custom":
+        m = custom_model(equation or "", initial)
+    elif model in MODELS:
+        m = MODELS[model]
+    else:
         raise ValueError(f"Unknown model: {model}")
-    m = MODELS[model]
     x = np.asarray(x, float)
     y = np.asarray(y, float)
     ok = np.isfinite(x) & np.isfinite(y)
@@ -177,6 +192,9 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
         raise ValueError("The fit didn't converge. Check that the data have the expected shape "
                          "for this model, or try a different model.")
     popt = np.array(full(pfit), float)
+    if not np.all(np.isfinite(m["f"](x, *popt))):
+        raise ValueError("The fitted curve isn't defined at some X values (e.g. log of a negative number). "
+                         "Check the equation or the starting values.")
     resid = y - m["f"](x, *popt)
     ss_res = float(np.sum(resid ** 2))
     ss_tot = float(np.sum((y - y.mean()) ** 2))
@@ -235,7 +253,7 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
     aicc = (n * math.log(ss_res / n) + 2 * K + 2 * K * (K + 1) / (n - K - 1)) if ss_res > 0 and n - K - 1 > 0 else None
     return {
         "aicc": aicc,
-        "test_name": "Nonlinear regression", "model": model, "model_name": m["name"],
+        "test_name": "Nonlinear regression", "model": model, "model_name": m["name"], "param_names": m["params"],
         "equation": m["equation"], "params": params, "derived": derived,
         "r_squared": 1 - ss_res / ss_tot if ss_tot > 0 else None,
         "sy_x": sy_x, "ss_res": ss_res, "df": df, "n": int(len(x)), "dropped": dropped,

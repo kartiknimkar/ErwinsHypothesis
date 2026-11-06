@@ -97,8 +97,25 @@ class FitRequest(BaseModel):
     model: str = "linear"    # "linear" or a curvefit model id
     compare: str | None = None  # optional second curvefit model to compare with
     fixed: dict | None = None   # {parameter name: value} constraints
+    equation: str | None = None # user-defined equation when model == "custom"
+    initial: dict | None = None # starting values for a user-defined equation
     x_is_log: bool = False
     alpha: float = 0.05
+
+
+class EquationRequest(BaseModel):
+    equation: str
+
+
+@app.post("/api/equation")
+def check_equation(req: EquationRequest):
+    """Check a user-typed equation and list its parameters (for the interface)."""
+    from .equation import EquationError, parse
+    try:
+        _, params = parse(req.equation)
+    except EquationError as e:
+        return {"ok": False, "error": str(e), "params": []}
+    return {"ok": True, "params": params}
 
 
 @app.get("/api/models")
@@ -129,8 +146,9 @@ def run_fit(req: FitRequest):
             res = stats.linear_regression(px, py, alpha=req.alpha)
             res["model"] = "linear"
         else:
-            res = curvefit.fit(px, py, req.model, x_is_log=req.x_is_log, alpha=req.alpha, fixed=req.fixed)
-            if req.compare and req.compare in curvefit.MODELS and req.compare != req.model:
+            res = curvefit.fit(px, py, req.model, x_is_log=req.x_is_log, alpha=req.alpha, fixed=req.fixed,
+                               equation=req.equation, initial=req.initial)
+            if req.compare and req.compare in curvefit.MODELS and req.model in curvefit.MODELS and req.compare != req.model:
                 try:
                     res["comparison"] = curvefit.compare(px, py, req.model, req.compare, x_is_log=req.x_is_log, alpha=req.alpha, fixed=req.fixed)
                 except ValueError as e:
