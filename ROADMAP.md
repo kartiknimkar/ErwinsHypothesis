@@ -29,6 +29,13 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
       (Geisser-Greenhouse) + Tukey, Friedman + Dunn's; before-after (connected) plot
 - [x] Cross-checked vs statsmodels (Type III) and pingouin (RM ANOVA, epsilon); 41 tests
 
+## Phase 0.8: Import + curve models (done 2026-11-06)
+- [x] Import data from Excel (.xlsx, sheet picker) and CSV/TSV/TXT (header row detection,
+      European decimals); adds openpyxl (pure-Python wheel)
+- [x] New models: dose-response standard slope (3-param), two-phase decay, Gaussian, Boltzmann
+- [x] Model comparison: extra sum-of-squares F test (nested pairs) + AICc; dashed second curve
+- [x] 49 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

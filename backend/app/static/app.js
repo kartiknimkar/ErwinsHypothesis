@@ -193,7 +193,8 @@
       },
       request(s) {
         return ["/api/fit", { x: s.data.map(r => num(r[0])), ys: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
-          model: s.options.model, x_is_log: !!s.options.xIsLog, alpha: s.options.alpha }];
+          model: s.options.model, compare: s.options.model !== "linear" ? (s.options.compare || null) : null,
+          x_is_log: !!s.options.xIsLog, alpha: s.options.alpha }];
       },
       renderOptions(s) {
         const m = modelInfo(s.options.model);
@@ -201,6 +202,8 @@
           <select id="opt-model">${[["linear", "Straight line (linear regression + correlation)"], ...MODELS.map(m => [m.id, m.name])]
             .map(([v, l]) => `<option value="${v}" ${s.options.model === v ? "selected" : ""}>${l}</option>`).join("")}</select>
           <div class="eqn">${m ? esc(m.equation) : "Y = Slope·X + Intercept"}</div>
+          ${m ? `<div class="row"><label for="opt-compare">Compare with</label><select id="opt-compare"><option value="">No comparison</option>${MODELS
+            .filter(o => o.id !== m.id && o.log_x === m.log_x).map(o => `<option value="${o.id}" ${s.options.compare === o.id ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select></div>` : ""}
           ${m && m.log_x ? `<label class="check"><input type="checkbox" id="opt-xislog" ${s.options.xIsLog ? "checked" : ""}> X values are already log10(concentration)</label>
             <p class="hint">Otherwise X is concentration and the app takes the log for you (X = 0 is left out, as it has no log).</p>` : ""}
           ${alphaSelect(s)}`;
@@ -575,8 +578,12 @@
       s.options.model = e.target.value;
       const info = modelInfo(s.options.model);
       s.graph.logX = !!(info && info.log_x && !s.options.xIsLog);
+      const c = modelInfo(s.options.compare);
+      if (!info || !c || c.id === info.id || c.log_x !== info.log_x) s.options.compare = "";
       save(); renderOptions(); renderFormat(); scheduleRun();
     };
+    const cmp = $("opt-compare");
+    if (cmp) cmp.onchange = e => { s.options.compare = e.target.value; save(); scheduleRun(); };
     const lg = $("opt-xislog");
     if (lg) lg.onchange = e => { s.options.xIsLog = e.target.checked; s.graph.logX = !e.target.checked; save(); renderFormat(); scheduleRun(); };
   }
@@ -782,8 +789,31 @@
       T.sec("Goodness of fit"), T.row("R²", fmt(r.r_squared)), T.row("Sy.x", fmt(r.sy_x)), T.row("Sum of squares", fmt(r.ss_res)),
       T.row("Degrees of freedom", r.df), T.row("Number of points", r.n)];
     h += T.table(rows);
+    if (r.comparison) h += renderComparison(r.comparison, r.alpha);
     h += `<p class="note">"±" values are standard errors. ${r.x_is_log ? "X was analyzed as log10(concentration). " : ""}${r.dropped ? `${r.dropped} point(s) with X ≤ 0 were left out (no logarithm).` : ""}</p>`;
     return h;
+  }
+
+  function renderComparison(c, alpha) {
+    if (c.error) return `<p class="note warn">${esc(c.error)}</p>`;
+    const nm = id => id === c.a ? c.name_a : c.name_b;
+    let verdict;
+    if (c.f_test) {
+      const f = c.f_test;
+      verdict = f.p < alpha
+        ? `The data support the more complex model: <b>${esc(nm(f.complex))}</b> (extra sum-of-squares F test, ${fmtP(f.p)}).`
+        : `The extra parameter(s) don't improve the fit enough, so the simpler model is preferred: <b>${esc(nm(f.simple))}</b> (${fmtP(f.p)}).`;
+    } else if (c.prob_a != null) {
+      const best = c.aicc_preferred, pr = best === c.a ? c.prob_a : 1 - c.prob_a;
+      verdict = `<b>${esc(nm(best))}</b> is more likely to be correct (${fmt(pr * 100, 3)}% probability by AICc).`;
+    } else verdict = "Not enough points to compare these models.";
+    const rows = [T.sec("Model comparison"), T.row(`Sum of squares, df: ${esc(c.name_a)}`, `${fmt(c.ss_a)}, ${c.df_a}`),
+      T.row(`Sum of squares, df: ${esc(c.name_b)}`, `${fmt(c.ss_b)}, ${c.df_b}`)];
+    if (c.f_test) rows.push(T.row(`F (${c.f_test.dfn}, ${c.f_test.dfd})`, fmt(c.f_test.F)), T.row("P value", pOnly(c.f_test.p)));
+    if (c.prob_a != null) rows.push(T.row("AICc difference (B − A)", fmt(c.delta_aicc)), T.row(`Probability ${esc(c.name_a)} is correct`, fmt(c.prob_a * 100, 3) + "%"));
+    const fb = c.fit_b, key = fb && fb.derived && fb.derived[0];
+    if (key && key.value != null) rows.push(T.row(`${esc(key.name)} from ${esc(c.name_b)}`, fmt(key.value)));
+    return `<div class="summary ns" style="margin-top:10px">${verdict}</div>` + T.table(rows);
   }
 
   // ---------------------------------------------------------------- survival
@@ -928,6 +958,9 @@
     }
     const curve = r.model === "linear" ? r.line : r.curve;
     traces.push({ x: curve.x.map(tx), y: curve.y, mode: "lines", line: { color: c0, width: 2.4 }, hovertemplate: "Fit: %{y:.4g}<extra></extra>" });
+    const cmpFit = r.comparison && r.comparison.fit_b;
+    if (cmpFit) traces.push({ x: cmpFit.curve.x.map(tx), y: cmpFit.curve.y, mode: "lines", line: { color: color(g, 1), width: 2, dash: "dash" },
+      hovertemplate: `${esc(cmpFit.model_name)}: %{y:.4g}<extra></extra>` });
     if (reps) {
       const stats = rows.map(p => {
         const n = p.ys.length, m = p.ys.reduce((a, b) => a + b, 0) / n;

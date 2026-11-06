@@ -130,7 +130,7 @@ def test_contingency_rxc_and_errors():
 
 def test_endpoints():
     c = TestClient(app)
-    assert len(c.get("/api/models").json()["models"]) == 6
+    assert len(c.get("/api/models").json()["models"]) == 11
     r = c.post("/api/fit", json={"x": [1, 2, 3, 4], "ys": [[2, 4, 6, 8.1], [2.1, 4, None, 8]], "model": "linear"})
     assert r.status_code == 200 and r.json()["n"] == 7
     r = c.post("/api/survival", json={"times": [1, 2, 3, 4], "groups": [[1, 1, None, None], [None, None, 0, 1]],

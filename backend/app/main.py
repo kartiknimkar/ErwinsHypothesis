@@ -95,6 +95,7 @@ class FitRequest(BaseModel):
     x: list
     ys: list                 # one list per Y replicate column, same length as x
     model: str = "linear"    # "linear" or a curvefit model id
+    compare: str | None = None  # optional second curvefit model to compare with
     x_is_log: bool = False
     alpha: float = 0.05
 
@@ -128,6 +129,11 @@ def run_fit(req: FitRequest):
             res["model"] = "linear"
         else:
             res = curvefit.fit(px, py, req.model, x_is_log=req.x_is_log, alpha=req.alpha)
+            if req.compare and req.compare in curvefit.MODELS and req.compare != req.model:
+                try:
+                    res["comparison"] = curvefit.compare(px, py, req.model, req.compare, x_is_log=req.x_is_log, alpha=req.alpha)
+                except ValueError as e:
+                    res["comparison"] = {"error": str(e)}
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))

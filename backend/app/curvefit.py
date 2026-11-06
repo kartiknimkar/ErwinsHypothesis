@@ -34,6 +34,24 @@ MODELS = {
         "guess": lambda x, y: _hill_guess(x, y, False),
         "log_x": True, "derived": ("EC50", "LogEC50"),
     },
+    "dr_inhibit_fixed": {
+        "name": "Dose-response: inhibition, standard slope (IC50)",
+        "short": "log(inhibitor) vs. response, Hill slope fixed at −1 (3 parameters)",
+        "equation": "Y = Bottom + (Top − Bottom) / (1 + 10^(X − LogIC50))",
+        "params": ["Bottom", "Top", "LogIC50"],
+        "f": lambda x, b, t, l: b + (t - b) / (1 + 10 ** (x - l)),
+        "guess": lambda x, y: _hill_guess(x, y, True)[:3],
+        "log_x": True, "derived": ("IC50", "LogIC50"),
+    },
+    "dr_stim_fixed": {
+        "name": "Dose-response: stimulation, standard slope (EC50)",
+        "short": "log(agonist) vs. response, Hill slope fixed at 1 (3 parameters)",
+        "equation": "Y = Bottom + (Top − Bottom) / (1 + 10^(LogEC50 − X))",
+        "params": ["Bottom", "Top", "LogEC50"],
+        "f": lambda x, b, t, l: b + (t - b) / (1 + 10 ** (l - x)),
+        "guess": lambda x, y: _hill_guess(x, y, False)[:3],
+        "log_x": True, "derived": ("EC50", "LogEC50"),
+    },
     "michaelis": {
         "name": "Michaelis-Menten (enzyme kinetics)",
         "short": "Vmax and Km",
@@ -51,6 +69,17 @@ MODELS = {
         "f": lambda x, y0, p, k: (y0 - p) * np.exp(-k * x) + p,
         "guess": lambda x, y: [float(y[np.argmin(x)]), float(np.min(y)), 1.0 / (float(np.ptp(x)) or 1.0)],
         "log_x": False, "halflife": True,
+    },
+    "two_phase_decay": {
+        "name": "Exponential decay (two phase)",
+        "short": "fast and slow components",
+        "equation": "Y = Plateau + SpanFast·exp(−Kfast·X) + SpanSlow·exp(−Kslow·X)",
+        "params": ["Plateau", "SpanFast", "Kfast", "SpanSlow", "Kslow"],
+        "f": lambda x, p, sf, kf, ss, ks: p + sf * np.exp(-kf * x) + ss * np.exp(-ks * x),
+        "guess": lambda x, y: [float(np.min(y)), (float(y[np.argmin(x)]) - float(np.min(y))) / 2,
+                               5.0 / (float(np.ptp(x)) or 1.0), (float(y[np.argmin(x)]) - float(np.min(y))) / 2,
+                               0.5 / (float(np.ptp(x)) or 1.0)],
+        "log_x": False, "two_phase": True,
     },
     "exp_growth": {
         "name": "Exponential growth",
@@ -70,7 +99,30 @@ MODELS = {
         "guess": lambda x, y: [float(y[np.argmin(x)]), float(np.max(y)), 1.0 / (float(np.ptp(x)) or 1.0)],
         "log_x": False, "halflife": True,
     },
+    "gaussian": {
+        "name": "Gaussian (bell-shaped peak)",
+        "short": "peak center and width",
+        "equation": "Y = Amplitude·exp(−0.5·((X − Mean)/SD)²)",
+        "params": ["Amplitude", "Mean", "SD"],
+        "f": lambda x, a, m, s: a * np.exp(-0.5 * ((x - m) / s) ** 2),
+        "guess": lambda x, y: [float(np.max(y)), float(x[np.argmax(y)]),
+                               float(np.sqrt(abs(np.sum(y * (x - x[np.argmax(y)]) ** 2) / (np.sum(y) or 1)))) or float(np.ptp(x)) / 4 or 1.0],
+        "log_x": False,
+    },
+    "boltzmann": {
+        "name": "Boltzmann sigmoid",
+        "short": "e.g. channel activation vs. voltage (X not logged)",
+        "equation": "Y = Bottom + (Top − Bottom) / (1 + exp((V50 − X)/Slope))",
+        "params": ["Bottom", "Top", "V50", "Slope"],
+        "f": lambda x, b, t, v, s: b + (t - b) / (1 + np.exp((v - x) / s)),
+        "guess": lambda x, y: [float(np.min(y)), float(np.max(y)), float(x[np.argmin(np.abs(y - (np.min(y) + np.max(y)) / 2))]),
+                               (float(np.ptp(x)) / 10 or 1.0) * (1 if np.corrcoef(x, y)[0, 1] >= 0 else -1)],
+        "log_x": False,
+    },
 }
+
+# pairs where the simpler model is a special case of the other (extra sum-of-squares F test applies)
+NESTED = {("dr_inhibit_fixed", "dr_inhibit"), ("dr_stim_fixed", "dr_stim"), ("exp_decay", "two_phase_decay")}
 
 
 def list_models():
@@ -119,6 +171,20 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
                        "ci": [float(val - tcrit * s), float(val + tcrit * s)]})
 
     derived = []
+    if m.get("two_phase"):
+        # label the faster component "fast" even if the optimizer found them the other way round
+        if params[2]["value"] < params[4]["value"]:
+            for a_, b_ in ((1, 3), (2, 4)):
+                params[a_]["value"], params[b_]["value"] = params[b_]["value"], params[a_]["value"]
+                params[a_]["se"], params[b_]["se"] = params[b_]["se"], params[a_]["se"]
+                params[a_]["ci"], params[b_]["ci"] = params[b_]["ci"], params[a_]["ci"]
+            popt = np.array([q["value"] for q in params])
+        for label, q in (("Half-life (fast)", params[2]), ("Half-life (slow)", params[4])):
+            k = q["value"]
+            derived.append({"name": label, "value": math.log(2) / k if k > 0 else None, "ci": None})
+        span = params[1]["value"] + params[3]["value"]
+        if span:
+            derived.append({"name": "Percent fast", "value": 100 * params[1]["value"] / span, "ci": None})
     if m.get("derived"):
         dname, lname = m["derived"]
         lp = next(q for q in params if q["name"] == lname)
@@ -137,7 +203,11 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
     if not m["log_x"] and x.min() >= 0:
         xs = np.linspace(0 if model in ("michaelis",) else x.min(), x.max(), curve_points)
     curve_y = m["f"](xs, *popt)
+    n = len(x)
+    K = p + 1  # parameters + residual variance
+    aicc = (n * math.log(ss_res / n) + 2 * K + 2 * K * (K + 1) / (n - K - 1)) if ss_res > 0 and n - K - 1 > 0 else None
     return {
+        "aicc": aicc,
         "test_name": "Nonlinear regression", "model": model, "model_name": m["name"],
         "equation": m["equation"], "params": params, "derived": derived,
         "r_squared": 1 - ss_res / ss_tot if ss_tot > 0 else None,
@@ -146,3 +216,35 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
         "points": {"x": x.tolist(), "y": y.tolist()},
         "curve": {"x": xs.tolist(), "y": curve_y.tolist()},
     }
+
+
+def compare(x, y, model_a: str, model_b: str, x_is_log: bool = False, alpha: float = 0.05) -> dict:
+    """Fit two models to the same data and say which the data support.
+
+    Always reports AICc (works for any pair). For nested pairs (one model is a special
+    case of the other) also runs the extra sum-of-squares F test, as Prism does.
+    """
+    if MODELS[model_a]["log_x"] != MODELS[model_b]["log_x"]:
+        raise ValueError("These two models treat X differently (one uses log of X), so they can't be compared.")
+    fa = fit(x, y, model_a, x_is_log=x_is_log, alpha=alpha)
+    fb = fit(x, y, model_b, x_is_log=x_is_log, alpha=alpha)
+    out = {"a": model_a, "b": model_b, "name_a": fa["model_name"], "name_b": fb["model_name"],
+           "ss_a": fa["ss_res"], "df_a": fa["df"], "ss_b": fb["ss_res"], "df_b": fb["df"],
+           "aicc_a": fa["aicc"], "aicc_b": fb["aicc"], "fit_b": fb}
+    if fa["aicc"] is not None and fb["aicc"] is not None:
+        d = fb["aicc"] - fa["aicc"]
+        out["delta_aicc"] = d
+        prob_a = 1 / (1 + math.exp(-0.5 * d)) if abs(d) < 700 else (1.0 if d > 0 else 0.0)
+        out["prob_a"] = prob_a
+        out["aicc_preferred"] = model_a if prob_a >= 0.5 else model_b
+    nested = (model_a, model_b) in NESTED or (model_b, model_a) in NESTED
+    if nested:
+        simple, cplx = (fa, fb) if fa["df"] > fb["df"] else (fb, fa)
+        ddf = simple["df"] - cplx["df"]
+        if ddf > 0 and cplx["ss_res"] > 0:
+            F = ((simple["ss_res"] - cplx["ss_res"]) / ddf) / (cplx["ss_res"] / cplx["df"])
+            pval = float(stats.f.sf(max(F, 0.0), ddf, cplx["df"]))
+            out["f_test"] = {"F": F, "dfn": ddf, "dfd": cplx["df"], "p": pval,
+                             "simple": simple["model"], "complex": cplx["model"],
+                             "preferred": cplx["model"] if pval < alpha else simple["model"]}
+    return out

@@ -11,9 +11,12 @@ clean, modern interface. Everything runs on your own computer.
   measured repeatedly: paired t, Wilcoxon, repeated-measures ANOVA, Friedman
 - **Grouped (two factors):** two-way ANOVA with multiple comparisons
 - **XY:** linear regression & correlation; curve fitting: dose-response (IC50/EC50),
-  Michaelis-Menten, exponential growth/decay, one-phase association
+  standard-slope dose-response, Michaelis-Menten, exponential growth/decay (one & two phase),
+  one-phase association, Gaussian, Boltzmann; compare two models (F test / AICc)
 - **Survival:** Kaplan-Meier curves, log-rank test, hazard ratio, median survival
 - **Contingency tables:** Fisher's exact, chi-square, odds ratio, relative risk
+
+Data can be typed, pasted from Excel, or imported from .xlsx / .csv files.
 
 See `ROADMAP.md` for what's coming.
 
