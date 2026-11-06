@@ -69,7 +69,12 @@ Every session starts by reading it and ends by updating it (then committing).
 2. (done) More curve models + model comparison. Constraints done (fit(fixed=...)); user-defined equations done (equation.py, model "custom"). Follow-ups: global fits sharing parameters across datasets
 3. Graph polish: per-group colors, legend editing, axis tick control, export size/DPI options
 4. (done) Excel/CSV import (`backend/app/importer.py`, /api/import). Excel export done (storage.save_results_xlsx, /api/exports/xlsx)
-5. Package as a real desktop app (no browser): pywebview or Tauri
+5. (done, needs first CI run) Packaged desktop app: `backend/app/desktop.py` (pywebview window,
+   browser fallback), `packaging/ErwinsHypothesis.spec` (PyInstaller onedir, ~200 MB),
+   `.github/workflows/build.yml` (Windows + Mac Apple Silicon zips; release on `v*` tag).
+   No code signing (user's choice). Frozen app saves projects/exports/logs next to the exe
+   (Mac: next to the .app, or ~/Documents/Erwins Hypothesis if translocated). Tested on Linux build.
+   plotly.js is now vendored in static/vendor; plotly Python package no longer required.
 6. Move UI to React only if app.js gets unwieldy (it's ~800 lines now, still fine)
 
 ## Decisions log

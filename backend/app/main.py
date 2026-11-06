@@ -5,7 +5,6 @@ import math
 import os
 from pathlib import Path
 
-import plotly
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,7 +13,7 @@ from pydantic import BaseModel
 from . import anova2, contingency, curvefit, importer, stats, storage, survival
 
 STATIC = Path(__file__).parent / "static"
-PLOTLY_JS = Path(plotly.__file__).parent / "package_data" / "plotly.min.js"
+PLOTLY_JS = STATIC / "vendor" / "plotly.min.js"  # plotly.js (MIT), bundled so the app works offline
 
 app = FastAPI(title="Erwin's Hypothesis")
 
@@ -328,7 +327,6 @@ def reveal(folder: str):
 
 @app.get("/vendor/plotly.min.js")
 def plotly_js():
-    # Served from the installed package so the app works fully offline.
     return FileResponse(PLOTLY_JS, media_type="application/javascript")
 
 

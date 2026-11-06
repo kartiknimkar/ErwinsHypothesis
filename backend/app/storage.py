@@ -23,8 +23,27 @@ _SAFE = re.compile(r"[^A-Za-z0-9 _\-().,µ]+")
 
 
 def home() -> Path:
+    """The app folder, where projects/ and exports/ live.
+
+    - EH_HOME if set (tests, custom setups)
+    - packaged Windows/Linux app: the folder containing ErwinsHypothesis.exe
+    - packaged Mac app: the folder containing ErwinsHypothesis.app; if macOS is running the
+      app from a temporary read-only copy (happens for downloaded, unsigned apps until they
+      are moved), fall back to ~/Documents/Erwins Hypothesis
+    - running from source: the repository root
+    """
     env = os.environ.get("EH_HOME")
-    return Path(env).resolve() if env else Path(__file__).resolve().parents[2]
+    if env:
+        return Path(env).resolve()
+    if getattr(sys, "frozen", False):
+        exe = Path(sys.executable).resolve()
+        if sys.platform == "darwin" and ".app/Contents/MacOS" in str(exe):
+            app_dir = exe.parents[3]  # .../<folder>/ErwinsHypothesis.app/Contents/MacOS/exe
+            if "/AppTranslocation/" in str(exe) or not os.access(app_dir, os.W_OK):
+                return Path.home() / "Documents" / "Erwins Hypothesis"
+            return app_dir
+        return exe.parent
+    return Path(__file__).resolve().parents[2]
 
 
 def projects_dir() -> Path:

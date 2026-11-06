@@ -1,4 +1,6 @@
 -r backend/requirements.txt
+pytest>=8
+httpx>=0.27
 # independent reference packages used only to cross-check results in tests
 statsmodels
 pingouin

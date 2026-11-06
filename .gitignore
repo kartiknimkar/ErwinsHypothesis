@@ -9,3 +9,7 @@ dist/
 runtime/
 projects/
 exports/
+build/
+dist/
+logs/
+*.spec.bak

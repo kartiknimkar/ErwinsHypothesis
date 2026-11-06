@@ -1,0 +1,66 @@
+# Builds ready-to-run downloads of Erwin's Hypothesis (no Python or libraries needed).
+#  - Every push of a version tag (e.g. v0.1.0) creates a GitHub Release with the downloads.
+#  - "Run workflow" on the Actions tab builds them without a release (download from the run page).
+name: Build app
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements-dev.txt
+      - run: cd backend && python -m pytest -q
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset: ErwinsHypothesis-Windows.zip
+          - os: macos-latest
+            asset: ErwinsHypothesis-Mac-AppleSilicon.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install build tools
+        run: pip install -r packaging/requirements-build.txt
+      - name: Build
+        env:
+          EH_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '0.0.0-dev' }}
+        run: pyinstaller packaging/ErwinsHypothesis.spec --noconfirm
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item packaging/README-download.txt dist/ErwinsHypothesis/READ-ME-FIRST.txt
+          Compress-Archive -Path dist/ErwinsHypothesis -DestinationPath ${{ matrix.asset }}
+      - name: Package (Mac)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p "dist/Erwins Hypothesis"
+          mv dist/ErwinsHypothesis.app "dist/Erwins Hypothesis/"
+          cp packaging/README-download.txt "dist/Erwins Hypothesis/READ-ME-FIRST.txt"
+          ditto -c -k --keepParent "dist/Erwins Hypothesis" ${{ matrix.asset }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+      - name: Attach to release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}

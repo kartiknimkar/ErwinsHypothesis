@@ -36,7 +36,19 @@ Python 3.10 or newer, the app uses it (about 270 MB in total). Otherwise it
 downloads a private copy of Python into `runtime\` (about 410 MB). To remove
 the app completely, delete the folder.
 
-## Run it on Windows
+## Easiest: download the ready-made app (nothing to install)
+
+On the GitHub page, open **Releases** (right-hand side) and download:
+- **ErwinsHypothesis-Windows.zip** for Windows, or
+- **ErwinsHypothesis-Mac-AppleSilicon.zip** for Macs with M1/M2/M3/M4 chips.
+
+Unzip it on your own disk (e.g. Documents) and double-click **ErwinsHypothesis**. Python and
+all libraries are built in, and it works offline. The app isn't code-signed, so the first time
+Windows says "Windows protected your PC": click **More info → Run anyway** (on Mac: System
+Settings → Privacy & Security → **Open Anyway**). Projects and exports are saved in folders
+next to the app.
+
+## Run it from source on Windows
 
 Put the app on your computer's own disk (e.g. `Documents`), **not a network
 drive**: on a network drive setup takes much longer and the app starts slowly.
@@ -54,7 +66,7 @@ drive**: on a network drive setup takes much longer and the app starts slowly.
 3. The first run needs internet and takes a minute or two. Your browser then
    opens the app. Keep the black window open while you work; close it to quit.
 
-## Run it on a Mac
+## Run it from source on a Mac
 
 ```bash
 git clone https://github.com/kartiknimkar/ErwinsHypothesis.git
@@ -74,6 +86,14 @@ touched by updates. With a ZIP download, download the new ZIP and copy your
 - Always use a private Python copy: run `set EH_PRIVATE_PYTHON=1` (Windows) or
   `export EH_PRIVATE_PYTHON=1` (Mac) before the launcher.
 - Different port: `EH_PORT=9000`.
+
+## Making a new release (for maintainers)
+
+Downloads are built automatically by GitHub Actions (`.github/workflows/build.yml`):
+create and push a version tag, e.g. `git tag v0.2.0 && git push origin v0.2.0`, and the
+Windows and Mac zips appear on the Releases page ~15 minutes later. To build without a
+release, use **Actions → Build app → Run workflow**. Local build:
+`pip install -r packaging/requirements-build.txt && pyinstaller packaging/ErwinsHypothesis.spec --noconfirm`.
 
 ## For developers
 ```
