@@ -1,0 +1,5 @@
+-r backend/requirements.txt
+# independent reference packages used only to cross-check results in tests
+statsmodels
+pingouin
+scikit-posthocs

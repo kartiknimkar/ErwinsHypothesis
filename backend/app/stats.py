@@ -144,7 +144,149 @@ def t_test(a, b, kind: str = "unpaired", name_a: str = "A", name_b: str = "B",
 
     result["stars"] = stars(result["p"])
     result["significant"] = result["p"] < alpha
+    if kind == "paired":
+        result["normality"] = [normality(xb - xa)]
+        result["normality_of"] = "differences"
+    else:
+        result["normality"] = [normality(xa), normality(xb)]
+        result["normality_of"] = "groups"
     return result
+
+
+def normality(values) -> dict | None:
+    """Shapiro-Wilk normality test (needs 3+ values)."""
+    x = _clean(values)
+    if len(x) < 3 or np.ptp(x) == 0:
+        return None
+    r = stats.shapiro(x)
+    return {"W": float(r.statistic), "p": float(r.pvalue), "normal": bool(r.pvalue >= 0.05)}
+
+
+def _pairs(k: int):
+    return [(i, j) for i in range(k) for j in range(i + 1, k)]
+
+
+def one_way_anova(groups, names=None, kind: str = "ordinary", alpha: float = 0.05) -> dict:
+    """Compare 3+ groups.
+
+    kind: "ordinary" (one-way ANOVA + Tukey), "welch" (Welch's ANOVA + Games-Howell),
+          "kruskal" (Kruskal-Wallis + Dunn's, Bonferroni-adjusted).
+    Pairwise differences are reported as first − second for "A vs B".
+    """
+    xs = [_clean(g) for g in groups]
+    names = list(names) if names else [chr(65 + i) for i in range(len(xs))]
+    keep = [i for i, x in enumerate(xs) if len(x) > 0]
+    xs = [xs[i] for i in keep]
+    names = [names[i] for i in keep]
+    k = len(xs)
+    if k < 3:
+        raise ValueError("Comparing 3 or more groups needs at least 3 columns with data.")
+    if any(len(x) < 2 for x in xs):
+        raise ValueError("Each group needs at least 2 values.")
+
+    ns = np.array([len(x) for x in xs], dtype=float)
+    means = np.array([x.mean() for x in xs])
+    vars_ = np.array([x.var(ddof=1) for x in xs])
+    N = ns.sum()
+    conf = 1 - alpha
+    res = {"kind": kind, "alpha": alpha, "k": k,
+           "groups": [describe(x, n) for x, n in zip(xs, names)]}
+    comps = []
+
+    if kind == "ordinary":
+        grand = np.concatenate(xs).mean()
+        ssb = float(np.sum(ns * (means - grand) ** 2))
+        ssw = float(np.sum((ns - 1) * vars_))
+        dfb, dfw = k - 1, int(N - k)
+        msb, msw = ssb / dfb, ssw / dfw
+        F = msb / msw if msw > 0 else float("inf")
+        p = float(stats.f.sf(F, dfb, dfw))
+        res.update(test_name="Ordinary one-way ANOVA", posthoc_name="Tukey's multiple comparisons",
+                   F=F, df_between=dfb, df_within=dfw, p=p, r_squared=ssb / (ssb + ssw),
+                   table=[{"source": "Between groups", "SS": ssb, "df": dfb, "MS": msb},
+                          {"source": "Within groups (residual)", "SS": ssw, "df": dfw, "MS": msw},
+                          {"source": "Total", "SS": ssb + ssw, "df": int(N - 1), "MS": None}])
+        tk = stats.tukey_hsd(*xs)
+        ci = tk.confidence_interval(conf)
+        for i, j in _pairs(k):
+            comps.append({"a": names[i], "b": names[j], "i": i, "j": j, "diff": float(tk.statistic[i, j]),
+                          "ci_low": float(ci.low[i, j]), "ci_high": float(ci.high[i, j]),
+                          "p": float(tk.pvalue[i, j])})
+        # Brown-Forsythe check for equal spread
+        bf = stats.levene(*xs, center="median")
+        res["variance_check"] = {"name": "Brown-Forsythe", "statistic": float(bf.statistic), "p": float(bf.pvalue)}
+    elif kind == "welch":
+        w = ns / vars_
+        wsum = w.sum()
+        mw = np.sum(w * means) / wsum
+        a = np.sum(w * (means - mw) ** 2) / (k - 1)
+        lam = np.sum((1 - w / wsum) ** 2 / (ns - 1))
+        b = 1 + 2 * (k - 2) / (k ** 2 - 1) * lam
+        F = float(a / b)
+        df2 = float((k ** 2 - 1) / (3 * lam))
+        p = float(stats.f.sf(F, k - 1, df2))
+        res.update(test_name="Welch's ANOVA", posthoc_name="Games-Howell multiple comparisons",
+                   F=F, df_between=k - 1, df_within=df2, p=p)
+        for i, j in _pairs(k):
+            vi, vj = vars_[i] / ns[i], vars_[j] / ns[j]
+            se = math.sqrt((vi + vj) / 2)
+            df = (vi + vj) ** 2 / (vi ** 2 / (ns[i] - 1) + vj ** 2 / (ns[j] - 1))
+            diff = float(means[i] - means[j])
+            q = abs(diff) / se
+            qcrit = float(stats.studentized_range.ppf(conf, k, df))
+            comps.append({"a": names[i], "b": names[j], "i": i, "j": j, "diff": diff,
+                          "ci_low": diff - qcrit * se, "ci_high": diff + qcrit * se,
+                          "p": float(min(1.0, stats.studentized_range.sf(q, k, df)))})
+    elif kind == "kruskal":
+        kw = stats.kruskal(*xs)
+        res.update(test_name="Kruskal-Wallis test", posthoc_name="Dunn's multiple comparisons",
+                   H=float(kw.statistic), df_between=k - 1, p=float(kw.pvalue))
+        allv = np.concatenate(xs)
+        ranks = stats.rankdata(allv)
+        _, counts = np.unique(allv, return_counts=True)
+        tie = np.sum(counts ** 3 - counts) / (12 * (N - 1))
+        bounds = np.cumsum([0] + [len(x) for x in xs])
+        mean_ranks = [ranks[bounds[g]:bounds[g + 1]].mean() for g in range(k)]
+        m = len(_pairs(k))
+        for i, j in _pairs(k):
+            se = math.sqrt((N * (N + 1) / 12 - tie) * (1 / ns[i] + 1 / ns[j]))
+            z = (mean_ranks[i] - mean_ranks[j]) / se
+            p_raw = 2 * stats.norm.sf(abs(z))
+            comps.append({"a": names[i], "b": names[j], "i": i, "j": j,
+                          "diff": float(mean_ranks[i] - mean_ranks[j]), "ci_low": None, "ci_high": None,
+                          "z": float(z), "p": float(min(1.0, p_raw * m))})
+        res["diff_label"] = "Mean rank difference"
+    else:
+        raise ValueError(f"Unknown test type: {kind}")
+
+    for c in comps:
+        c["stars"] = stars(c["p"])
+        c["significant"] = c["p"] < alpha
+    res.setdefault("diff_label", "Mean difference")
+    res["comparisons"] = comps
+    res["stars"] = stars(res["p"])
+    res["significant"] = res["p"] < alpha
+    res["normality"] = [normality(x) for x in xs]
+    return res
+
+
+def correlation(x, y, alpha: float = 0.05) -> dict:
+    """Pearson and Spearman correlation for paired (X, Y) values."""
+    pairs = []
+    for vx, vy in zip(list(x), list(y)):
+        cx, cy = _clean([vx]), _clean([vy])
+        if len(cx) and len(cy):
+            pairs.append((cx[0], cy[0]))
+    if len(pairs) < 3:
+        raise ValueError("Correlation needs at least 3 complete (X, Y) points.")
+    xs = np.array([p[0] for p in pairs]); ys = np.array([p[1] for p in pairs])
+    pr = stats.pearsonr(xs, ys)
+    ci = pr.confidence_interval(1 - alpha) if len(xs) > 3 else None
+    sr = stats.spearmanr(xs, ys)
+    return {"n": len(xs),
+            "pearson_r": float(pr.statistic), "pearson_p": float(pr.pvalue),
+            "pearson_ci": [float(ci.low), float(ci.high)] if ci is not None else None,
+            "spearman_r": float(sr.statistic), "spearman_p": float(sr.pvalue)}
 
 
 def linear_regression(x, y, alpha: float = 0.05, band_points: int = 100) -> dict:
@@ -198,6 +340,7 @@ def linear_regression(x, y, alpha: float = 0.05, band_points: int = 100) -> dict
         "significant": p < alpha,
         "alpha": alpha,
         "equation": f"Y = {r.slope:.4g}·X {'+' if r.intercept >= 0 else '−'} {abs(r.intercept):.4g}",
+        "correlation": correlation(xs, ys, alpha),
         "points": {"x": xs.tolist(), "y": ys.tolist()},
         "line": {"x": grid.tolist(), "y": fit.tolist(),
                  "low": (fit - half).tolist(), "high": (fit + half).tolist()},

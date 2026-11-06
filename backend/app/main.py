@@ -39,6 +39,13 @@ class TTestRequest(BaseModel):
     alpha: float = 0.05
 
 
+class CompareRequest(BaseModel):
+    groups: list            # list of lists of values
+    names: list[str]
+    kind: str = "unpaired"  # 2 groups: unpaired|welch|paired|mannwhitney; 3+: ordinary|welch|kruskal
+    alpha: float = 0.05
+
+
 class RegressionRequest(BaseModel):
     x: list
     y: list
@@ -55,6 +62,28 @@ def run_ttest(req: TTestRequest):
     try:
         res = stats.t_test(req.a, req.b, kind=req.kind, name_a=req.name_a,
                            name_b=req.name_b, alpha=req.alpha)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(_json_safe(res))
+
+
+@app.post("/api/compare")
+def run_compare(req: CompareRequest):
+    """Compare 2 groups (t tests) or 3+ groups (ANOVA family). Empty columns are ignored."""
+    try:
+        cols = [(n, g) for n, g in zip(req.names, req.groups)
+                if any(v is not None and str(v).strip() != "" for v in g)]
+        if len(cols) < 2:
+            raise ValueError("Enter data in at least 2 group columns.")
+        names = [n for n, _ in cols]
+        groups = [g for _, g in cols]
+        if len(cols) == 2:
+            kind = req.kind if req.kind in ("unpaired", "welch", "paired", "mannwhitney") else "unpaired"
+            res = stats.t_test(groups[0], groups[1], kind=kind, name_a=names[0], name_b=names[1], alpha=req.alpha)
+        else:
+            kind = req.kind if req.kind in ("ordinary", "welch", "kruskal") else "ordinary"
+            res = stats.one_way_anova(groups, names, kind=kind, alpha=req.alpha)
+        res["n_groups"] = len(cols)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))
