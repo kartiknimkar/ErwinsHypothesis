@@ -8,13 +8,27 @@ rem    projects\  your projects
 rem    exports\   exported graphs
 rem  Uses the Python already on this computer (3.10 or newer) if there
 rem  is one; otherwise downloads a private copy into runtime\python.
-rem  To always use a private copy: set EH_PRIVATE_PYTHON=1 first.
+rem
+rem  Options (set before running):
+rem    EH_PRIVATE_PYTHON=1   always use a private Python copy
+rem    EH_NO_UPDATE=1        don't check GitHub for updates at start
 rem ================================================================
 setlocal EnableExtensions
 title Erwin's Hypothesis
-cd /d "%~dp0"
 
-set "RT=%~dp0runtime"
+rem Run from a copy inside runtime\, so an update can safely replace
+rem this file while the app is starting.
+if not "%EH_FROM_COPY%"=="1" (
+  if not exist "%~dp0runtime" mkdir "%~dp0runtime"
+  copy /y "%~f0" "%~dp0runtime\launcher.bat" >nul
+  set "EH_FROM_COPY=1"
+  set "EH_ROOT=%~dp0"
+  call "%~dp0runtime\launcher.bat"
+  exit /b
+)
+cd /d "%EH_ROOT%"
+
+set "RT=%EH_ROOT%runtime"
 set "VENV=%RT%\venv"
 set "PY=%VENV%\Scripts\python.exe"
 set "UVEXE=%RT%\uv\uv.exe"
@@ -25,6 +39,12 @@ set "UV_CACHE_DIR=%RT%\cache\uv"
 set "UV_PYTHON_INSTALL_DIR=%RT%\python"
 set "PIP_DISABLE_PIP_VERSION_CHECK=1"
 set "PYTHONNOUSERSITE=1"
+
+rem --- Warn if this folder is on a network drive ----------------------
+call :check_network
+
+rem --- Get the latest version from GitHub (if this folder is a clone) --
+if not "%EH_NO_UPDATE%"=="1" call :update
 
 if not exist "%RT%" mkdir "%RT%"
 
@@ -62,21 +82,26 @@ if not exist "%UVEXE%" (
   call :get_uv
   if not exist "%UVEXE%" goto :fail
 )
-"%UVEXE%" venv --quiet --python 3.12 --python-preference only-managed "%VENV%"
+"%UVEXE%" venv --python 3.12 --python-preference only-managed "%VENV%"
 if errorlevel 1 goto :fail
 
 rem --- Install or update the libraries when requirements change -----
 :deps
 fc /b "backend\requirements.txt" "%VENV%\requirements.installed" >nul 2>&1
 if not errorlevel 1 goto :start
-echo Installing the app's libraries (first run or update; about a minute)...
+echo.
+echo Installing the app's libraries (first run or after an update).
+echo This takes 1-2 minutes on a local disk. Progress is shown below.
+echo.
 if exist "%UVEXE%" (
-  "%UVEXE%" pip install --quiet --python "%PY%" -r "backend\requirements.txt"
+  "%UVEXE%" pip install --python "%PY%" -r "backend\requirements.txt"
 ) else (
-  "%PY%" -m pip install --quiet --no-cache-dir -r "backend\requirements.txt"
+  "%PY%" -m pip install --no-cache-dir --progress-bar on -r "backend\requirements.txt"
 )
 if errorlevel 1 goto :fail
 copy /y "backend\requirements.txt" "%VENV%\requirements.installed" >nul
+echo.
+echo Libraries installed.
 
 :start
 cd backend
@@ -99,6 +124,40 @@ rem ---------------------------------------------------------------
 :try_python
 %* -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
 if not errorlevel 1 set "SYS=%*"
+exit /b 0
+
+:check_network
+set "NETWORK="
+set "HERE=%EH_ROOT%"
+if "%HERE:~0,2%"=="\\" set "NETWORK=1"
+if not defined NETWORK (
+  powershell -NoProfile -Command "if (([IO.DriveInfo]'%HERE:~0,2%').DriveType -eq 'Network') { exit 7 } else { exit 0 }" >nul 2>&1
+  if errorlevel 7 set "NETWORK=1"
+)
+if not defined NETWORK exit /b 0
+echo.
+echo  ------------------------------------------------------------------
+echo   NOTE: this folder is on a NETWORK drive.
+echo   The app will work, but setup can take 10-30+ minutes and it will
+echo   start slowly every time. For best speed, close this window, move
+echo   the whole folder to your own disk (e.g. Documents), delete the
+echo   "runtime" folder inside it, and run run.bat from there.
+echo  ------------------------------------------------------------------
+echo.
+choice /c CQ /n /m "Press C to continue anyway, or Q to quit: "
+if errorlevel 2 exit
+exit /b 0
+
+:update
+if not exist "%EH_ROOT%.git" exit /b 0
+where git >nul 2>&1 || exit /b 0
+echo Checking for updates...
+git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=10 pull --ff-only --quiet >nul 2>&1
+if errorlevel 1 (
+  echo   Couldn't check for updates right now ^(offline?^). Starting the current version.
+) else (
+  echo   Up to date.
+)
 exit /b 0
 
 :get_uv

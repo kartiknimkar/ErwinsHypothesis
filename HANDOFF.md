@@ -27,6 +27,20 @@ Every session starts by reading it and ends by updating it (then committing).
 - Launchers set PIP_CACHE_DIR / UV_CACHE_DIR / UV_PYTHON_INSTALL_DIR inside `runtime/`.
 - Tested: launcher with a fresh HOME wrote nothing to HOME (system-Python and private-Python routes).
 
+## User's setup & lessons learned (keep in mind!)
+- User is on **Windows** for now (Mac later). Works at OSU Wexner (Cocucci Lab).
+- First try ran from a **network drive** (`T:` = `\\cccdfs.osumc.edu\shared\...`): library install
+  took very long (thousands of small files over SMB + antivirus). Advice: keep the app folder on the
+  local disk. `run.bat` now detects network drives and warns (continue/quit).
+- Never use `--quiet` for installs: user thought it was frozen. Always show progress.
+- `run.bat` must keep CRLF line endings (`.gitattributes`: `*.bat -text`, file committed as CRLF).
+  After editing it on Linux, convert: `sed -i 's/\r$//; s/$/\r/' run.bat`.
+- `run.bat` re-runs itself from `runtime\launcher.bat` so `git pull` can safely replace it;
+  `run.sh` is wrapped in `main()` for the same reason.
+- Launchers auto-update with `git pull --ff-only` at start when the folder is a git clone
+  (skip with `EH_NO_UPDATE=1`). User was told to switch from the ZIP download to a clone.
+- Explain things in plain, non-technical language; user prefers simple step-by-step instructions.
+
 ## How the code is laid out
 - `backend/app/stats.py`: all statistics (pure functions, lists in → dict out)
 - `backend/app/storage.py`: projects/exports, filename sanitizing, reveal folder

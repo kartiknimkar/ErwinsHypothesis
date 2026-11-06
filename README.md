@@ -25,9 +25,17 @@ the app completely, delete the folder.
 
 ## Run it on Windows
 
-1. On the GitHub page, click **Code → Download ZIP**, then unzip it wherever
-   you like (e.g. `Documents\ErwinsHypothesis`).
-2. Double-click **`run.bat`**. If Windows shows "Windows protected your PC",
+Put the app on your computer's own disk (e.g. `Documents`), **not a network
+drive**: on a network drive setup takes much longer and the app starts slowly.
+
+1. Install Git from https://git-scm.com (default options), then in Command Prompt:
+   ```
+   cd %USERPROFILE%\Documents
+   git clone https://github.com/kartiknimkar/ErwinsHypothesis.git
+   ```
+   (Or click **Code → Download ZIP** on GitHub and unzip it, but then you won't
+   get automatic updates.)
+2. Double-click **`run.bat`** in the new folder. If Windows shows "Windows protected your PC",
    click **More info → Run anyway** (this happens for any script downloaded
    from the internet).
 3. The first run needs internet and takes a minute or two. Your browser then
@@ -43,8 +51,10 @@ cd ErwinsHypothesis
 
 ## Updating
 
-Download the new ZIP (or `git pull`) and copy your `projects` folder across.
-If you use git, `projects`, `exports` and `runtime` are never touched by updates.
+If you installed with `git clone`, the app updates itself every time you start
+it (when online). Your `projects`, `exports` and `runtime` folders are never
+touched by updates. With a ZIP download, download the new ZIP and copy your
+`projects` folder across.
 
 ## Options
 

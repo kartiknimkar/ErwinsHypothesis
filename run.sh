@@ -8,8 +8,12 @@
 #    exports/   exported graphs
 #  Uses the Python already on this computer (3.10 or newer) if there
 #  is one; otherwise downloads a private copy into runtime/python.
-#  To always use a private copy:  EH_PRIVATE_PYTHON=1 ./run.sh
+#  Options:  EH_PRIVATE_PYTHON=1  always use a private Python copy
+#            EH_NO_UPDATE=1       don't check GitHub for updates at start
 # ================================================================
+# The whole script is wrapped in main() so bash reads it completely
+# before running; an update can then safely replace this file.
+main() {
 set -euo pipefail
 cd "$(dirname "$0")"
 ROOT="$(pwd)"
@@ -60,6 +64,16 @@ get_uv() {
     | tar -xz -C "$RT/uv" --strip-components=1
 }
 
+# --- Get the latest version from GitHub (if this folder is a clone) --
+if [ "${EH_NO_UPDATE:-0}" != "1" ] && [ -d .git ] && command -v git >/dev/null 2>&1; then
+  echo "Checking for updates..."
+  if git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=10 pull --ff-only --quiet >/dev/null 2>&1; then
+    echo "  Up to date."
+  else
+    echo "  Couldn't check for updates right now (offline?). Starting the current version."
+  fi
+fi
+
 # --- 1. Reuse the existing environment if it still works ------------
 if [ -x "$PY" ] && ! "$PY" -c 'import sys' >/dev/null 2>&1; then
   echo "The app's Python environment needs rebuilding (was Python updated or removed?)..."
@@ -81,20 +95,26 @@ if [ ! -x "$PY" ]; then
     rm -rf "$VENV"
     echo "Setting up a private copy of Python inside this folder (first run only)..."
     [ -x "$UVEXE" ] || get_uv || fail
-    "$UVEXE" venv --quiet --python 3.12 --python-preference only-managed "$VENV" || fail
+    "$UVEXE" venv --python 3.12 --python-preference only-managed "$VENV" || fail
   fi
 fi
 
 # --- Install or update the libraries when requirements change -------
 if ! cmp -s backend/requirements.txt "$VENV/requirements.installed"; then
-  echo "Installing the app's libraries (first run or update; about a minute)..."
+  echo ""
+  echo "Installing the app's libraries (first run or after an update)."
+  echo "This takes 1-2 minutes on a local disk. Progress is shown below."
+  echo ""
   if [ -x "$UVEXE" ]; then
-    "$UVEXE" pip install --quiet --python "$PY" -r backend/requirements.txt || fail
+    "$UVEXE" pip install --python "$PY" -r backend/requirements.txt || fail
   else
-    "$PY" -m pip install --quiet --no-cache-dir -r backend/requirements.txt || fail
+    "$PY" -m pip install --no-cache-dir --progress-bar on -r backend/requirements.txt || fail
   fi
   cp backend/requirements.txt "$VENV/requirements.installed"
 fi
 
 cd backend
 exec "$PY" -m app.main
+}
+
+main "$@"
