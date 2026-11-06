@@ -47,8 +47,8 @@ Every session starts by reading it and ends by updating it (then committing).
 ## How the code is laid out
 - `backend/app/stats.py`: t tests, ANOVA family, normality, correlation, linear regression
 - `backend/app/curvefit.py`: nonlinear models (MODELS dict) + fit()
-- `backend/app/survival.py`, `backend/app/contingency.py`
-- Endpoints: /api/compare, /api/fit, /api/models, /api/survival, /api/contingency (+ old /api/ttest, /api/regression)
+- `backend/app/survival.py`, `backend/app/contingency.py`, `backend/app/anova2.py` (two-way, RM)
+- Endpoints: /api/compare (kinds incl. rm, friedman, wilcoxon), /api/twoway, /api/fit, /api/models, /api/survival, /api/contingency (+ old /api/ttest, /api/regression)
 - `backend/app/storage.py`: projects/exports, filename sanitizing, reveal folder
 - `backend/app/main.py`: FastAPI server + `main()` (opens browser when ready, detects already-running)
 - `backend/app/static/`: interface (vanilla JS, no build step): `index.html`, `style.css`, `app.js`
@@ -58,14 +58,14 @@ Every session starts by reading it and ends by updating it (then committing).
 - Sizes measured: ~266 MB (system Python), ~410 MB (private Python).
 
 ## Current state
-- [x] Preview app with 4 analysis types (see ROADMAP Phase 0.6); 35 tests pass
+- [x] Preview app with 5 analysis types (see ROADMAP Phase 0.6-0.7); 41 tests pass
 - [x] User confirmed the app runs on their Windows PC (C: drive, private Python fallback)
 - [x] Interface rewritten around a TYPES registry in `static/app.js` (each type: data layout,
       options, request, results renderer, graph drawer, format controls). Add new modules there.
 
 ## Next step (suggested order; confirm with user)
-1. Two-way ANOVA (grouped tables) + repeated-measures one-way ANOVA / Friedman
-   (would add statsmodels to requirements, ~40 MB; or implement balanced case by hand)
+1. (done) Two-way ANOVA + RM one-way / Friedman / Wilcoxon (`backend/app/anova2.py`, no new dependencies)
+   Possible follow-ups: two-way with repeated measures, comparisons across rows / main-effect comparisons
 2. More curve models (Gaussian, two-phase decay, dose-response fixed slope, Boltzmann) + model comparison (extra sum-of-squares F, AICc)
 3. Graph polish: per-group colors, legend editing, axis tick control, export size/DPI options
 4. Data import: CSV/Excel file import button; results export to CSV

@@ -7,7 +7,9 @@ clean, modern interface. Everything runs on your own computer.
 **Status:** early preview. Available today:
 
 - **Compare groups:** t tests (unpaired, Welch, paired), Mann-Whitney, one-way ANOVA + Tukey,
-  Welch's ANOVA + Games-Howell, Kruskal-Wallis + Dunn's, normality tests
+  Welch's ANOVA + Games-Howell, Kruskal-Wallis + Dunn's, normality tests; for the same subjects
+  measured repeatedly: paired t, Wilcoxon, repeated-measures ANOVA, Friedman
+- **Grouped (two factors):** two-way ANOVA with multiple comparisons
 - **XY:** linear regression & correlation; curve fitting: dose-response (IC50/EC50),
   Michaelis-Menten, exponential growth/decay, one-phase association
 - **Survival:** Kaplan-Meier curves, log-rank test, hazard ratio, median survival

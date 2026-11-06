@@ -22,6 +22,13 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
       point/font size, axis ranges, log axes, box plots, error-bar types, bracket stacking), Copy results
 - [x] Tests cross-check vs statsmodels, pingouin, scikit-posthocs, lifelines (35 tests)
 
+## Phase 0.7: Two-way & repeated measures (done 2026-11-06)
+- [x] Grouped analysis: two-way ANOVA (Type III SS, unequal n), % variation, within-row comparisons
+      (Šídák for 2 columns, Tukey for 3+), cell means, grouped bar / dot / interaction plots
+- [x] Compare groups "same subjects" design: paired t, Wilcoxon signed-rank, RM one-way ANOVA
+      (Geisser-Greenhouse) + Tukey, Friedman + Dunn's; before-after (connected) plot
+- [x] Cross-checked vs statsmodels (Type III) and pingouin (RM ANOVA, epsilon); 41 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

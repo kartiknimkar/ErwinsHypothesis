@@ -82,17 +82,21 @@
   // ======================================================================
   // analysis types
   // ======================================================================
-  const CHOICES2 = [
-    ["unpaired", "Unpaired t test", "Independent groups (different subjects), similar spread."],
-    ["welch", "Welch's t test", "Independent groups, spread may differ. Safe default."],
-    ["paired", "Paired t test", "Same subjects measured twice. Each row is a pair."],
-    ["mannwhitney", "Mann-Whitney test", "Nonparametric: compares ranks, no normality needed."],
-  ];
-  const CHOICES3 = [
-    ["ordinary", "One-way ANOVA + Tukey", "Compares all means; Tukey's test for every pair."],
-    ["welch", "Welch's ANOVA + Games-Howell", "When the groups' spreads differ."],
-    ["kruskal", "Kruskal-Wallis + Dunn's", "Nonparametric: compares ranks, no normality needed."],
-  ];
+  // test choices by [number of groups][design]
+  const CHOICES = {
+    "2i": [["welch", "Welch's t test", "Spread may differ between groups. Safe default."],
+      ["unpaired", "Unpaired t test", "Assumes both groups have similar spread."],
+      ["mannwhitney", "Mann-Whitney test", "Nonparametric: compares ranks, no normality needed."]],
+    "2r": [["paired", "Paired t test", "Each row is one subject measured in both columns."],
+      ["wilcoxon", "Wilcoxon signed-rank test", "Nonparametric paired test."]],
+    "3i": [["ordinary", "One-way ANOVA + Tukey", "Compares all means; Tukey's test for every pair."],
+      ["welch", "Welch's ANOVA + Games-Howell", "When the groups' spreads differ."],
+      ["kruskal", "Kruskal-Wallis + Dunn's", "Nonparametric: compares ranks, no normality needed."]],
+    "3r": [["rm", "Repeated-measures ANOVA + Tukey", "Each row is one subject measured in every column. Geisser-Greenhouse corrected."],
+      ["friedman", "Friedman test + Dunn's", "Nonparametric repeated measures."]],
+  };
+  const choiceKey = (s, n) => `${n >= 3 ? 3 : 2}${s.options.design === "repeated" ? "r" : "i"}`;
+  const kindFor = (s, n) => { const key = choiceKey(s, n); const k = s.options["kind" + key]; return CHOICES[key].some(c => c[0] === k) ? k : CHOICES[key][0][0]; };
   let MODELS = [
     { id: "dr_inhibit", name: "Dose-response: inhibition (IC50)", log_x: true, equation: "Y = Bottom + (Top − Bottom) / (1 + 10^((LogIC50 − X)·HillSlope))" },
     { id: "dr_stim", name: "Dose-response: stimulation (EC50)", log_x: true, equation: "Y = Bottom + (Top − Bottom) / (1 + 10^((LogEC50 − X)·HillSlope))" },
@@ -111,7 +115,7 @@
       colKind: j => `Group ${letter(j)}`, newColName: j => `Group ${letter(j)}`,
       hint: "One column per group, one value per cell. Paste straight from Excel. Click a column name to rename it.",
       cols: ["Control", "Treated"],
-      options: { kind2: "welch", kind3: "ordinary", alpha: 0.05 },
+      options: { design: "independent", alpha: 0.05 },
       graph: { ylabel: "Response", style: "dots", err: "sd", brackets: "sig", showPoints: true },
       examples: s => s.cols.length >= 3 ? {
         cols: ["Vehicle", "Drug 10 µM", "Drug 50 µM"],
@@ -122,24 +126,53 @@
       },
       request(s) {
         return ["/api/compare", { groups: s.cols.map((_, j) => s.data.map(r => num(r[j]))), names: s.cols.map((c, j) => c || `Group ${letter(j)}`),
-          kind: filledCols(s).length >= 3 ? s.options.kind3 : s.options.kind2, alpha: s.options.alpha }];
+          kind: kindFor(s, filledCols(s).length), alpha: s.options.alpha }];
       },
       renderOptions(s) {
-        const n = filledCols(s).length;
-        const three = n >= 3;
-        const list = three ? CHOICES3 : CHOICES2, key = three ? "kind3" : "kind2";
-        return `<div class="opt-label">${three ? `${n} groups: compare all` : "2 groups"}</div>` +
-          list.map(([k, name, d]) => `<label class="choice ${s.options[key] === k ? "on" : ""}"><input type="radio" name="${key}" value="${k}" ${s.options[key] === k ? "checked" : ""}><span><b>${name}</b><small>${d}</small></span></label>`).join("") +
-          (three ? "" : `<p class="hint">Have 3 or more groups? Click <b>+ Group</b> to add a column.</p>`) + alphaSelect(s);
+        const n = filledCols(s).length, key = choiceKey(s, n), cur = kindFor(s, n);
+        const rep = s.options.design === "repeated";
+        return `<div class="seg"><button data-design="independent" class="${rep ? "" : "on"}">Different subjects in each group</button><button data-design="repeated" class="${rep ? "on" : ""}">Same subjects (each row = one subject)</button></div>
+          <div class="opt-label">${n >= 3 ? `${n} groups: compare all` : "2 groups"}</div>` +
+          CHOICES[key].map(([k, name, d]) => `<label class="choice ${cur === k ? "on" : ""}"><input type="radio" name="kind${key}" value="${k}" ${cur === k ? "checked" : ""}><span><b>${name}</b><small>${d}</small></span></label>`).join("") +
+          (n >= 3 ? "" : `<p class="hint">Have 3 or more groups? Click <b>+ Group</b> to add a column.</p>`) + alphaSelect(s);
       },
       graphControls: s => [
-        sel("style", "Style", [["dots", "Dots + mean"], ["bars", "Bars + dots"], ["box", "Box plot"]]),
+        sel("style", "Style", [["dots", "Dots + mean"], ["bars", "Bars + dots"], ["box", "Box plot"],
+          ...(s.options.design === "repeated" ? [["lines", "Before-after (connect subjects)"]] : [])]),
         sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
         sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]),
         txt("ylabel", "Y axis label"), chk("showPoints", "Show points"),
       ],
       renderResults: renderGroupResults,
       draw: drawGroups,
+    },
+    // ---------------------------------------------------------------- two-way
+    twoway: {
+      label: "Grouped: two-way ANOVA", newTitle: "Two-way ANOVA",
+      minCols: 3, maxCols: 12, fixedCols: 1, textCol: 0, addLabel: "+ Group", minRows: 15,
+      colKind: j => j === 0 ? "Row factor" : `Group ${letter(j - 1)}`, newColName: j => `Group ${letter(j - 1)}`,
+      hint: "Two factors, e.g. treatment (columns) × sex or time (rows). Type the row name in the first column. For replicates, add more rows with the same name.",
+      cols: ["Sex", "Vehicle", "Drug"],
+      options: { alpha: 0.05 },
+      graph: { ylabel: "Response", style: "bars", err: "sd", brackets: "sig", showPoints: true },
+      examples: () => ({
+        cols: ["Sex", "Vehicle", "Low dose", "High dose"],
+        rows: [["Male", 5.1, 6.9, 8.2], ["Male", 4.8, 7.4, 8.8], ["Male", 5.5, 7.1, 8.5], ["Male", 5.0, 6.6, 8.9],
+          ["Female", 6.0, 7.0, 7.1], ["Female", 6.3, 7.7, 7.6], ["Female", 5.8, 7.2, 7.9], ["Female", 6.1, 7.5, 7.4]],
+      }),
+      request(s) {
+        return ["/api/twoway", { rows: s.data.map(r => String(r[0] || "").trim()), columns: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
+          names: s.cols.slice(1).map((c, j) => c || `Group ${letter(j)}`), alpha: s.options.alpha }];
+      },
+      renderOptions: s => `<p class="hint">Tests whether the <b>column factor</b> (${esc(s.cols.slice(1).join(", "))}) matters, whether the <b>row factor</b> (${esc(s.cols[0])}) matters, and whether they <b>interact</b> (the treatment effect differs between rows). Then compares the columns within each row.</p>${alphaSelect(s)}`,
+      graphControls: () => [
+        sel("style", "Style", [["bars", "Bars + dots"], ["dots", "Dots + mean"], ["lines", "Interaction plot (means)"]]),
+        sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
+        sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]),
+        txt("ylabel", "Y axis label"), chk("showPoints", "Show points"),
+      ],
+      renderResults: renderTwoWayResults,
+      draw: drawTwoWay,
     },
     // ---------------------------------------------------------------- XY
     regression: {
@@ -256,7 +289,14 @@
     const t = TYPES[s.type] || TYPES.ttest;
     if (!TYPES[s.type]) s.type = "ttest";
     s.options = { ...t.options, ...(s.options || {}) };
-    if (s.type === "ttest" && s.options.kind && !s.options.kind2Set) { s.options.kind2 = s.options.kind; s.options.kind2Set = true; }
+    if (s.type === "ttest" && !s.options.migrated) {
+      // older versions stored kind / kind2 / kind3
+      const k2 = s.options.kind2 || s.options.kind;
+      if (k2 === "paired") { s.options.design = "repeated"; s.options.kind2r = "paired"; }
+      else if (k2) s.options.kind2i = k2;
+      if (s.options.kind3) s.options.kind3i = s.options.kind3;
+      s.options.migrated = true;
+    }
     s.graph = { ...COMMON_GRAPH, ...t.graph, ...(s.graph || {}) };
     s.data = (s.data || []).map(r => s.cols.map((_, j) => r[j] ?? ""));
     padRows(s);
@@ -273,6 +313,7 @@
     const add = (type, title, tweak) => { const s = newSheet(type); if (tweak) tweak(s); applyExample(s); s.title = title; project.sheets.push(s); return s; };
     const first = add("ttest", "Example: two groups");
     add("ttest", "Example: three groups (ANOVA)", s => { s.cols = ["A", "B", "C"]; });
+    add("twoway", "Example: two-way ANOVA");
     add("regression", "Example: dose-response (IC50)", s => { s.options.model = "dr_inhibit"; s.graph.logX = true; });
     add("regression", "Example: standard curve");
     add("survival", "Example: survival");
@@ -378,7 +419,7 @@
         <span class="badge t-${s.type}">${badgeText(s.type)}</span><span class="t">${esc(s.title)}</span></li>`).join("");
     $("sheet-list").querySelectorAll("li").forEach(li => li.onclick = () => { project.activeId = li.dataset.id; save(); renderAll(); });
   }
-  const badgeText = t => ({ ttest: "G", regression: "XY", survival: "S", contingency: "#" }[t]);
+  const badgeText = t => ({ ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#" }[t]);
 
   // ======================================================================
   // data grid
@@ -484,6 +525,11 @@
     const s = active(), box = $("options");
     box.innerHTML = TYPES[s.type].renderOptions(s);
     box.querySelectorAll("input[type=radio]").forEach(r => r.onchange = () => { s.options[r.name] = r.value; save(); renderOptions(); scheduleRun(); });
+    box.querySelectorAll("[data-design]").forEach(b => b.onclick = () => {
+      s.options.design = b.dataset.design;
+      if (s.options.design !== "repeated" && s.graph.style === "lines") s.graph.style = "dots";
+      save(); renderOptions(); renderFormat(); scheduleRun();
+    });
     const a = $("opt-alpha"); if (a) a.onchange = e => { s.options.alpha = Number(e.target.value); save(); scheduleRun(); };
     const m = $("opt-model");
     if (m) m.onchange = e => {
@@ -562,7 +608,9 @@
     if (r.n_groups === 2) {
       const [a, b] = r.groups, dir = r.difference > 0 ? "higher" : "lower", what = r.kind === "mannwhitney" ? "median" : "mean";
       h += r.significant
-        ? T.summary("sig", `<b>Significant difference</b> (${fmtP(r.p)}, ${r.stars}). The ${what} of <b>${esc(b.name)}</b> is ${fmt(Math.abs(r.difference))} ${dir} than <b>${esc(a.name)}</b>${r.ci_low != null ? ` (${pct}% CI of the difference: ${ci(r.ci_low, r.ci_high)})` : ""}.`)
+        ? T.summary("sig", `<b>Significant difference</b> (${fmtP(r.p)}, ${r.stars}). ` + (r.kind === "wilcoxon"
+          ? `The median difference (<b>${esc(b.name)}</b> − <b>${esc(a.name)}</b>) is ${fmt(r.difference)}.`
+          : `The ${what} of <b>${esc(b.name)}</b> is ${fmt(Math.abs(r.difference))} ${dir} than <b>${esc(a.name)}</b>${r.ci_low != null ? ` (${pct}% CI of the difference: ${ci(r.ci_low, r.ci_high)})` : ""}.`))
         : T.summary("ns", `<b>No significant difference</b> (${fmtP(r.p)}). The data don't show convincing evidence that <b>${esc(a.name)}</b> and <b>${esc(b.name)}</b> differ. That isn't proof they're the same.`);
       h += T.table([T.sec(esc(r.test_name)), T.row("P value", pOnly(r.p)), T.row(`Significant? (α = ${r.alpha})`, `${r.significant ? "Yes" : "No"} ${st(r.stars)}`),
         T.row(`${r.statistic_name}${r.df != null ? ", df" : ""}`, `${r.statistic_name} = ${fmt(r.statistic)}${r.df != null ? `, df = ${fmt(r.df)}` : ""}`),
@@ -576,18 +624,96 @@
         : T.summary("ns", `<b>No significant difference among the ${r.k} groups</b> (${esc(r.test_name)}, ${fmtP(r.p)}).`);
       const main = [T.sec(esc(r.test_name)), T.row("P value", pOnly(r.p)), T.row(`Significant? (α = ${r.alpha})`, `${r.significant ? "Yes" : "No"} ${st(r.stars)}`)];
       if (r.kind === "kruskal") main.push(T.row("Kruskal-Wallis H, df", `H = ${fmt(r.H)}, df = ${r.df_between}`));
+      else if (r.kind === "friedman") main.push(T.row("Friedman χ², df", `${fmt(r.chi2)}, ${r.df_between}`), T.row("Subjects (complete rows)", r.n_subjects));
       else main.push(T.row("F (DFn, DFd)", `F (${fmt(r.df_between)}, ${fmt(r.df_within)}) = ${fmt(r.F)}`));
+      if (r.kind === "rm") main.push(T.row("Geisser-Greenhouse ε", fmt(r.epsilon, 3)), T.row("P without correction", pOnly(r.p_uncorrected)),
+        T.row("Subjects (complete rows)", r.n_subjects));
       if (r.r_squared != null) main.push(T.row("R²", fmt(r.r_squared)));
       h += T.table(main);
       if (r.table) h += T.multi(["ANOVA table", "SS", "DF", "MS"], r.table.map(t => [esc(t.source), fmt(t.SS), fmt(t.df), fmt(t.MS)]));
+      const rankBased = r.kind === "kruskal" || r.kind === "friedman";
       h += `<div class="opt-label" style="margin-top:10px">${esc(r.posthoc_name)}</div>`;
-      h += T.multi(["Comparison", esc(r.diff_label), r.kind === "kruskal" ? "" : `${pct}% CI`, "Adj. P", ""],
-        r.comparisons.map(c => ({ cls: c.significant ? "hl" : "", cells: [`${esc(c.a)} vs ${esc(c.b)}`, fmt(c.diff), r.kind === "kruskal" ? "" : ci(c.ci_low, c.ci_high), pOnly(c.p), st(c.stars)] })));
-      h += T.table(normalityRows(r));
+      h += T.multi(["Comparison", esc(r.diff_label), rankBased ? "" : `${pct}% CI`, "Adj. P", ""],
+        r.comparisons.map(c => ({ cls: c.significant ? "hl" : "", cells: [`${esc(c.a)} vs ${esc(c.b)}`, fmt(c.diff), rankBased ? "" : ci(c.ci_low, c.ci_high), pOnly(c.p), st(c.stars)] })));
+      if (r.normality) h += T.table(normalityRows(r));
+      if (r.kind === "rm" || r.kind === "friedman") h += `<p class="note">Only rows with a value in every column are used (${r.n_subjects} subjects).</p>`;
       if (r.variance_check && r.variance_check.p < 0.05) h += `<p class="note warn">⚠︎ The groups' spreads differ (Brown-Forsythe ${fmtP(r.variance_check.p)}). Welch's ANOVA is safer.</p>`;
     }
     h += `<div class="opt-label" style="margin-top:10px">Descriptive statistics</div>` + descTable(r.groups);
     return h;
+  }
+
+  // ---------------------------------------------------------------- two-way
+  function renderTwoWayResults(r, s) {
+    const pct = Math.round((1 - r.alpha) * 100);
+    const t = Object.fromEntries(r.table.map(x => [x.source, x]));
+    const rowF = esc(s.cols[0] || "Row factor");
+    const sigTerm = (x, label) => x.p < r.alpha ? `<b>${label}</b> matters (${fmtP(x.p)}, ${x.stars})` : `${label} doesn't (${fmtP(x.p)})`;
+    let h = T.summary(t.Interaction.p < r.alpha || t["Column factor"].p < r.alpha || t["Row factor"].p < r.alpha ? "sig" : "ns",
+      `${sigTerm(t["Column factor"], "Column factor (groups)")}; ${sigTerm(t["Row factor"], rowF)}; ` +
+      (t.Interaction.p < r.alpha ? `and they <b>interact</b> (${fmtP(t.Interaction.p)}): the group effect depends on ${rowF}.`
+        : `no significant interaction (${fmtP(t.Interaction.p)}).`));
+    h += T.multi(["Source of variation", "% of total", "F (DFn, DFd)", "P value", ""],
+      r.table.filter(x => x.F !== null).map(x => ({ cls: x.p < r.alpha ? "hl" : "",
+        cells: [x.source === "Row factor" ? rowF : x.source === "Column factor" ? "Column factor (groups)" : x.source,
+          fmt(x.pct, 3) + "%", `F (${x.df}, ${t.Residual.df}) = ${fmt(x.F)}`, pOnly(x.p), st(x.stars)] })));
+    h += T.multi(["ANOVA table", "SS", "DF", "MS"], r.table.map(x => [x.source === "Row factor" ? rowF : x.source, fmt(x.SS), x.df, fmt(x.MS)]));
+    h += `<div class="opt-label" style="margin-top:10px">${esc(r.posthoc_name)}</div>`;
+    h += T.multi([rowF, "Comparison", "Mean diff.", `${pct}% CI`, "Adj. P", ""], r.comparisons.map(c => ({ cls: c.significant ? "hl" : "",
+      cells: [esc(c.row), `${esc(c.a)} vs ${esc(c.b)}`, fmt(c.diff), ci(c.ci_low, c.ci_high), pOnly(c.p), st(c.stars)] })));
+    h += `<div class="opt-label" style="margin-top:10px">Cell means</div>`;
+    h += T.multi([rowF, ...r.cols.map(esc)], r.rows.map((rw, i) => [esc(rw), ...r.cols.map((_, j) => {
+      const c = r.cells.find(x => x.i === i && x.j === j);
+      return `${fmt(c.mean)} <span class="pd">± ${fmt(c.sd, 3)} (n=${c.n})</span>`;
+    })]));
+    h += `<p class="note">Mean ± SD. ${r.balanced ? "" : "Unequal group sizes: Type III sums of squares are used. "}Comparisons use the pooled ANOVA error.</p>`;
+    return h;
+  }
+
+  function drawTwoWay(el, r, s) {
+    const g = s.graph, traces = [], shapes = [], annotations = [];
+    const nr = r.rows.length, nc = r.cols.length;
+    const width = 0.8, step = width / nc;
+    const pos = (i, j) => i - width / 2 + step * (j + 0.5);
+    let ymax = -Infinity, ymin = Infinity;
+    const errOf = c => g.err === "sem" ? c.sem : g.err === "ci95" ? c.ci95 : g.err === "sd" ? c.sd : 0;
+    r.cols.forEach((name, j) => {
+      const col = color(g, j);
+      const cells = r.rows.map((_, i) => r.cells.find(c => c.i === i && c.j === j));
+      cells.forEach(c => { ymax = Math.max(ymax, c.max, c.mean + (errOf(c) || 0)); ymin = Math.min(ymin, c.min); });
+      const xs = r.rows.map((_, i) => g.style === "lines" ? i : pos(i, j));
+      const errY = { type: "data", array: cells.map(c => errOf(c) || 0), visible: g.err !== "none", color: g.style === "lines" ? col : "#1b2130", thickness: 1.4, width: 6 };
+      if (g.style === "bars") traces.push({ type: "bar", x: xs, y: cells.map(c => c.mean), width: step * 0.9, name: esc(name), showlegend: true,
+        marker: { color: col + "40", line: { color: col, width: 1.5 } }, error_y: errY, hoverinfo: "skip" });
+      else traces.push({ type: "scatter", mode: g.style === "lines" ? "lines+markers" : "markers", x: xs, y: cells.map(c => c.mean), name: esc(name), showlegend: true,
+        marker: g.style === "lines" ? { color: col, size: g.pointSize + 2 } : { symbol: "line-ew", size: 26, line: { width: 3, color: col } },
+        line: { color: col, width: 2.2 }, error_y: errY, hovertemplate: `${esc(name)}: mean %{y:.4g}<extra></extra>` });
+      if (g.showPoints && g.style !== "lines") {
+        const px = [], py = [];
+        r.rows.forEach((rw, i) => s.data.forEach(row => {
+          if (String(row[0] || "").trim() === rw) { const v = num(row[s.cols.indexOf(name, 1)]); if (v !== null) { px.push(pos(i, j) + ((px.length * 0.618) % 1 - 0.5) * step * 0.45); py.push(v); } }
+        }));
+        traces.push({ type: "scatter", mode: "markers", x: px, y: py, showlegend: false,
+          marker: { color: col, size: g.pointSize * 0.85, opacity: 0.85, line: { color: "#fff", width: 1 } }, hovertemplate: "%{y}<extra></extra>" });
+      }
+    });
+    const span = (ymax - Math.min(0, ymin)) || 1;
+    let topExtra = span * 0.08;
+    if (g.brackets !== "none" && g.style !== "lines") {
+      const show = r.comparisons.filter(c => g.brackets === "all" || c.significant).map(c => ({ i: pos(c.i, c.j1), j: pos(c.i, c.j2), stars: c.stars }));
+      const { items, height } = bracketLayout(show, ymax, span);
+      const tick = span * 0.02;
+      items.forEach(p => {
+        shapes.push({ type: "path", path: `M ${p.i} ${p.y - tick} L ${p.i} ${p.y} L ${p.j} ${p.y} L ${p.j} ${p.y - tick}`, line: { color: "#1b2130", width: 1.2 } });
+        annotations.push({ x: (p.i + p.j) / 2, y: p.y, text: p.stars, showarrow: false, yanchor: "bottom", font: { size: p.stars === "ns" ? 10 : 14 } });
+      });
+      topExtra = Math.max(topExtra, height + span * 0.04);
+    }
+    const lo = g.style === "bars" ? Math.min(0, ymin) : ymin - span * 0.08;
+    Plotly.react(el, traces, { ...baseLayout(g), shapes, annotations, showlegend: true, barmode: "overlay",
+      legend: { orientation: "h", y: 1.1, x: 0 },
+      xaxis: axis(g, { tickvals: r.rows.map((_, i) => i), ticktext: r.rows.map(esc), range: [-0.6, nr - 0.4], title: { text: esc(s.cols[0] || "") } }),
+      yaxis: yAxis(g, g.ylabel, { range: [lo, ymax + topExtra] }) }, PLOT_CONFIG);
   }
 
   // ---------------------------------------------------------------- XY
@@ -705,6 +831,15 @@
       const err = g.err === "sem" ? stt.sem : g.err === "ci95" ? stt.ci95 : g.err === "sd" ? stt.sd : 0;
       vals.forEach(v => { ymax = Math.max(ymax, v); ymin = Math.min(ymin, v); });
       ymax = Math.max(ymax, (stt.mean ?? 0) + (err || 0));
+      if (g.style === "lines") {
+        // before-after: one line per subject (row); points are drawn on the lines
+        if (i === 0) s.data.forEach(row => {
+          const pts = cols.map((j, gi) => [gi, num(row[j])]).filter(p => p[1] !== null);
+          if (pts.length >= 2) traces.push({ type: "scatter", mode: "lines+markers", x: pts.map(p => p[0]), y: pts.map(p => p[1]),
+            line: { color: "#9aa3b2", width: 1.3 }, marker: { color: "#1b2130", size: g.pointSize * 0.8 }, hovertemplate: "%{y}<extra></extra>" });
+        });
+        return;
+      }
       const xs = vals.map((_, k) => i + ((k * 0.618) % 1 - 0.5) * 0.3);
       if (g.style === "box") {
         traces.push({ type: "box", x: vals.map(() => i), y: vals, width: 0.5, boxpoints: g.showPoints ? "all" : false, jitter: 0.45, pointpos: 0,
