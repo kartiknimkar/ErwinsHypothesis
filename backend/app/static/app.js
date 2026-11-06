@@ -194,6 +194,7 @@
       request(s) {
         return ["/api/fit", { x: s.data.map(r => num(r[0])), ys: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
           model: s.options.model, compare: s.options.model !== "linear" ? (s.options.compare || null) : null,
+          fixed: Object.fromEntries(Object.entries((s.options.fixed || {})[s.options.model] || {}).filter(([, v]) => isNum(v)).map(([k, v]) => [k, Number(v)])),
           x_is_log: !!s.options.xIsLog, alpha: s.options.alpha }];
       },
       renderOptions(s) {
@@ -204,6 +205,11 @@
           <div class="eqn">${m ? esc(m.equation) : "Y = Slope·X + Intercept"}</div>
           ${m ? `<div class="row"><label for="opt-compare">Compare with</label><select id="opt-compare"><option value="">No comparison</option>${MODELS
             .filter(o => o.id !== m.id && o.log_x === m.log_x).map(o => `<option value="${o.id}" ${s.options.compare === o.id ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select></div>` : ""}
+          ${m && m.params ? `<details class="constrain" ${Object.values((s.options.fixed || {})[m.id] || {}).some(isNum) ? "open" : ""}>
+            <summary>Constrain parameters <span class="pd">(optional)</span></summary>
+            <p class="hint">Leave blank to fit. Type a value to hold it fixed, e.g. Bottom = 0 and Top = 100 for normalized data.</p>
+            <div class="cgrid">${m.params.map(pn => `<label>${esc(pn)}<input type="text" data-fix="${esc(pn)}" value="${esc(((s.options.fixed || {})[m.id] || {})[pn] ?? "")}" placeholder="fit" inputmode="decimal"></label>`).join("")}</div>
+          </details>` : ""}
           ${m && m.log_x ? `<label class="check"><input type="checkbox" id="opt-xislog" ${s.options.xIsLog ? "checked" : ""}> X values are already log10(concentration)</label>
             <p class="hint">Otherwise X is concentration and the app takes the log for you (X = 0 is left out, as it has no log).</p>` : ""}
           ${alphaSelect(s)}`;
@@ -582,6 +588,12 @@
       if (!info || !c || c.id === info.id || c.log_x !== info.log_x) s.options.compare = "";
       save(); renderOptions(); renderFormat(); scheduleRun();
     };
+    box.querySelectorAll("[data-fix]").forEach(inp => inp.oninput = () => {
+      const f = (s.options.fixed = s.options.fixed || {}), mf = (f[s.options.model] = f[s.options.model] || {});
+      mf[inp.dataset.fix] = inp.value.trim();
+      inp.classList.toggle("bad", inp.value.trim() !== "" && !isNum(inp.value));
+      save(); scheduleRun();
+    });
     const cmp = $("opt-compare");
     if (cmp) cmp.onchange = e => { s.options.compare = e.target.value; save(); scheduleRun(); };
     const lg = $("opt-xislog");
@@ -781,10 +793,12 @@
       return h;
     }
     const key = r.derived && r.derived[0];
-    let h = T.summary("sig", `<b>${esc(r.model_name)}</b>: ${key && key.value != null ? `best-fit <b>${key.name} = ${fmt(key.value)}</b>${key.ci && key.ci[0] != null ? ` (${pct}% CI ${ci(key.ci[0], key.ci[1])})` : ""}, ` : ""}R² = ${fmt(r.r_squared, 4)}.`);
-    const rows = [T.sec("Best-fit values"), ...r.params.map(p => T.row(esc(p.name), `${fmt(p.value)} ± ${fmt(p.se)}`)),
+    const nFixed = r.params.filter(p => p.fixed).length;
+    let h = T.summary("sig", `<b>${esc(r.model_name)}</b>: ${key && key.value != null ? `best-fit <b>${key.name} = ${fmt(key.value)}</b>${key.ci && key.ci[0] != null ? ` (${pct}% CI ${ci(key.ci[0], key.ci[1])})` : ""}, ` : ""}R² = ${fmt(r.r_squared, 4)}.` +
+      (nFixed ? ` ${nFixed} parameter${nFixed > 1 ? "s" : ""} held fixed (${r.params.filter(p => p.fixed).map(p => `${esc(p.name)} = ${fmt(p.value)}`).join(", ")}).` : ""));
+    const rows = [T.sec("Best-fit values"), ...r.params.map(p => T.row(esc(p.name), p.fixed ? `${fmt(p.value)} <span class="pd">(fixed)</span>` : `${fmt(p.value)} ± ${fmt(p.se)}`)),
       ...r.derived.map(d => T.row(esc(d.name), fmt(d.value), "hl")),
-      T.sec(`${pct}% confidence intervals`), ...r.params.map(p => T.row(esc(p.name), ci(...p.ci))),
+      T.sec(`${pct}% confidence intervals`), ...r.params.filter(p => !p.fixed).map(p => T.row(esc(p.name), ci(...p.ci))),
       ...r.derived.filter(d => d.ci).map(d => T.row(esc(d.name), ci(d.ci[0], d.ci[1]))),
       T.sec("Goodness of fit"), T.row("R²", fmt(r.r_squared)), T.row("Sy.x", fmt(r.sy_x)), T.row("Sum of squares", fmt(r.ss_res)),
       T.row("Degrees of freedom", r.df), T.row("Number of points", r.n)];

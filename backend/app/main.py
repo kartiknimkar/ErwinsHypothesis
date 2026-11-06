@@ -96,6 +96,7 @@ class FitRequest(BaseModel):
     ys: list                 # one list per Y replicate column, same length as x
     model: str = "linear"    # "linear" or a curvefit model id
     compare: str | None = None  # optional second curvefit model to compare with
+    fixed: dict | None = None   # {parameter name: value} constraints
     x_is_log: bool = False
     alpha: float = 0.05
 
@@ -128,10 +129,10 @@ def run_fit(req: FitRequest):
             res = stats.linear_regression(px, py, alpha=req.alpha)
             res["model"] = "linear"
         else:
-            res = curvefit.fit(px, py, req.model, x_is_log=req.x_is_log, alpha=req.alpha)
+            res = curvefit.fit(px, py, req.model, x_is_log=req.x_is_log, alpha=req.alpha, fixed=req.fixed)
             if req.compare and req.compare in curvefit.MODELS and req.compare != req.model:
                 try:
-                    res["comparison"] = curvefit.compare(px, py, req.model, req.compare, x_is_log=req.x_is_log, alpha=req.alpha)
+                    res["comparison"] = curvefit.compare(px, py, req.model, req.compare, x_is_log=req.x_is_log, alpha=req.alpha, fixed=req.fixed)
                 except ValueError as e:
                     res["comparison"] = {"error": str(e)}
     except (ValueError, TypeError) as e:

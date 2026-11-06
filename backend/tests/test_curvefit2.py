@@ -59,3 +59,25 @@ def test_compare_prefers_right_model():
     assert "f_test" not in c and c["aicc_preferred"] == "exp_decay"
     with pytest.raises(ValueError):
         curvefit.compare(CONC, dr(CONC, -1), "dr_inhibit", "michaelis")
+
+
+def test_constraints_match_reduced_model():
+    from scipy import optimize
+    y = dr(CONC, -1.3, noise=3, seed=4)
+    r = curvefit.fit(CONC, y, "dr_inhibit", fixed={"Bottom": 0, "Top": 100})
+    q = {x["name"]: x for x in r["params"]}
+    assert q["Bottom"]["fixed"] and q["Bottom"]["value"] == 0 and q["Bottom"]["ci"] is None
+    assert r["df"] == len(CONC) - 2
+    # same fit done by hand with only LogIC50 and HillSlope free
+    f = lambda x, l, h: 0 + 100 / (1 + 10 ** ((l - x) * h))  # noqa: E731
+    popt, pcov = optimize.curve_fit(f, np.log10(CONC), y, p0=[0, -1])
+    assert q["LogIC50"]["value"] == approx(popt[0], 1e-5) and q["HillSlope"]["se"] == approx(math.sqrt(pcov[1, 1]), 1e-3)
+    # ignores unknown names; refuses fixing everything
+    assert curvefit.fit(CONC, y, "dr_inhibit", fixed={"Nope": 3})["df"] == len(CONC) - 4
+    with pytest.raises(ValueError):
+        curvefit.fit(CONC, y, "dr_inhibit_fixed", fixed={"Bottom": 0, "Top": 100, "LogIC50": 0})
+    # fixing K: no CI for half-life, but a value
+    t = np.linspace(0, 10, 12)
+    r = curvefit.fit(t, 90 * np.exp(-0.3 * t) + 10, "exp_decay", fixed={"K": 0.3})
+    hl = next(d for d in r["derived"] if d["name"] == "Half-life")
+    assert hl["value"] == approx(math.log(2) / 0.3) and hl["ci"] is None

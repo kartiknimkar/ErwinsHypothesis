@@ -115,6 +115,16 @@ select, .options input[type=text] { border: 1px solid var(--line); border-radius
 .check { display: flex; gap: 6px; align-items: center; color: var(--ink) !important; cursor: pointer; }
 .eqn { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; color: var(--muted); background: var(--soft); border-radius: 6px; padding: 5px 8px; }
 
+/* constraints */
+.constrain { border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; }
+.constrain summary { cursor: pointer; font-weight: 600; font-size: 12.5px; }
+.constrain .hint { margin: 6px 0; }
+.constrain .pd { color: var(--muted); font-weight: 400; }
+.cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px; }
+.cgrid label { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.cgrid input { border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font-weight: 400; color: var(--ink); width: 100%; }
+.cgrid input.bad { color: var(--danger); background: #fdecea; }
+
 /* segmented control */
 .seg { display: flex; border: 1px solid var(--line); border-radius: 8px; padding: 2px; gap: 2px; background: var(--soft); }
 .seg button { flex: 1; padding: 5px 6px; font-size: 12px; border-radius: 6px; color: var(--muted); }

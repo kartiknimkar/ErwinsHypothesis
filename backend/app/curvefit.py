@@ -127,12 +127,14 @@ NESTED = {("dr_inhibit_fixed", "dr_inhibit"), ("dr_stim_fixed", "dr_stim"), ("ex
 
 def list_models():
     return [{"id": k, "name": m["name"], "short": m["short"], "equation": m["equation"],
-             "log_x": m["log_x"]} for k, m in MODELS.items()]
+             "log_x": m["log_x"], "params": m["params"]} for k, m in MODELS.items()]
 
 
-def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_points: int = 200) -> dict:
+def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_points: int = 200,
+        fixed: dict | None = None) -> dict:
     """Fit a model to (x, y) points. For dose-response models, X is concentration unless
-    x_is_log is True (then X is already log10 of concentration)."""
+    x_is_log is True (then X is already log10 of concentration).
+    fixed: {parameter name: value} to hold parameters constant (constraints), e.g. {"Bottom": 0}."""
     if model not in MODELS:
         raise ValueError(f"Unknown model: {model}")
     m = MODELS[model]
@@ -145,30 +147,52 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
         pos = x > 0
         dropped = int(np.sum(~pos))
         x, y = np.log10(x[pos]), y[pos]
-    p = len(m["params"])
+    names = m["params"]
+    fixed = {k: float(v) for k, v in (fixed or {}).items()
+             if k in names and v is not None and np.isfinite(float(v))}
+    free = [i for i, nm in enumerate(names) if nm not in fixed]
+    if not free:
+        raise ValueError("Every parameter is fixed, so there is nothing to fit. Leave at least one blank.")
+    p = len(free)
     if len(x) <= p:
-        raise ValueError(f"This model has {p} parameters, so it needs at least {p + 1} points "
+        raise ValueError(f"This fit has {p} free parameters, so it needs at least {p + 1} points "
                          f"(you have {len(x)}).")
     if np.ptp(x) == 0:
         raise ValueError("All X values are the same.")
 
-    p0 = m["guess"](x, y)
+    def full(pf):
+        vals = [fixed.get(nm) for nm in names]
+        for i, v in zip(free, pf):
+            vals[i] = v
+        return vals
+
+    def f_free(xx, *pf):
+        return m["f"](xx, *full(pf))
+
+    guess = m["guess"](x, y)
+    p0 = [guess[i] for i in free]
     try:
-        popt, pcov = optimize.curve_fit(m["f"], x, y, p0=p0, maxfev=20000)
+        pfit, pcov = optimize.curve_fit(f_free, x, y, p0=p0, maxfev=20000)
     except (RuntimeError, ValueError):
         raise ValueError("The fit didn't converge. Check that the data have the expected shape "
                          "for this model, or try a different model.")
+    popt = np.array(full(pfit), float)
     resid = y - m["f"](x, *popt)
     ss_res = float(np.sum(resid ** 2))
     ss_tot = float(np.sum((y - y.mean()) ** 2))
     df = len(x) - p
     sy_x = math.sqrt(ss_res / df)
     tcrit = float(stats.t.ppf(1 - alpha / 2, df))
-    se = np.sqrt(np.clip(np.diag(pcov), 0, None)) if np.all(np.isfinite(pcov)) else np.full(p, np.nan)
+    se_free = np.sqrt(np.clip(np.diag(pcov), 0, None)) if np.all(np.isfinite(pcov)) else np.full(p, np.nan)
+    se = {i: s for i, s in zip(free, se_free)}
     params = []
-    for name, val, s in zip(m["params"], popt, se):
-        params.append({"name": name, "value": float(val), "se": float(s),
-                       "ci": [float(val - tcrit * s), float(val + tcrit * s)]})
+    for i, (name, val) in enumerate(zip(names, popt)):
+        if i in se:
+            s_ = float(se[i])
+            params.append({"name": name, "value": float(val), "se": s_,
+                           "ci": [float(val - tcrit * s_), float(val + tcrit * s_)], "fixed": False})
+        else:
+            params.append({"name": name, "value": float(val), "se": None, "ci": None, "fixed": True})
 
     derived = []
     if m.get("two_phase"):
@@ -178,6 +202,7 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
                 params[a_]["value"], params[b_]["value"] = params[b_]["value"], params[a_]["value"]
                 params[a_]["se"], params[b_]["se"] = params[b_]["se"], params[a_]["se"]
                 params[a_]["ci"], params[b_]["ci"] = params[b_]["ci"], params[a_]["ci"]
+                params[a_]["fixed"], params[b_]["fixed"] = params[b_]["fixed"], params[a_]["fixed"]
             popt = np.array([q["value"] for q in params])
         for label, q in (("Half-life (fast)", params[2]), ("Half-life (slow)", params[4])):
             k = q["value"]
@@ -189,13 +214,15 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
         dname, lname = m["derived"]
         lp = next(q for q in params if q["name"] == lname)
         derived.append({"name": dname, "value": 10 ** lp["value"],
-                        "ci": [10 ** lp["ci"][0], 10 ** lp["ci"][1]]})
+                        "ci": [10 ** lp["ci"][0], 10 ** lp["ci"][1]] if lp["ci"] else None})
     if m.get("halflife") or m.get("doubling"):
         kp = next(q for q in params if q["name"] == "K")
         label = "Half-life" if m.get("halflife") else "Doubling time"
         k = kp["value"]
-        lo, hi = sorted([kp["ci"][0], kp["ci"][1]])
-        ci = [math.log(2) / hi if hi > 0 else None, math.log(2) / lo if lo > 0 else None]
+        ci = None
+        if kp["ci"]:
+            lo, hi = sorted([kp["ci"][0], kp["ci"][1]])
+            ci = [math.log(2) / hi if hi > 0 else None, math.log(2) / lo if lo > 0 else None]
         derived.append({"name": label, "value": math.log(2) / k if k > 0 else None, "ci": ci})
         derived.append({"name": "Tau (1/K)", "value": 1 / k if k else None, "ci": None})
 
@@ -204,7 +231,7 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
         xs = np.linspace(0 if model in ("michaelis",) else x.min(), x.max(), curve_points)
     curve_y = m["f"](xs, *popt)
     n = len(x)
-    K = p + 1  # parameters + residual variance
+    K = p + 1  # free parameters + residual variance
     aicc = (n * math.log(ss_res / n) + 2 * K + 2 * K * (K + 1) / (n - K - 1)) if ss_res > 0 and n - K - 1 > 0 else None
     return {
         "aicc": aicc,
@@ -212,13 +239,14 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
         "equation": m["equation"], "params": params, "derived": derived,
         "r_squared": 1 - ss_res / ss_tot if ss_tot > 0 else None,
         "sy_x": sy_x, "ss_res": ss_res, "df": df, "n": int(len(x)), "dropped": dropped,
-        "x_is_log": bool(m["log_x"]), "alpha": alpha,
+        "x_is_log": bool(m["log_x"]), "alpha": alpha, "fixed": fixed,
         "points": {"x": x.tolist(), "y": y.tolist()},
         "curve": {"x": xs.tolist(), "y": curve_y.tolist()},
     }
 
 
-def compare(x, y, model_a: str, model_b: str, x_is_log: bool = False, alpha: float = 0.05) -> dict:
+def compare(x, y, model_a: str, model_b: str, x_is_log: bool = False, alpha: float = 0.05,
+            fixed: dict | None = None) -> dict:
     """Fit two models to the same data and say which the data support.
 
     Always reports AICc (works for any pair). For nested pairs (one model is a special
@@ -226,8 +254,8 @@ def compare(x, y, model_a: str, model_b: str, x_is_log: bool = False, alpha: flo
     """
     if MODELS[model_a]["log_x"] != MODELS[model_b]["log_x"]:
         raise ValueError("These two models treat X differently (one uses log of X), so they can't be compared.")
-    fa = fit(x, y, model_a, x_is_log=x_is_log, alpha=alpha)
-    fb = fit(x, y, model_b, x_is_log=x_is_log, alpha=alpha)
+    fa = fit(x, y, model_a, x_is_log=x_is_log, alpha=alpha, fixed=fixed)
+    fb = fit(x, y, model_b, x_is_log=x_is_log, alpha=alpha, fixed=fixed)
     out = {"a": model_a, "b": model_b, "name_a": fa["model_name"], "name_b": fb["model_name"],
            "ss_a": fa["ss_res"], "df_a": fa["df"], "ss_b": fb["ss_res"], "df_b": fb["df"],
            "aicc_a": fa["aicc"], "aicc_b": fb["aicc"], "fit_b": fb}
