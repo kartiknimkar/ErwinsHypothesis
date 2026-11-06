@@ -29,11 +29,14 @@ export UV_CACHE_DIR="$RT/cache/uv"
 export UV_PYTHON_INSTALL_DIR="$RT/python"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export PYTHONNOUSERSITE=1
-mkdir -p "$RT"
+# Installers also use a temporary folder; keep that inside runtime/ too.
+export TMPDIR="$RT/tmp"
+mkdir -p "$RT" "$TMPDIR"
 
 fail() {
   echo ""
-  echo "Setup didn't finish. Check your internet connection and try again."
+  echo "Setup didn't finish. The messages above say why. If they mention"
+  echo "connections or downloads, check your internet and try again."
   echo "(Only the first run needs internet.)"
   exit 1
 }
@@ -96,19 +99,35 @@ if [ ! -x "$PY" ]; then
     echo "Setting up a private copy of Python inside this folder (first run only)..."
     [ -x "$UVEXE" ] || get_uv || fail
     "$UVEXE" venv --python 3.12 --python-preference only-managed "$VENV" || fail
+    touch "$VENV/private.marker"
   fi
 fi
 
 # --- Install or update the libraries when requirements change -------
+# --only-binary: use ready-made packages only, never try to compile anything
+# (compiling needs developer tools most computers don't have).
+install_libs() {
+  if [ -f "$VENV/private.marker" ]; then
+    "$UVEXE" pip install --only-binary :all: --python "$PY" -r backend/requirements.txt
+  else
+    "$PY" -m pip install --no-cache-dir --only-binary=:all: --progress-bar on -r backend/requirements.txt
+  fi
+}
 if ! cmp -s backend/requirements.txt "$VENV/requirements.installed"; then
   echo ""
   echo "Installing the app's libraries (first run or after an update)."
   echo "This takes 1-2 minutes on a local disk. Progress is shown below."
   echo ""
-  if [ -x "$UVEXE" ]; then
-    "$UVEXE" pip install --python "$PY" -r backend/requirements.txt || fail
-  else
-    "$PY" -m pip install --no-cache-dir --progress-bar on -r backend/requirements.txt || fail
+  if ! install_libs; then
+    [ -f "$VENV/private.marker" ] && fail
+    echo ""
+    echo "The Python on this computer can't use the app's ready-made libraries."
+    echo "Switching to a private copy of Python inside this folder instead..."
+    rm -rf "$VENV"
+    [ -x "$UVEXE" ] || get_uv || fail
+    "$UVEXE" venv --python 3.12 --python-preference only-managed "$VENV" || fail
+    touch "$VENV/private.marker"
+    install_libs || fail
   fi
   cp backend/requirements.txt "$VENV/requirements.installed"
 fi

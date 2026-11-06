@@ -47,6 +47,8 @@ def describe(values, name: str = "") -> dict:
         "mean": float(np.mean(x)) if n else float("nan"),
         "sd": sd,
         "sem": sd / math.sqrt(n) if n > 1 else float("nan"),
+        # half-width of the 95% confidence interval of the mean
+        "ci95": float(stats.t.ppf(0.975, n - 1) * sd / math.sqrt(n)) if n > 1 else float("nan"),
         "median": float(np.median(x)) if n else float("nan"),
         "min": float(np.min(x)) if n else float("nan"),
         "max": float(np.max(x)) if n else float("nan"),

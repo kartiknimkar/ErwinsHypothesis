@@ -39,6 +39,10 @@ set "UV_CACHE_DIR=%RT%\cache\uv"
 set "UV_PYTHON_INSTALL_DIR=%RT%\python"
 set "PIP_DISABLE_PIP_VERSION_CHECK=1"
 set "PYTHONNOUSERSITE=1"
+rem Installers also use a temporary folder; keep that inside runtime\ too.
+set "TEMP=%RT%\tmp"
+set "TMP=%RT%\tmp"
+if not exist "%TEMP%" mkdir "%TEMP%"
 
 rem --- Warn if this folder is on a network drive ----------------------
 call :check_network
@@ -84,6 +88,7 @@ if not exist "%UVEXE%" (
 )
 "%UVEXE%" venv --python 3.12 --python-preference only-managed "%VENV%"
 if errorlevel 1 goto :fail
+echo private> "%VENV%\private.marker"
 
 rem --- Install or update the libraries when requirements change -----
 :deps
@@ -93,12 +98,14 @@ echo.
 echo Installing the app's libraries (first run or after an update).
 echo This takes 1-2 minutes on a local disk. Progress is shown below.
 echo.
-if exist "%UVEXE%" (
-  "%UVEXE%" pip install --python "%PY%" -r "backend\requirements.txt"
+rem --only-binary: use ready-made packages only, never try to compile
+rem anything (compiling needs developer tools most computers don't have).
+if exist "%VENV%\private.marker" (
+  "%UVEXE%" pip install --only-binary :all: --python "%PY%" -r "backend\requirements.txt"
 ) else (
-  "%PY%" -m pip install --no-cache-dir --progress-bar on -r "backend\requirements.txt"
+  "%PY%" -m pip install --no-cache-dir --only-binary=:all: --progress-bar on -r "backend\requirements.txt"
 )
-if errorlevel 1 goto :fail
+if errorlevel 1 goto :deps_failed
 copy /y "backend\requirements.txt" "%VENV%\requirements.installed" >nul
 echo.
 echo Libraries installed.
@@ -113,9 +120,19 @@ if errorlevel 1 (
 )
 exit /b 0
 
+:deps_failed
+if exist "%VENV%\private.marker" goto :fail
+echo.
+echo The Python on this computer can't use the app's ready-made libraries.
+echo Switching to a private copy of Python inside this folder instead...
+echo.
+rmdir /s /q "%VENV%"
+goto :private
+
 :fail
 echo.
-echo Setup didn't finish. Check your internet connection and try again.
+echo Setup didn't finish. The messages above say why. If they mention
+echo connections or downloads, check your internet and try again.
 echo (Only the first run needs internet.)
 pause
 exit /b 1
