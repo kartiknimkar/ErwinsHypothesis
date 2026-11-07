@@ -323,12 +323,15 @@ class TwoWayRequest(BaseModel):
     alpha: float = 0.05
     rm: bool = False         # repeated measures across rows (same subjects at every row name)
     compare: str = "within_rows"  # within_rows | within_cols | col_means | row_means (ordinary two-way)
+    rm_both: bool = False    # with rm: the same subjects in every column too (both factors repeated)
 
 
 @app.post("/api/twoway")
 def run_twoway(req: TwoWayRequest):
     try:
-        if req.rm:
+        if req.rm and req.rm_both:
+            res = anova2.two_way_rm_both(req.rows, req.columns, req.names, alpha=req.alpha)
+        elif req.rm:
             res = anova2.two_way_rm(req.rows, req.columns, req.names, alpha=req.alpha)
         else:
             res = anova2.two_way(req.rows, req.columns, req.names, alpha=req.alpha, compare=req.compare)

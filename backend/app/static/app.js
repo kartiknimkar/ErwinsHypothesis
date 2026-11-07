@@ -499,14 +499,15 @@
         const body = { rows: s.data.map(r => String(r[0] || "").trim()), columns: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
           names: s.cols.slice(1).map((c, j) => c || `Group ${letter(j)}`), alpha: s.options.alpha };
         if (s.options.analysis === "multit") return ["/api/multit", { ...body, kind: s.options.mtKind || "welch", q: s.options.q || 0.05 }];
-        return ["/api/twoway", { ...body, rm: !!s.options.rm, compare: s.options.twCompare || "within_rows" }];
+        return ["/api/twoway", { ...body, rm: !!s.options.rm, rm_both: !!s.options.rm && !!s.options.rmBoth, compare: s.options.twCompare || "within_rows" }];
       },
       renderOptions: s => `<div class="seg"><button data-set="analysis:anova" class="${s.options.analysis !== "multit" ? "on" : ""}">Two-way ANOVA</button><button data-set="analysis:multit" class="${s.options.analysis === "multit" ? "on" : ""}">Multiple t tests (one per row name)</button></div>` +
         (s.options.analysis === "multit" ? `<p class="hint">One t test for each row name (e.g. each gene or protein), comparing the two columns. Rows with the same name are replicates. P values are corrected for the number of tests with the false discovery rate (Benjamini-Hochberg).</p>
           <div class="row"><label>Test</label><select id="opt-mtkind">${[["welch", "Welch's t test"], ["unpaired", "Unpaired t test"], ["mannwhitney", "Mann-Whitney"]].map(([v, l]) => `<option value="${v}" ${(s.options.mtKind || "welch") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
           <label>FDR (Q)</label><select id="opt-q">${[0.01, 0.05, 0.1].map(v => `<option ${(s.options.q || 0.05) === v ? "selected" : ""}>${v}</option>`).join("")}</select></div>` : `<p class="hint">Tests whether the <b>column factor</b> (${esc(s.cols.slice(1).join(", "))}) matters, whether the <b>row factor</b> (${esc(s.cols[0])}) matters, and whether they <b>interact</b> (the treatment effect differs between rows). Then compares the columns within each row.</p>
           <label class="check"><input type="checkbox" data-opt="rm" ${s.options.rm ? "checked" : ""}> Same subjects measured at every row (repeated measures, e.g. a time course)</label>
-          ${s.options.rm ? `<p class="hint">Enter each subject in the same position under every row name: the 1st value under each time point in a column is subject 1, the 2nd is subject 2, and so on. Subjects missing a time point are left out.</p>`
+          ${s.options.rm ? `<label class="check"><input type="checkbox" data-opt="rmBoth" ${s.options.rmBoth ? "checked" : ""}> The same subjects in every column too (both factors repeated)</label>
+            <p class="hint">${s.options.rmBoth ? "Subject 1 = the 1st value under each row name in <b>every</b> column, subject 2 = the 2nd, and so on." : "Enter each subject in the same position under every row name: the 1st value under each time point in a column is subject 1, the 2nd is subject 2, and so on."} Subjects missing a value are left out.</p>`
             : `<div class="row"><label for="opt-twcmp">Multiple comparisons</label><select id="opt-twcmp">${[["within_rows", `Compare columns within each ${esc(s.cols[0] || "row")}`], ["within_cols", `Compare ${esc(s.cols[0] || "row")} levels within each column`],
               ["col_means", "Compare column means (main effect)"], ["row_means", `Compare ${esc(s.cols[0] || "row")} means (main effect)`]].map(([v, l]) => `<option value="${v}" ${(s.options.twCompare || "within_rows") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>`}${alphaSelect(s)}`),
       graphControls: () => [
@@ -1888,7 +1889,7 @@
       const t = Object.fromEntries(r.table.map(x => [x.source, x]));
       const rowF = esc(s.cols[0] || "row factor");
       const f = x => `F(${x.df}, ${x.dfd ?? t.Residual.df}) = ${r2(x.F)}, ${apaP(x.p)}`;
-      return { methods: `Data were analyzed by ${r.rm ? `two-way repeated-measures (mixed) ANOVA with ${rowF} as the within-subject factor and the Geisser-Greenhouse correction` : "two-way ANOVA"}, followed by ${esc(r.posthoc_name.split(" (")[0])} ${{ within_cols: `comparing levels of ${rowF} within each group`, col_means: "comparing group means averaged over " + rowF, row_means: `comparing ${rowF} means averaged over groups` }[r.compare] || `comparing groups at each level of ${rowF}`}. Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+      return { methods: `Data were analyzed by ${r.rm_both ? `two-way repeated-measures ANOVA with both factors within subjects and the Geisser-Greenhouse correction` : r.rm ? `two-way repeated-measures (mixed) ANOVA with ${rowF} as the within-subject factor and the Geisser-Greenhouse correction` : "two-way ANOVA"}, followed by ${esc(r.posthoc_name.split(" (")[0])} ${{ within_cols: `comparing levels of ${rowF} within each group`, col_means: "comparing group means averaged over " + rowF, row_means: `comparing ${rowF} means averaged over groups` }[r.compare] || `comparing groups at each level of ${rowF}`}. Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
         results: `There was ${t.Interaction.p < r.alpha ? "a significant" : "no significant"} interaction between group and ${rowF} (${f(t.Interaction)}). The main effect of group was ${t["Column factor"].p < r.alpha ? "" : "not "}significant (${f(t["Column factor"])}), and the main effect of ${rowF} was ${t["Row factor"].p < r.alpha ? "" : "not "}significant (${f(t["Row factor"])}).` };
     }
     if (s.type === "regression" && r.multi) {
@@ -2265,7 +2266,8 @@
       r.table.filter(x => x.F !== null).map(x => ({ cls: x.p < r.alpha ? "hl" : "",
         cells: [x.source === "Row factor" ? rowF : x.source === "Column factor" ? "Column factor (groups)" : x.source,
           fmt(x.pct, 3) + "%", `F (${x.df}, ${x.dfd ?? t.Residual.df}) = ${fmt(x.F)}`, pOnly(x.p), st(x.stars)] })));
-    if (r.rm) h += `<p class="note">Repeated measures: ${r.n_subjects} subjects (${r.subjects_per_group.map((n, i) => `${esc(r.cols[i])}: ${n}`).join(", ")}). Row factor and interaction P values use the Geisser-Greenhouse correction (ε = ${fmt(r.epsilon, 3)}); the column factor is tested against variation between subjects.</p>`;
+    if (r.rm_both) h += `<p class="note">Both factors repeated: ${r.n_subjects} subjects, each measured in every row and column. Each effect is tested against its own subject × effect variation, with the Geisser-Greenhouse correction (ε: ${r.table.filter(x => x.epsilon != null).map(x => `${x.source === "Row factor" ? rowF : esc(x.source)} ${fmt(x.epsilon, 3)}`).join(", ")}).</p>`;
+    else if (r.rm) h += `<p class="note">Repeated measures: ${r.n_subjects} subjects (${r.subjects_per_group.map((n, i) => `${esc(r.cols[i])}: ${n}`).join(", ")}). Row factor and interaction P values use the Geisser-Greenhouse correction (ε = ${fmt(r.epsilon, 3)}); the column factor is tested against variation between subjects.</p>`;
     h += T.multi(["ANOVA table", "SS", "DF", "MS"], r.table.map(x => [x.source === "Row factor" ? rowF : x.source, fmt(x.SS), x.df, fmt(x.MS)]));
     h += `<div class="opt-label" style="margin-top:10px">${esc(r.posthoc_name)}</div>`;
     const famHead = { within_cols: "Column", col_means: "", row_means: "" }[r.compare] ?? rowF;

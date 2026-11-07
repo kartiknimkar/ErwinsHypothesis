@@ -388,6 +388,93 @@ def two_way_rm(row_labels, columns, col_names, alpha: float = 0.05) -> dict:
             "subjects_per_group": [int(np.sum(G == g)) for g in range(b)], "balanced": len(set(np.bincount(G))) == 1}
 
 
+def _helmert(k: int) -> np.ndarray:
+    """k × (k−1) orthonormal contrasts."""
+    H = np.zeros((k, k - 1))
+    for j in range(1, k):
+        H[:j, j - 1] = 1
+        H[j, j - 1] = -j
+        H[:, j - 1] /= np.linalg.norm(H[:, j - 1])
+    return H
+
+
+def two_way_rm_both(row_labels, columns, col_names, alpha: float = 0.05) -> dict:
+    """Two-way ANOVA with both factors repeated: every subject is measured at every row level and in every column.
+    Subject k = the k-th value under each row name, in every column. Incomplete subjects are left out.
+    Each effect is tested against its own subject × effect error, with the Geisser-Greenhouse correction."""
+    rows = list(dict.fromkeys(str(l).strip() for l in row_labels if str(l or "").strip()))
+    a, b = len(rows), len(columns)
+    if a < 2 or b < 2:
+        raise ValueError("Need at least 2 row names and 2 columns.")
+    per = {}
+    for j, col in enumerate(columns):
+        occ = {r: [] for r in rows}
+        for lab, v in zip(row_labels, col):
+            lab = str(lab or "").strip()
+            if lab:
+                occ[lab].append(_num(v))
+        per[j] = occ
+    nmax = max(len(per[j][r]) for j in range(b) for r in rows)
+    subjects = []
+    for k in range(nmax):
+        vals = [[per[j][r][k] if k < len(per[j][r]) else None for j in range(b)] for r in rows]
+        if all(v is not None for row in vals for v in row):
+            subjects.append(vals)
+    n = len(subjects)
+    if n < 2:
+        raise ValueError("Need at least 2 subjects with a value in every row and column (subject k = k-th value under each row name).")
+    Y = np.array(subjects, float)            # n × a × b
+    flat = Y.reshape(n, a * b)
+    ua, ub = np.ones((a, 1)) / math.sqrt(a), np.ones((b, 1)) / math.sqrt(b)
+    terms = [("Row factor", np.kron(_helmert(a), ub)), ("Column factor", np.kron(ua, _helmert(b))), ("Interaction", np.kron(_helmert(a), _helmert(b)))]
+    ss_tot = float(np.sum((Y - Y.mean()) ** 2))
+    table = []
+    for name, Cm in terms:
+        Z = flat @ Cm
+        df = Cm.shape[1]
+        zbar = Z.mean(axis=0)
+        ss = float(n * zbar @ zbar)
+        E = Z - zbar
+        sse = float(np.sum(E ** 2))
+        dfe = df * (n - 1)
+        Sz = E.T @ E / (n - 1)
+        eps = float(np.trace(Sz) ** 2 / (df * np.sum(Sz ** 2))) if df > 1 and np.sum(Sz ** 2) > 0 else 1.0
+        eps = min(1.0, max(1 / df, eps))
+        F = (ss / df) / (sse / dfe) if sse > 0 else float("inf")
+        p = float(stats.f.sf(F, df * eps, dfe * eps))
+        table.append({"source": name, "SS": ss, "df": df, "MS": ss / df, "F": F, "dfd": dfe, "p": p, "epsilon": eps,
+                      "p_uncorrected": float(stats.f.sf(F, df, dfe)), "pct": 100 * ss / ss_tot if ss_tot > 0 else None, "stars": stars(p),
+                      "error_SS": sse})
+    table = [table[2], table[0], table[1]]  # Interaction, Row factor, Column factor (as in the other two-way results)
+    subj_means = Y.mean(axis=(1, 2))
+    ss_subj = float(a * b * np.sum((subj_means - Y.mean()) ** 2))
+    table.append({"source": "Subjects", "SS": ss_subj, "df": n - 1, "MS": ss_subj / (n - 1), "F": None, "p": None, "pct": 100 * ss_subj / ss_tot})
+    cells = []
+    for i in range(a):
+        for j in range(b):
+            d = describe(Y[:, i, j], f"{rows[i]} · {col_names[j]}")
+            d.update(row=rows[i], col=col_names[j], i=i, j=j)
+            cells.append(d)
+    # columns compared at each row with paired t tests (each comparison's own error), Šídák over the whole family
+    pairs = [(j1, j2) for j1 in range(b) for j2 in range(j1 + 1, b)]
+    m = a * len(pairs)
+    a_s = 1 - (1 - alpha) ** (1 / m)
+    comps = []
+    for i in range(a):
+        for j1, j2 in pairs:
+            dvec = Y[:, i, j1] - Y[:, i, j2]
+            diff, se = float(dvec.mean()), float(dvec.std(ddof=1) / math.sqrt(n))
+            p_raw = float(2 * stats.t.sf(abs(diff) / se, n - 1)) if se > 0 else 0.0
+            p = float(min(1.0, 1 - (1 - p_raw) ** m))
+            half = float(stats.t.ppf(1 - a_s / 2, n - 1) * se)
+            comps.append({"row": rows[i], "a": col_names[j1], "b": col_names[j2], "i": i, "j1": j1, "j2": j2, "diff": diff,
+                          "ci_low": diff - half, "ci_high": diff + half, "p": p, "stars": stars(p), "significant": p < alpha})
+    return {"test_name": "Two-way repeated-measures ANOVA (both factors)", "rm": True, "rm_both": True, "rows": rows, "cols": list(col_names),
+            "alpha": alpha, "table": table, "cells": cells, "comparisons": comps,
+            "posthoc_name": "Šídák's multiple comparisons (paired, columns at each row)", "p": table[0]["p"], "n": int(n * a * b),
+            "n_subjects": n, "subjects": [], "subjects_per_group": [n] * b, "epsilon": min(t["epsilon"] for t in table[:3]), "balanced": True}
+
+
 def three_way(factors, values, factor_names, alpha: float = 0.05, compare: str = "none") -> dict:
     """Three-way ANOVA (Type III sums of squares, effect coding) from long-format data:
     factors = [levels of A per row, levels of B per row, levels of C per row]; values = one number per row."""

@@ -184,3 +184,23 @@ def test_sort_and_fill_series(server):  # noqa: F811
         assert cell(0, 1) == "6.8"
         assert errors == [], errors
         browser.close()
+
+
+def test_two_way_both_repeated(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('time course')")
+        page.wait_for_selector('#options [data-opt="rmBoth"]')
+        page.check('#options [data-opt="rmBoth"]')
+        page.wait_for_function("document.querySelector('#results').textContent.includes('Both factors repeated')", timeout=10000)
+        assert "both factors within subjects" in page.eval_on_selector("#results details.report", "e => e.textContent")
+        assert errors == [], errors
+        browser.close()

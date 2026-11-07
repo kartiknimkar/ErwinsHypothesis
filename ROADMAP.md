@@ -251,6 +251,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] New "Power & sample size" type (no data table): unpaired / paired t (noncentral t), one-way ANOVA (noncentral F,
       Cohen's f), two proportions (Fleiss); find n or power; power curve; matches statsmodels; 172 tests
 
+## Phase 0.56: Two-way ANOVA, both factors repeated (done 2026-11-07)
+- [x] Every subject measured at every row and column: each effect against its own subject × effect error,
+      Geisser-Greenhouse per effect (orthonormal contrasts); F, P and ε match pingouin; paired Šídák comparisons; 175 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
