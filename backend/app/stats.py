@@ -451,3 +451,47 @@ def column_stats(values, name: str = "", hypothetical: float | None = None, alph
             d["wilcoxon"] = {"hypothetical": hypothetical, "W": float(w.statistic), "p": float(w.pvalue),
                              "stars": stars(float(w.pvalue)), "diff": float(np.median(x) - hypothetical)}
     return d
+
+
+def _synthetic(mean: float, sd: float, n: int) -> np.ndarray:
+    """n values with exactly this mean and SD. Parametric tests depend only on the mean, variance
+    and n of each group, so running them on these values reproduces the summary-data result exactly."""
+    if n == 1:
+        return np.array([mean], float)
+    z = np.linspace(-1, 1, n)
+    z = (z - z.mean()) / z.std(ddof=1)
+    return mean + sd * z
+
+
+def compare_summary(groups, kind: str = "welch", alpha: float = 0.05, err: str = "sd") -> dict:
+    """Compare groups given as {name, mean, sd (or sem), n}. Only tests that are exact from
+    summary statistics are allowed: unpaired/Welch t test, ordinary/Welch one-way ANOVA."""
+    clean = []
+    for g in groups:
+        try:
+            m, s_, n = float(g["mean"]), float(g["sd"]), int(round(float(g["n"])))
+        except (TypeError, ValueError, KeyError):
+            continue
+        if n < 2 or s_ < 0 or not (math.isfinite(m) and math.isfinite(s_)):
+            raise ValueError(f"{g.get('name') or 'A group'}: n must be at least 2 and SD can't be negative.")
+        sd = s_ * math.sqrt(n) if err == "sem" else s_
+        clean.append((str(g.get("name") or f"Group {len(clean) + 1}"), m, sd, n))
+    if len(clean) < 2:
+        raise ValueError("Enter a mean, SD and n for at least 2 groups (one group per row).")
+    data = [_synthetic(m, sd, n) for _, m, sd, n in clean]
+    names = [c[0] for c in clean]
+    if len(clean) == 2:
+        k = kind if kind in ("welch", "unpaired") else "welch"
+        res = t_test(data[0], data[1], kind=k, name_a=names[0], name_b=names[1], alpha=alpha)
+    else:
+        k = kind if kind in ("ordinary", "welch") else "ordinary"
+        res = one_way_anova(data, names, kind=k, alpha=alpha)
+        res.pop("variance_check", None)  # Brown-Forsythe needs the raw values
+    res.pop("normality", None)
+    res.pop("normality_of", None)
+    for g in res["groups"]:
+        for key in ("median", "min", "max"):
+            g[key] = None
+    res["n_groups"] = len(clean)
+    res["summary_data"] = True
+    return res

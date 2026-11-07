@@ -46,6 +46,22 @@ class CompareRequest(BaseModel):
     outliers: bool = False  # also run Grubbs' outlier test on each group
 
 
+class SummaryRequest(BaseModel):
+    groups: list            # [{name, mean, sd, n}]
+    kind: str = "welch"
+    err: str = "sd"         # "sd" or "sem": what the second column holds
+    alpha: float = 0.05
+
+
+@app.post("/api/summary")
+def run_summary(req: SummaryRequest):
+    try:
+        res = stats.compare_summary(req.groups, kind=req.kind, alpha=req.alpha, err=req.err)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(_json_safe(res))
+
+
 class ColStatsRequest(BaseModel):
     groups: list
     names: list[str]

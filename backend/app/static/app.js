@@ -157,6 +157,40 @@
       renderResults: (r, s) => r.kind === "describe" ? renderColStats(r) : renderGroupResults(r, s),
       draw: drawGroups,
     },
+    // ---------------------------------------------------------------- summary data
+    summary: {
+      label: "Compare groups (mean, SD, n)", newTitle: "Summary data",
+      minCols: 4, maxCols: 4, fixedCols: 4, textCol: 0, addLabel: "", minRows: 8,
+      colKind: (j, s) => ["Group", "Mean", (s && s.options.err === "sem") ? "SEM" : "SD", "n"][j], newColName: () => "",
+      hint: "One row per group: its name, mean, SD (or SEM) and number of values (n). Use this when you only have summary numbers, e.g. from a paper.",
+      cols: ["Group", "Mean", "SD", "n"],
+      options: { err: "sd", kind2: "welch", kind3: "ordinary", alpha: 0.05 },
+      graph: { ylabel: "Response", style: "bars", err: "sd", brackets: "sig", showPoints: false },
+      examples: () => ({ cols: ["Group", "Mean", "SD", "n"], rows: [["Control", 4.6, 0.6, 8], ["Drug A", 6.7, 0.7, 8], ["Drug B", 5.2, 0.9, 7]] }),
+      request(s) {
+        const rows = s.data.filter(r => isNum(r[1]) && isNum(r[2]) && isNum(r[3]));
+        const n = rows.length;
+        return ["/api/summary", { groups: rows.map((r, i) => ({ name: String(r[0] || `Group ${i + 1}`), mean: Number(r[1]), sd: Number(r[2]), n: Number(r[3]) })),
+          err: s.options.err, kind: n >= 3 ? s.options.kind3 : s.options.kind2, alpha: s.options.alpha }];
+      },
+      renderOptions(s) {
+        const n = s.data.filter(r => isNum(r[1]) && isNum(r[2]) && isNum(r[3])).length;
+        const list = n >= 3 ? [["ordinary", "One-way ANOVA + Tukey", "Compares all means; Tukey's test for every pair."], ["welch", "Welch's ANOVA + Games-Howell", "When the groups' spreads differ."]]
+          : [["welch", "Welch's t test", "Spread may differ between groups. Safe default."], ["unpaired", "Unpaired t test", "Assumes both groups have similar spread."]];
+        const key = n >= 3 ? "kind3" : "kind2";
+        return `<div class="seg"><button data-set="err:sd" class="${s.options.err !== "sem" ? "on" : ""}">Second column is SD</button><button data-set="err:sem" class="${s.options.err === "sem" ? "on" : ""}">Second column is SEM</button></div>
+          <div class="opt-label">${n >= 3 ? `${n} groups` : "2 groups"}</div>` +
+          list.map(([k, name, d]) => `<label class="choice ${s.options[key] === k ? "on" : ""}"><input type="radio" name="${key}" value="${k}" ${s.options[key] === k ? "checked" : ""}><span><b>${name}</b><small>${d}</small></span></label>`).join("") +
+          `<p class="hint">These tests are exact from summary data. Paired, nonparametric and normality tests need the individual values.</p>${alphaSelect(s)}`;
+      },
+      graphControls: () => [
+        sel("style", "Style", [["bars", "Bars"], ["dots", "Mean only"]]),
+        sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
+        sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]), txt("ylabel", "Y axis label"),
+      ],
+      renderResults: (r, s) => renderGroupResults(r, s) + `<p class="note">Computed from summary data (mean, ${s.options.err === "sem" ? "SEM" : "SD"}, n).</p>`,
+      draw: drawGroups,
+    },
     // ---------------------------------------------------------------- two-way
     twoway: {
       label: "Grouped (two factors)", newTitle: "Grouped",
@@ -513,6 +547,7 @@
     const add = (type, title, tweak) => { const s = newSheet(type); if (tweak) tweak(s); applyExample(s); s.title = title; project.sheets.push(s); return s; };
     const first = add("ttest", "Example: two groups");
     add("ttest", "Example: three groups (ANOVA)", s => { s.cols = ["A", "B", "C"]; });
+    add("summary", "Example: from mean, SD and n");
     add("ttest", "Example: column statistics", s => { s.cols = ["A", "B", "C"]; s.options.mode = "describe"; s.options.hypothetical = "12"; });
     add("twoway", "Example: two-way ANOVA");
     add("twoway", "Example: multiple t tests", s => { s.options.analysis = "multit"; });
@@ -662,7 +697,7 @@
       };
     });
   }
-  const badgeText = t => ({ layout: "▦", ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#", multivar: "MV", diagnostic: "Dx" }[t]);
+  const badgeText = t => ({ layout: "▦", summary: "Σ", ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#", multivar: "MV", diagnostic: "Dx" }[t]);
 
   // ======================================================================
   // data grid
@@ -919,6 +954,7 @@
         ["No: every value is a different subject", "", rec("Two-way ANOVA", "Tests both factors and their interaction, then compares groups within each row.", "twoway", s => {})],
         ["Yes: e.g. each animal measured on several days", "", rec("Two-way repeated-measures ANOVA", "Mixed ANOVA for time courses: put time points as row names and groups as columns.", "twoway", s => { s.options.rm = true; s.graph.style = "lines"; s.graph.err = "sem"; })] ] }],
       ["Many separate items (genes, proteins…)", "the same two groups compared for each item", rec("Multiple t tests with FDR", "One test per item with false-discovery-rate correction and a volcano plot.", "twoway", s => { s.options.analysis = "multit"; s.cols = ["Gene", "Control", "Treated"]; })] ] }],
+    ["Compare groups from published means", "I only have mean, SD (or SEM) and n for each group", rec("Compare groups (mean, SD, n)", "Exact t tests and ANOVA from summary statistics: one row per group.", "summary", s => {})],
     ["Describe my data", "mean, SD, median, normality; or compare to a known value", rec("Column statistics", "Full descriptive statistics for each column; enter a hypothetical value to test against it.", "ttest", s => { s.options.mode = "describe"; })],
     ["Relationship between X and Y", "dose-response, standard curves, correlation, kinetics", { q: "What kind of relationship?", opts: [
       ["A straight line or correlation", "", rec("Linear regression + correlation", "Slope, intercept, R², Pearson and Spearman correlation.", "regression", s => {})],
@@ -1159,6 +1195,7 @@
     if (s.type === "regression" && s.options.yMode === "datasets") return s.cols.slice(1).map((c, j) => c || `Y${j + 1}`);
     if (s.type === "regression") return ["Curve", ...(s.options.compare ? ["Comparison curve"] : []), "Unknowns"];
     if (s.type === "layout") return [];
+    if (s.type === "summary") return s.data.filter(r => isNum(r[1])).map((r, i) => String(r[0] || `Group ${i + 1}`));
     if (s.type === "multivar") return (s.options.analysis || "correlation") === "correlation" ? [] : s.options.analysis === "logistic" ? ["Curve"] : s.options.analysis === "pca" ? ["Points", "Loadings"] : ["Points"];
     if (s.type === "twoway" && s.options.analysis === "multit") return ["Discoveries"];
     if (s.type === "diagnostic") return s.options.analysis === "roc" ? ["Curve", "Best cutoff"] : ["Points"];
@@ -1220,7 +1257,7 @@
       if (!res.ok) { lastResult = null; lastError = json.detail || "Something went wrong."; }
       else { lastResult = json; lastError = null; }
     } catch { if (seq !== runSeq) return; lastResult = null; lastError = "Can't reach the analysis engine. Is the app still running?"; }
-    if (s.type === "ttest") renderOptions(); // options depend on number of filled groups
+    if (s.type === "ttest" || s.type === "summary") renderOptions(); // options depend on number of filled groups
     renderResults(); drawPlot();
   }
 
@@ -1264,6 +1301,7 @@
       const res = r.groups.map(g => `${esc(g.name)}: ${r2(g.mean)} ± ${r2(g.sd)} (mean ± SD, n = ${g.n})${g.one_sample_t ? `, t(${g.one_sample_t.df}) = ${r2(g.one_sample_t.t)}, ${apaP(g.one_sample_t.p)}` : ""}`).join("; ") + ".";
       return { methods: m, results: res };
     }
+    if (s.type === "summary") s = { ...s, type: "ttest" };
     if (s.type === "ttest" && r.n_groups === 2) {
       const [a, b] = r.groups.map(g => esc(g.name));
       const test = { welch: "Welch's t test", unpaired: "an unpaired t test", paired: "a paired t test", mannwhitney: "the Mann-Whitney test", wilcoxon: "the Wilcoxon matched-pairs signed-rank test" }[r.kind] || r.test_name;
@@ -1960,13 +1998,15 @@
 
   function drawGroups(el, r, s) {
     const g = s.graph, traces = [], shapes = [], annotations = [];
-    const cols = filledCols(s);
-    const groups = cols.map(j => s.data.map(row => num(row[j])).filter(v => v !== null));
+    const summary = s.type === "summary";
+    const cols = summary ? [] : filledCols(s);
+    const groups = summary ? r.groups.map(() => []) : cols.map(j => s.data.map(row => num(row[j])).filter(v => v !== null));
     let ymax = -Infinity, ymin = Infinity;
     groups.forEach((vals, i) => {
       const stt = r.groups[i] || {}, c = color(g, i, stt.name);
       const err = g.err === "sem" ? stt.sem : g.err === "ci95" ? stt.ci95 : g.err === "sd" ? stt.sd : 0;
       vals.forEach(v => { ymax = Math.max(ymax, v); ymin = Math.min(ymin, v); });
+      if (summary) ymin = Math.min(ymin, (stt.mean ?? 0) - (err || 0));
       ymax = Math.max(ymax, (stt.mean ?? 0) + (err || 0));
       if (g.style === "lines") {
         // before-after: one line per subject (row); points are drawn on the lines

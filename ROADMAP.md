@@ -125,6 +125,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Right-click a cell/block → Exclude/Include; blue italics; left out of analyses, graphs and layouts;
       stays aligned on row insert/delete and column removal; undoable
 
+## Phase 0.29: Summary data (done 2026-11-06)
+- [x] "Compare groups (mean, SD, n)": exact Welch/unpaired t, one-way/Welch ANOVA + Tukey/Games-Howell
+      from summary statistics (SD or SEM input); bar/mean graph; verified vs scipy from_stats; 106 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
