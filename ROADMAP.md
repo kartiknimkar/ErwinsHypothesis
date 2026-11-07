@@ -137,6 +137,12 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] SVG export keeps text and shapes editable (Illustrator/Inkscape/PowerPoint); figure layouts export as one
       combined editable SVG with panel letters as text; 107 tests (tests/test_ui_style.py)
 
+## Phase 0.31: Frequency distributions + Q-Q plots (done 2026-11-06)
+- [x] Compare groups → "Distribution" mode: histogram on shared bins (automatic Freedman-Diaconis width rounded to
+      1/2/2.5/5×10^k, or your own width and start), count / percent / fraction, cumulative; frequency polygon;
+      normal curve overlay; overlapping / side-by-side / stacked columns
+- [x] Normal Q-Q plot (R qqnorm plotting positions) + Shapiro-Wilk and D'Agostino per column; guide entry; 111 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

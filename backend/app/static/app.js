@@ -193,7 +193,13 @@
       cols: ["Control", "Treated"],
       options: { design: "independent", alpha: 0.05 },
       graph: { ylabel: "Response", style: "dots", err: "sd", brackets: "sig", showPoints: true },
-      examples: s => s.cols.length >= 3 ? {
+      examples: s => s.options.mode === "freq" ? {
+        cols: ["Wild type", "Knockout"],
+        rows: [[12.1, 14.3], [13.2, 15.8], [11.9, 16.4], [13.7, 15.2], [12.8, 17.2], [14.9, 16.1], [13.1, 15.5], [12.4, 18.3],
+          [14.1, 14.7], [13.9, 16.8], [10.8, 15.6], [14.6, 14.8], [13.4, 15.3], [12.9, 17.9], [13.6, 16.3], [14.4, 15.1],
+          [11.5, 19.2], [13.8, 16.6], [12.6, 15.9], [15.0, 17.4], [13.3, 14.9], [14.2, 16.0], [12.2, 18.8], [13.0, 15.7],
+          [11.2, 16.9], [13.5, 20.4], [14.0, 15.4], [12.7, 17.0], [13.2, 16.2], [15.4, 19.7]],
+      } : s.cols.length >= 3 ? {
         cols: ["Vehicle", "Drug 10 µM", "Drug 50 µM"],
         rows: [[10.2, 13.4, 18.2], [11.5, 14.8, 17.1], [9.8, 12.9, 19.5], [12.1, 15.2, 16.8], [10.9, 14.1, 18.9], [11.3, 13.7, 17.6]],
       } : {
@@ -202,6 +208,8 @@
       },
       request(s) {
         const groups = s.cols.map((_, j) => s.data.map(r => num(r[j]))), names = s.cols.map((c, j) => c || `Group ${letter(j)}`);
+        if (s.options.mode === "freq") return ["/api/freq", { groups, names, y: s.options.freqY || "count", cumulative: !!s.options.cumulative,
+          bin_width: isNum(s.options.binWidth) ? Number(s.options.binWidth) : null, bin_start: isNum(s.options.binStart) ? Number(s.options.binStart) : null }];
         if (s.options.mode === "describe") return ["/api/colstats", { groups, names, alpha: s.options.alpha,
           hypothetical: isNum(s.options.hypothetical) ? Number(s.options.hypothetical) : null }];
         return ["/api/compare", { groups, names, kind: kindFor(s, filledCols(s).length), alpha: s.options.alpha, outliers: !!s.options.outliers }];
@@ -209,7 +217,16 @@
       renderOptions(s) {
         const n = filledCols(s).length, key = choiceKey(s, n), cur = kindFor(s, n);
         const rep = s.options.design === "repeated";
-        const modeSeg = `<div class="seg"><button data-set="mode:compare" class="${s.options.mode !== "describe" ? "on" : ""}">Compare the groups</button><button data-set="mode:describe" class="${s.options.mode === "describe" ? "on" : ""}">Describe each column</button></div>`;
+        const md = s.options.mode || "compare";
+        const modeSeg = `<div class="seg"><button data-set="mode:compare" class="${md === "compare" ? "on" : ""}">Compare the groups</button><button data-set="mode:describe" class="${md === "describe" ? "on" : ""}">Describe each column</button><button data-set="mode:freq" class="${md === "freq" ? "on" : ""}">Distribution</button></div>`;
+        if (md === "freq") {
+          const fy = s.options.freqY || "count";
+          return modeSeg + `<p class="hint">Histogram (frequency distribution) of each column, with a normal Q-Q plot and normality tests to check whether the values look normally distributed. Choose the plot under <b>Format</b>.</p>
+          <div class="opt-label">Show on Y</div><div class="seg">${[["count", "Number of values"], ["percent", "Percent"], ["fraction", "Fraction"]].map(([k, l]) => `<button data-set="freqY:${k}" class="${fy === k ? "on" : ""}">${l}</button>`).join("")}</div>
+          <label class="check"><input type="checkbox" data-opt="cumulative" ${s.options.cumulative ? "checked" : ""}> Cumulative (running total)</label>
+          <div class="row"><label for="opt-binw">Bin width</label><input type="text" id="opt-binw" data-num="binWidth" value="${esc(s.options.binWidth ?? "")}" placeholder="auto" style="width:80px" inputmode="decimal">
+          <label for="opt-bins">First bin starts at</label><input type="text" id="opt-bins" data-num="binStart" value="${esc(s.options.binStart ?? "")}" placeholder="auto" style="width:80px" inputmode="decimal"></div>`;
+        }
         if (s.options.mode === "describe") return modeSeg + `<p class="hint">Full descriptive statistics and normality tests for each column. Optionally test whether each column's mean (and median) differs from a hypothetical value.</p>
           <div class="row"><label for="opt-hyp">Compare with hypothetical value</label><input type="text" id="opt-hyp" value="${esc(s.options.hypothetical ?? "")}" placeholder="none" style="width:80px" inputmode="decimal"></div>${alphaSelect(s)}`;
         return modeSeg + `<div class="seg"><button data-design="independent" class="${rep ? "" : "on"}">Different subjects in each group</button><button data-design="repeated" class="${rep ? "on" : ""}">Same subjects (each row = one subject)</button></div>
@@ -218,14 +235,18 @@
           (n >= 3 ? "" : `<p class="hint">Have 3 or more groups? Click <b>+ Group</b> to add a column.</p>`) +
           `<label class="check"><input type="checkbox" data-opt="outliers" ${s.options.outliers ? "checked" : ""}> Identify outliers (Grubbs' test, α = 0.05)</label>` + alphaSelect(s);
       },
-      graphControls: s => [
+      graphControls: s => s.options.mode === "freq" ? [
+        sel("freqPlot", "Plot", [["hist", "Histogram (bars)"], ["poly", "Frequency polygon (lines)"], ["qq", "Normal Q-Q plot"]]),
+        sel("freqBars", "Several columns", [["overlay", "Overlapping"], ["group", "Side by side"], ["stack", "Stacked"]]),
+        chk("normalCurve", "Show normal curve"), txt("xlabel", "Values axis label"),
+      ] : [
         sel("style", "Style", [["dots", "Dots + mean"], ["bars", "Bars + dots"], ["box", "Box plot"],
           ...(s.options.design === "repeated" ? [["lines", "Before-after (connect subjects)"]] : [])]),
         sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
         sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]),
         txt("ylabel", "Y axis label"), chk("showPoints", "Show points"),
       ],
-      renderResults: (r, s) => r.kind === "describe" ? renderColStats(r) : renderGroupResults(r, s),
+      renderResults: (r, s) => r.kind === "freq" ? renderFreq(r) : r.kind === "describe" ? renderColStats(r) : renderGroupResults(r, s),
       draw: drawGroups,
     },
     // ---------------------------------------------------------------- summary data
@@ -619,6 +640,8 @@
     const first = add("ttest", "Example: two groups");
     add("ttest", "Example: three groups (ANOVA)", s => { s.cols = ["A", "B", "C"]; });
     add("summary", "Example: from mean, SD and n");
+    add("ttest", "Example: distribution (histogram, Q-Q)", s => {
+      s.options.mode = "freq"; s.graph.normalCurve = true; s.graph.ylabel = "Cell size (µm)"; });
     add("ttest", "Example: column statistics", s => { s.cols = ["A", "B", "C"]; s.options.mode = "describe"; s.options.hypothetical = "12"; });
     add("twoway", "Example: two-way ANOVA");
     add("twoway", "Example: multiple t tests", s => { s.options.analysis = "multit"; });
@@ -1026,6 +1049,7 @@
         ["Yes: e.g. each animal measured on several days", "", rec("Two-way repeated-measures ANOVA", "Mixed ANOVA for time courses: put time points as row names and groups as columns.", "twoway", s => { s.options.rm = true; s.graph.style = "lines"; s.graph.err = "sem"; })] ] }],
       ["Many separate items (genes, proteins…)", "the same two groups compared for each item", rec("Multiple t tests with FDR", "One test per item with false-discovery-rate correction and a volcano plot.", "twoway", s => { s.options.analysis = "multit"; s.cols = ["Gene", "Control", "Treated"]; })] ] }],
     ["Compare groups from published means", "I only have mean, SD (or SEM) and n for each group", rec("Compare groups (mean, SD, n)", "Exact t tests and ANOVA from summary statistics: one row per group.", "summary", s => {})],
+    ["See how my values are distributed", "histogram, Q-Q plot, is it normal?", rec("Frequency distribution + Q-Q plot", "Histogram of each column with a normal curve, a normal Q-Q plot and normality tests. Switch the plot under Format.", "ttest", s => { s.options.mode = "freq"; s.graph.normalCurve = true; })],
     ["Describe my data", "mean, SD, median, normality; or compare to a known value", rec("Column statistics", "Full descriptive statistics for each column; enter a hypothetical value to test against it.", "ttest", s => { s.options.mode = "describe"; })],
     ["Relationship between X and Y", "dose-response, standard curves, correlation, kinetics", { q: "What kind of relationship?", opts: [
       ["A straight line or correlation", "", rec("Linear regression + correlation", "Slope, intercept, R², Pearson and Spearman correlation.", "regression", s => {})],
@@ -1242,6 +1266,9 @@
       save(); renderOptions(); scheduleRun();
     });
     const nc = $("opt-ncol"); if (nc) nc.onchange = e => { s.options.ncol = Number(e.target.value); save(); drawPlot(); };
+    box.querySelectorAll("[data-num]").forEach(inp => inp.oninput = () => {
+      const v = inp.value.trim(); s.options[inp.dataset.num] = v; inp.classList.toggle("bad", v !== "" && !isNum(v)); save(); scheduleRun();
+    });
     const hy = $("opt-hyp");
     if (hy) hy.oninput = () => { s.options.hypothetical = hy.value.trim(); hy.classList.toggle("bad", hy.value.trim() !== "" && !isNum(hy.value)); save(); scheduleRun(); };
     const bl = $("opt-baseline");
@@ -1383,6 +1410,11 @@
   function reportText(r, s) {
     const pct = Math.round((1 - (r.alpha ?? 0.05)) * 100);
     const errName = { sd: "mean ± SD", sem: "mean ± SEM", ci95: "mean ± 95% CI" }[s.graph.err] || "mean ± SD";
+    if (s.type === "ttest" && r.kind === "freq") {
+      const m = `Frequency distributions were tabulated with a bin width of ${fmt(r.bin_width)} (first bin starting at ${fmt(r.bin_start)}). Normality was assessed with the Shapiro-Wilk test and normal Q-Q plots (${SW}).`;
+      const res = r.groups.map(g => `${esc(g.name)}: ${r2(g.mean)} ± ${g.sd == null ? "n/a" : r2(g.sd)} (mean ± SD, n = ${g.n})${g.shapiro ? `, Shapiro-Wilk W = ${r2(g.shapiro.W, 3)}, ${apaP(g.shapiro.p)}` : ""}`).join("; ") + ".";
+      return { methods: m, results: res };
+    }
     if (s.type === "ttest" && r.kind === "describe") {
       const m = `Descriptive statistics were calculated for each group, and normality was assessed with the Shapiro-Wilk test${r.hypothetical != null ? `; each group was compared with a hypothetical value of ${fmt(r.hypothetical)} using a one-sample t test` : ""} (${SW}).`;
       const res = r.groups.map(g => `${esc(g.name)}: ${r2(g.mean)} ± ${r2(g.sd)} (mean ± SD, n = ${g.n})${g.one_sample_t ? `, t(${g.one_sample_t.df}) = ${r2(g.one_sample_t.t)}, ${apaP(g.one_sample_t.p)}` : ""}`).join("; ") + ".";
@@ -1542,6 +1574,76 @@
     return h;
   }
 
+  function renderFreq(r) {
+    const G = r.groups;
+    const notNormal = G.filter(g => g.shapiro && !g.shapiro.normal);
+    let h = T.summary(notNormal.length ? "sig" : "ns", notNormal.length
+      ? `The values in ${notNormal.map(g => `<b>${esc(g.name)}</b>`).join(", ")} do not look normally distributed (Shapiro-Wilk ${notNormal.map(g => fmtP(g.shapiro.p)).join(", ")}). Consider a nonparametric test or a log transform.`
+      : G.some(g => g.shapiro) ? `No column departs significantly from a normal distribution (Shapiro-Wilk). On the Q-Q plot, points close to the line mean the values fit a normal distribution.`
+      : `Too few values to test normality (needs at least 3 per column).`);
+    h += `<p class="note">Bin width ${fmt(r.bin_width)}${r.auto_width ? " (chosen automatically)" : ""}, first bin starts at ${fmt(r.bin_start)}. A value exactly on a bin edge goes into the higher bin.</p>`;
+    const statRow = (label, f) => [label, ...G.map(g => { const v = f(g); return v == null ? "—" : v; })];
+    h += T.multi(["", ...G.map(g => esc(g.name))], [
+      statRow("Number of values", g => g.n), statRow("Mean", g => fmt(g.mean)), statRow("Std. deviation", g => g.sd == null ? null : fmt(g.sd)),
+      statRow("Median", g => fmt(g.median)), statRow("Minimum", g => fmt(g.min)), statRow("Maximum", g => fmt(g.max)),
+      statRow("Skewness", g => g.skewness == null ? null : fmt(g.skewness, 3)),
+      statRow("Shapiro-Wilk P", g => g.shapiro ? `${fmt(g.shapiro.p, 3)} (${g.shapiro.normal ? "passed" : "<b>not normal</b>"})` : null),
+      statRow("D'Agostino-Pearson P", g => g.dagostino ? `${fmt(g.dagostino.p, 3)} (${g.dagostino.normal ? "passed" : "<b>not normal</b>"})` : "needs n ≥ 8"),
+    ]);
+    const yName = { count: "Number of values", percent: "Percent", fraction: "Fraction" }[r.y] + (r.cumulative ? " (cumulative)" : "");
+    const yv = v => r.y === "count" ? String(Math.round(v)) : fmt(v, 4);
+    h += `<div class="opt-label">Frequency table: ${yName}</div>` + T.multi(["Bin", "Center", ...G.map(g => esc(g.name))],
+      r.centers.map((c, i) => [`${fmt(r.edges[i])} to &lt; ${fmt(r.edges[i + 1])}`, fmt(c), ...G.map(g => yv(g.values[i]))]));
+    return h;
+  }
+  // normal distribution helpers for drawing (erf: Abramowitz & Stegun 7.1.26, error < 1.5e-7)
+  const erf = x => { const t = 1 / (1 + 0.3275911 * Math.abs(x)), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x); return x >= 0 ? y : -y; };
+  const normPdf = (x, m, sd) => Math.exp(-0.5 * ((x - m) / sd) ** 2) / (sd * Math.sqrt(2 * Math.PI));
+  const normCdf = (x, m, sd) => 0.5 * (1 + erf((x - m) / (sd * Math.SQRT2)));
+  function drawFreq(el, r, s) {
+    const g = s.graph, L = baseLayout(g), traces = [];
+    const plot = g.freqPlot || "hist", multi = r.groups.length > 1;
+    const xTitle = g.xlabel || g.ylabel || "Value";
+    if (plot === "qq") {
+      let lo = Infinity, hi = -Infinity;
+      r.groups.forEach((gr, i) => {
+        const c = color(g, i, gr.name);
+        gr.qq.predicted.forEach(v => { lo = Math.min(lo, v); hi = Math.max(hi, v); });
+        gr.qq.actual.forEach(v => { lo = Math.min(lo, v); hi = Math.max(hi, v); });
+        traces.push({ type: "scatter", mode: "markers", name: gr.name, x: gr.qq.predicted, y: gr.qq.actual,
+          marker: { color: c, size: g.pointSize, opacity: 0.85, line: { color: "#fff", width: 1 } },
+          hovertemplate: `${esc(gr.name)}<br>Predicted %{x:.4g}<br>Actual %{y:.4g}<extra></extra>` });
+      });
+      const pad = (hi - lo) * 0.05 || 1;
+      traces.unshift({ type: "scatter", mode: "lines", x: [lo - pad, hi + pad], y: [lo - pad, hi + pad], showlegend: false,
+        line: { color: "#8a93a3", width: 1.5, dash: "dash" }, hoverinfo: "skip" });
+      L.xaxis = axis(g, { title: { text: `Predicted if normal (${esc(xTitle)})` } });
+      L.yaxis = yAxis(g, `Actual (${xTitle})`);
+      L.showlegend = multi;
+      return styledReact(el, traces, L, PLOT_CONFIG);
+    }
+    const h = r.bin_width, scale = gr => (r.y === "count" ? gr.n : r.y === "percent" ? 100 : 1);
+    r.groups.forEach((gr, i) => {
+      const c = color(g, i, gr.name);
+      if (plot === "poly") traces.push({ type: "scatter", mode: "lines+markers", name: gr.name, x: r.centers, y: gr.values,
+        line: { color: c, width: 2 }, marker: { color: c, size: g.pointSize * 0.8 }, hovertemplate: `${esc(gr.name)}: %{y}<extra>center %{x}</extra>` });
+      else traces.push({ type: "bar", name: gr.name, x: r.centers, y: gr.values, width: multi && (g.freqBars || "overlay") === "group" ? undefined : h,
+        marker: { color: hexToRgba(toHex(c), multi && g.freqBars !== "stack" ? 0.5 : 0.75), line: { color: toHex(c), width: 1.2 } },
+        hovertemplate: `${esc(gr.name)}: %{y}<extra>%{x}</extra>` });
+      if (g.normalCurve && gr.sd > 0) {
+        const xs = Array.from({ length: 121 }, (_, k) => r.edges[0] + (r.edges[r.edges.length - 1] - r.edges[0]) * k / 120);
+        const ys = xs.map(x => r.cumulative ? normCdf(x, gr.mean, gr.sd) * scale(gr) : normPdf(x, gr.mean, gr.sd) * scale(gr) * h);
+        traces.push({ type: "scatter", mode: "lines", x: xs, y: ys, showlegend: false, line: { color: c, width: 2 },
+          hovertemplate: `Normal curve (mean ${fmt(gr.mean)}, SD ${fmt(gr.sd)})<extra></extra>` });
+      }
+    });
+    L.barmode = multi ? (g.freqBars || "overlay") : "overlay";
+    L.bargap = multi && g.freqBars === "group" ? 0.08 : 0;
+    L.xaxis = axis(g, { title: { text: esc(xTitle) } });
+    L.yaxis = yAxis(g, { count: "Number of values", percent: "Percent of values", fraction: "Fraction of values" }[r.y] + (r.cumulative ? " (cumulative)" : ""), { rangemode: "tozero" });
+    L.showlegend = multi;
+    return styledReact(el, traces, L, PLOT_CONFIG);
+  }
   function renderColStats(r) {
     const G = r.groups, pct = Math.round((1 - r.alpha) * 100);
     const row = (label, f) => [label, ...G.map(g => { const v = f(g); return v == null ? "—" : v; })];
@@ -2107,6 +2209,7 @@
   }
 
   function drawGroups(el, r, s) {
+    if (r.kind === "freq") return drawFreq(el, r, s);
     const g = s.graph, traces = [], shapes = [], annotations = [];
     const summary = s.type === "summary";
     const cols = summary ? [] : filledCols(s);

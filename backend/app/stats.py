@@ -495,3 +495,82 @@ def compare_summary(groups, kind: str = "welch", alpha: float = 0.05, err: str =
     res["n_groups"] = len(clean)
     res["summary_data"] = True
     return res
+
+
+def _nice_width(w: float) -> float:
+    """Round a bin width to 1, 2, 2.5 or 5 × 10^k so bin edges are readable."""
+    if not w > 0 or not math.isfinite(w):
+        return 1.0
+    e = 10 ** math.floor(math.log10(w))
+    for m in (1, 2, 2.5, 5, 10):
+        if w <= m * e * 1.0000001:
+            return m * e
+    return 10 * e
+
+
+def _qq(x: np.ndarray) -> dict:
+    """Normal Q-Q data. Plotting positions as R's qqnorm (ppoints): (i − a)/(n + 1 − 2a), a = 3/8 if n ≤ 10 else 1/2.
+    'predicted' is the value expected from a normal distribution with the sample's mean and SD."""
+    n = len(x)
+    a = 0.375 if n <= 10 else 0.5
+    p = (np.arange(1, n + 1) - a) / (n + 1 - 2 * a)
+    z = stats.norm.ppf(p)
+    xs = np.sort(x)
+    m, sd = float(np.mean(x)), float(np.std(x, ddof=1)) if n > 1 else 0.0
+    return {"z": z.tolist(), "actual": xs.tolist(), "predicted": (m + sd * z).tolist()}
+
+
+def frequency_distribution(groups, names, bin_width=None, bin_start=None, y: str = "count",
+                           cumulative: bool = False) -> dict:
+    """Histogram counts on shared bins for every column (Prism's 'Frequency distribution'), plus
+    normal Q-Q data and normality tests per column. Bins are [start, end): a value on an edge goes
+    into the higher bin. y = count | percent | fraction. Default bin width: Freedman-Diaconis
+    (2·IQR·n^−1/3 on all values), rounded to a readable number."""
+    cols = [(nm, _clean(g)) for nm, g in zip(names, groups)]
+    cols = [(nm, x) for nm, x in cols if len(x)]
+    if not cols:
+        raise ValueError("Enter values in at least one column.")
+    if y not in ("count", "percent", "fraction"):
+        raise ValueError("Unknown Y choice.")
+    allx = np.concatenate([x for _, x in cols])
+    lo, hi = float(allx.min()), float(allx.max())
+    if bin_width is not None:
+        h = float(bin_width)
+        if not h > 0:
+            raise ValueError("Bin width must be greater than 0.")
+        auto = False
+    else:
+        n = len(allx)
+        q1, q3 = np.percentile(allx, [25, 75])
+        h = 2 * (q3 - q1) / n ** (1 / 3) if q3 > q1 else (hi - lo) / (1 + math.log2(n)) if hi > lo else 1.0
+        h = _nice_width(h)
+        auto = True
+    start = float(bin_start) if bin_start is not None else math.floor(lo / h + 1e-9) * h
+    if start > lo:
+        raise ValueError(f"The first bin starts at {start:g}, above the smallest value ({lo:g}). Choose a lower start.")
+    nb = int(math.floor((hi - start) / h + 1e-9)) + 1
+    if nb > 500:
+        raise ValueError(f"That bin width makes {nb} bins. Choose a wider bin (the data range is {lo:g} to {hi:g}).")
+    edges = start + h * np.arange(nb + 1)
+    out = []
+    for nm, x in cols:
+        idx = np.floor((x - start) / h + 1e-9).astype(int)
+        counts = np.bincount(np.clip(idx, 0, nb - 1), minlength=nb).astype(float)
+        vals = np.cumsum(counts) if cumulative else counts.copy()
+        if y == "percent":
+            vals = vals / len(x) * 100
+        elif y == "fraction":
+            vals = vals / len(x)
+        sw = normality(x)
+        dag = None
+        if len(x) >= 8:
+            k2, p = stats.normaltest(x)
+            dag = {"k2": float(k2), "p": float(p), "normal": bool(p >= 0.05)}
+        out.append({"name": nm, "n": int(len(x)), "counts": counts.astype(int).tolist(), "values": vals.tolist(),
+                    "mean": float(np.mean(x)), "sd": float(np.std(x, ddof=1)) if len(x) > 1 else None,
+                    "median": float(np.median(x)), "min": float(x.min()), "max": float(x.max()),
+                    "skewness": float(stats.skew(x, bias=False)) if len(x) >= 3 else None,
+                    "shapiro": sw, "dagostino": dag, "qq": _qq(x)})
+    return {"kind": "freq", "test_name": "Frequency distribution", "bin_width": h, "bin_start": start, "auto_width": auto,
+            "edges": edges.tolist(), "centers": ((edges[:-1] + edges[1:]) / 2).tolist(), "y": y, "cumulative": cumulative,
+            "groups": out, "n_groups": len(out)}

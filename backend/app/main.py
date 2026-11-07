@@ -83,6 +83,24 @@ def run_colstats(req: ColStatsRequest):
     return JSONResponse(_json_safe(res))
 
 
+class FreqRequest(BaseModel):
+    groups: list
+    names: list[str]
+    bin_width: float | None = None
+    bin_start: float | None = None
+    y: str = "count"
+    cumulative: bool = False
+
+
+@app.post("/api/freq")
+def run_freq(req: FreqRequest):
+    try:
+        res = stats.frequency_distribution(req.groups, req.names, req.bin_width, req.bin_start, req.y, req.cumulative)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(_json_safe(res))
+
+
 class RegressionRequest(BaseModel):
     x: list
     y: list
