@@ -663,3 +663,93 @@ def two_way_summary(cells, alpha: float = 0.05, compare: str = "within_rows") ->
     res = two_way(labels, columns, cols, alpha=alpha, compare=compare)
     res["from_summary"] = True
     return res
+
+
+def _cell_obs_two_way(row_labels, columns, col_names):
+    cells = {}
+    for i, lab in enumerate(row_labels):
+        lab = str(lab or "").strip()
+        if not lab:
+            continue
+        for j, col in enumerate(columns):
+            v = _num(col[i]) if i < len(col) else None
+            if v is not None:
+                cells.setdefault((lab, col_names[j] if j < len(col_names) else f"Col {j + 1}"), []).append(v)
+    return cells
+
+
+def _cell_obs_three_way(factors, values):
+    cells = {}
+    for i, v in enumerate(values):
+        y = _num(v)
+        labs = tuple(str(f[i] if i < len(f) and f[i] is not None else "").strip() for f in factors)
+        if y is not None and all(labs):
+            cells.setdefault(labs, []).append(y)
+    return cells
+
+
+def cells_checklist(cells: dict, n_possible: int, repeated: bool = False, epsilon: float | None = None) -> list:
+    """Assumption checklist for factorial ANOVA from the values in each cell (combination of factor levels).
+    Residuals = value − its cell mean. Items: {"check", "status": ok | warn | info, "text"}."""
+    from .stats import normality, grubbs
+    out = []
+    groups = [np.asarray(v, float) for v in cells.values()]
+    ns = [len(g) for g in groups]
+    nmin, nmax = (min(ns), max(ns)) if ns else (0, 0)
+    missing = n_possible - len(cells)
+    if missing > 0:
+        out.append({"check": "Every combination has data", "status": "warn",
+                    "text": f"{missing} of {n_possible} combinations of levels have no values, so some effects can't be estimated cleanly. Interpret main effects with care."})
+    if nmin < 2:
+        out.append({"check": "Sample size", "status": "warn",
+                    "text": "Some combinations have only 1 value, so the scatter within them can't be judged. Aim for at least 3 per combination."})
+    elif nmin < 3:
+        out.append({"check": "Sample size", "status": "warn", "text": f"Only {nmin} values in the smallest combination: the test has little power to find an interaction."})
+    elif nmax > 2 * nmin and not repeated:
+        out.append({"check": "Sample size", "status": "info",
+                    "text": f"Unequal group sizes ({nmin} to {nmax} per combination). That's allowed (Type III sums of squares), but the test is more sensitive to unequal SDs."})
+    else:
+        out.append({"check": "Sample size", "status": "ok", "text": f"{nmin}{'' if nmin == nmax else f' to {nmax}'} values per combination."})
+    resid = np.concatenate([g - g.mean() for g in groups if len(g) >= 2]) if any(n >= 2 for n in ns) else np.array([])
+    nr = normality(resid) if len(resid) >= 3 else None
+    if nr is None:
+        out.append({"check": "Normal distribution", "status": "info", "text": "Too few replicates to test normality."})
+    elif nr["normal"]:
+        out.append({"check": "Normal distribution", "status": "ok",
+                    "text": f"The residuals (each value minus its group mean) passed the Shapiro-Wilk test (P = {nr['p']:.3g})."})
+    else:
+        out.append({"check": "Normal distribution", "status": "warn",
+                    "text": f"The residuals don't look normal (Shapiro-Wilk P = {nr['p']:.3g}). Skewed data (e.g. concentrations) often look better after a log transform."
+                            + (" With this many values the effect on P values is usually small." if len(resid) >= 60 else "")})
+    if repeated:
+        if epsilon is not None:
+            out.append({"check": "Sphericity", "status": "ok" if epsilon >= 0.75 else "info",
+                        "text": f"Handled: the repeated-measures P values use the Geisser-Greenhouse correction (ε = {epsilon:.3f}; 1 means none was needed)."})
+    else:
+        usable = [g for g in groups if len(g) >= 2]
+        if len(usable) >= 2 and any(np.ptp(g) > 0 for g in usable):
+            bf = stats.levene(*usable, center="median")
+            sds = [g.std(ddof=1) for g in usable]
+            ratio = max(sds) / min(sds) if min(sds) > 0 else float("inf")
+            if bf.pvalue < 0.05:
+                out.append({"check": "Equal spread (SD)", "status": "warn",
+                            "text": f"The SDs differ between combinations (Brown-Forsythe P = {bf.pvalue:.3g}; largest SD is {ratio:.3g}× the smallest). "
+                                    "A log transform often evens them out; with very different SDs, treat P values near the cut-off with caution."})
+            else:
+                out.append({"check": "Equal spread (SD)", "status": "ok", "text": f"No evidence that the SDs differ (Brown-Forsythe P = {bf.pvalue:.3g})."})
+    found = []
+    for key, g in cells.items():
+        if len(g) >= 3:
+            gr = grubbs(g, alpha=0.05)
+            if gr["outliers"]:
+                vals = ", ".join(format(o["value"], ".4g") for o in gr["outliers"])
+                found.append(" / ".join(key) + ": " + vals)
+    if found:
+        out.append({"check": "Outliers", "status": "warn",
+                    "text": f"Possible outliers (Grubbs' test) in {'; '.join(found)}. Check them for typing or technical errors."})
+    elif nmin >= 3:
+        out.append({"check": "Outliers", "status": "ok", "text": "No outliers found in any combination (Grubbs' test, α = 0.05)."})
+    out.append({"check": "Independent values", "status": "info",
+                "text": "Each subject should be measured independently of the others." + (" The same subjects are measured repeatedly, which the analysis accounts for." if repeated else
+                        " Technical replicates of one sample are not independent: average them first.")})
+    return out

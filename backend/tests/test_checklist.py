@@ -113,3 +113,38 @@ def test_fit_checklist_few_points_and_poor_parameter():
     assert it["Number of points"]["status"] == "warn"
     assert it["Well-determined parameters"]["status"] == "warn" and "Top" in it["Well-determined parameters"]["text"]
     assert r["derived"][0]["ci"][1] is None  # huge CI limit no longer crashes the fit (was OverflowError)
+
+
+def test_two_way_checklist_matches_scipy():
+    rng = np.random.default_rng(11)
+    rows = ["M"] * 5 + ["F"] * 5
+    cols = [rng.normal(10, 1, 10).tolist(), rng.normal(12, 1, 10).tolist(), (rng.normal(12, 1, 10) * np.r_[np.ones(5), np.full(5, 6)]).tolist()]
+    r = c.post("/api/twoway", json={"rows": rows, "columns": cols, "names": ["A", "B", "C"]}).json()
+    it = _items(r)
+    groups = [np.array(cols[j][s:s + 5]) for s in (0, 5) for j in range(3)]
+    bf = ss.levene(*groups, center="median")
+    assert (bf.pvalue < 0.05) == (it["Equal spread (SD)"]["status"] == "warn")
+    assert f"{bf.pvalue:.3g}" in it["Equal spread (SD)"]["text"]
+    resid = np.concatenate([g - g.mean() for g in groups])
+    assert f"{ss.shapiro(resid).pvalue:.3g}" in it["Normal distribution"]["text"]
+    assert it["Sample size"]["status"] == "ok"
+    # a combination with a single value
+    cols2 = [c_[:] for c_ in cols]
+    cols2[1] = cols2[1][:6] + [None] * 4
+    it2 = _items(c.post("/api/twoway", json={"rows": rows, "columns": cols2, "names": ["A", "B", "C"]}).json())
+    assert it2["Sample size"]["status"] == "warn" and "only 1 value" in it2["Sample size"]["text"]
+    assert "Every combination has data" not in it2
+
+
+def test_two_way_rm_and_three_way_checklists():
+    rng = np.random.default_rng(4)
+    rows = ["T0"] * 6 + ["T1"] * 6
+    cols = [rng.normal(10, 1, 12).tolist(), rng.normal(11, 1, 12).tolist()]
+    it = _items(c.post("/api/twoway", json={"rows": rows, "columns": cols, "names": ["Ctl", "Drug"], "rm": True}).json())
+    assert "Equal spread (SD)" not in it and "Independent values" in it
+    A = ["a1", "a2"] * 12; B = (["b1"] * 2 + ["b2"] * 2) * 6; C_ = (["c1"] * 4 + ["c2"] * 4) * 3
+    y = rng.normal(5, 1, 24).tolist()
+    r = c.post("/api/threeway", json={"factors": [A, B, C_], "values": y, "names": ["A", "B", "C"]}).json()
+    it = _items(r)
+    assert it["Sample size"]["text"].startswith("3 values")
+    assert "Every combination has data" not in it

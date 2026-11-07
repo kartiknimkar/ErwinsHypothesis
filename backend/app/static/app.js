@@ -2170,6 +2170,7 @@
     h += `<div class="opt-label" style="margin-top:10px">Cell means</div>` + T.multi([esc(r.factors[0]), esc(r.factors[1]), esc(r.factors[2]), "Mean", "SD", "n"],
       r.cells.map(c => [esc(r.levels[0][c.a]), esc(r.levels[1][c.b]), esc(r.levels[2][c.c]), fmt(c.mean), fmt(c.sd, 3), c.n]));
     h += `<p class="note">${r.balanced ? "" : "Unequal group sizes: "}Type III sums of squares (effect coding), as in Prism and SPSS. ${r.n} values.</p>`;
+    if (r.checklist) h += checklistBox(r.checklist);
     return h;
   }
   function drawThreeWay(el, r, s) {
@@ -2466,6 +2467,7 @@
       return `${fmt(c.mean)} <span class="pd">± ${fmt(c.sd, 3)} (n=${c.n})</span>`;
     })]));
     h += `<p class="note">Mean ± SD. ${r.balanced ? "" : "Unequal group sizes: Type III sums of squares are used. "}${r.rm ? "Comparisons at each row use that row's own error term." : "Comparisons use the pooled ANOVA error."}</p>`;
+    if (r.checklist) h += checklistBox(r.checklist);
     return h;
   }
 

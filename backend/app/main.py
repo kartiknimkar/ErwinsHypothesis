@@ -5,6 +5,8 @@ import math
 import os
 from pathlib import Path
 
+import numpy as np
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -359,6 +361,12 @@ def run_twoway(req: TwoWayRequest):
             res = anova2.two_way_rm(req.rows, req.columns, req.names, alpha=req.alpha)
         else:
             res = anova2.two_way(req.rows, req.columns, req.names, alpha=req.alpha, compare=req.compare, method=req.method, control=req.control)
+        try:
+            cells = anova2._cell_obs_two_way(req.rows, req.columns, req.names)
+            nr_ = len({k[0] for k in cells}); nc_ = len({k[1] for k in cells})
+            res["checklist"] = anova2.cells_checklist(cells, nr_ * nc_, repeated=req.rm, epsilon=res.get("epsilon"))
+        except Exception:  # advice only
+            pass
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))
@@ -376,6 +384,12 @@ class ThreeWayRequest(BaseModel):
 def run_threeway(req: ThreeWayRequest):
     try:
         res = anova2.three_way(req.factors, req.values, req.names, alpha=req.alpha, compare=req.compare)
+        try:
+            cells = anova2._cell_obs_three_way(req.factors, req.values)
+            n_pos = int(np.prod([len({k[i] for k in cells}) for i in range(3)]))
+            res["checklist"] = anova2.cells_checklist(cells, n_pos)
+        except Exception:  # advice only
+            pass
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))
