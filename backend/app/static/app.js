@@ -937,8 +937,28 @@
       r.readAsDataURL(file);
     });
   }
+  async function pzfxSheets(file) {
+    const data = await readBase64(file);
+    const res = await api("/api/import", { method: "POST", body: JSON.stringify({ filename: file.name, data }) });
+    const sheets = res.tables.map(tb => {
+      const sh = newSheet(tb.type);
+      sh.title = tb.title; sh.cols = tb.cols; sh.data = tb.rows.map(r => r.map(v => String(v ?? "")));
+      Object.assign(sh.options, tb.options || {});
+      if (tb.type === "regression" && tb.options && tb.options.yMode === "datasets") sh.options.cmpParam = "";
+      return normalize(sh);
+    });
+    return { sheets, notes: res.notes || [] };
+  }
   async function importData(file) {
     const s = active(), t = TYPES[s.type];
+    if (/\.pzfx$/i.test(file.name)) {
+      try {
+        const { sheets, notes } = await pzfxSheets(file);
+        project.sheets.push(...sheets); project.activeId = sheets[0].id; save(); renderAll();
+        toast(`Imported ${sheets.length} table${sheets.length === 1 ? "" : "s"} from the Prism file as new analyses.${notes.length ? " " + notes.map(esc).join(" ") : ""}`);
+      } catch (e) { toast(esc(e.message || "Import failed.")); }
+      return;
+    }
     try {
       const data = await readBase64(file);
       let res = await api("/api/import", { method: "POST", body: JSON.stringify({ filename: file.name, data }) });
@@ -2126,7 +2146,20 @@
       projectName = r.name; $("project-name").value = projectName; toast(`Project renamed to <b>${esc(projectName)}</b>`);
     } catch (e) { $("project-name").value = projectName; toast(esc(e.message)); }
   }
+  async function importPzfxProject(file) {
+    try {
+      const { sheets, notes } = await pzfxSheets(file);
+      const n = await uniqueName(file.name.replace(/\.pzfx$/i, ""));
+      await saveNow();
+      project = { sheets, activeId: sheets[0].id };
+      const saved = await api(`/api/projects/${encodeURIComponent(n)}`, { method: "PUT", body: JSON.stringify({ data: project }) });
+      projectName = saved.name; $("project-name").value = projectName; setStatus("✓ Saved");
+      hideProjects(); renderAll();
+      toast(`Opened the Prism file as a new project with ${sheets.length} analyses.${notes.length ? " " + notes.map(esc).join(" ") : ""}`);
+    } catch (e) { toast(esc(e.message || "Import failed.")); }
+  }
   function importFile(file) {
+    if (/\.pzfx$/i.test(file.name)) { importPzfxProject(file); return; }
     const reader = new FileReader();
     reader.onload = async () => {
       try {

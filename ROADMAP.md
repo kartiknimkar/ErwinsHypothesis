@@ -116,6 +116,11 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Compare a parameter (e.g. LogIC50, slope) or whole curves via shared-parameter global fit + extra-SS F test
 - [x] Linear slope comparison verified = ANCOVA interaction (statsmodels); 100 tests
 
+## Phase 0.27: Prism file import (done 2026-11-06)
+- [x] Open .pzfx (Prism XML) files: column, XY (replicates / multiple data sets), grouped, survival,
+      contingency, multiple-variable tables → matching analyses; excluded values dropped with a note;
+      SD/SEM summary formats import the means with a note. Not yet verified on a real Prism file.
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

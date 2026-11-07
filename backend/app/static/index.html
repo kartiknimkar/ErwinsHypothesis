@@ -34,9 +34,9 @@
       <ul id="project-list" class="project-list"></ul>
       <div class="dialog-foot">
         <button id="btn-examples" class="ghost small" title="A project with an example of every analysis">New example project</button>
-        <button id="btn-import" class="ghost small">Import a project file…</button>
+        <button id="btn-import" class="ghost small" title="An Erwin's Hypothesis project (.ehp) or a GraphPad Prism project (.pzfx)">Import a project file…</button>
         <button id="btn-show-projects" class="ghost small">Show projects folder</button>
-        <input type="file" id="file-import" accept=".ehp,.json" hidden>
+        <input type="file" id="file-import" accept=".ehp,.json,.pzfx" hidden>
       </div>
     </div>
   </div>
@@ -99,8 +99,8 @@
             <h2>Data</h2>
             <div class="card-actions">
               <button id="btn-addcol" class="ghost small"></button>
-              <button id="btn-import-data" class="ghost small" title="Load data from an Excel (.xlsx) or CSV file">Import</button>
-              <input type="file" id="file-data" accept=".xlsx,.xlsm,.csv,.tsv,.txt" hidden>
+              <button id="btn-import-data" class="ghost small" title="Load data from Excel (.xlsx), CSV, or a Prism project (.pzfx)">Import</button>
+              <input type="file" id="file-data" accept=".xlsx,.xlsm,.csv,.tsv,.txt,.pzfx" hidden>
               <button id="btn-transform" class="ghost small" title="Normalize or transform the data into a new analysis">Transform</button>
               <button id="btn-example" class="ghost small">Example</button>
               <button id="btn-clear" class="ghost small">Clear</button>

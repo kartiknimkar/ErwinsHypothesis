@@ -266,6 +266,8 @@ class ImportRequest(BaseModel):
 @app.post("/api/import")
 def import_file(req: ImportRequest):
     try:
+        if req.filename.lower().endswith(".pzfx"):
+            return importer.read_pzfx(req.data)
         return importer.read_table(req.filename, req.data, req.sheet)
     except (ValueError, UnicodeDecodeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
