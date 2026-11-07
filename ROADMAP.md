@@ -347,6 +347,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 ## Phase 0.80: Find + notes (done 2026-11-07)
 - [x] Sidebar "Find an analysis" filter (appears with 8+ analyses); per-analysis Notes box, saved and included in the report; 205 tests
 
+## Phase 0.81: Reuse data + curve table (done 2026-11-07)
+- [x] "Analyze another way": copy the numbers into a new Compare-groups, XY, multiple-variables or ROC/method analysis
+- [x] XY results: save the fitted curve as an X, Y table (Excel); 206 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

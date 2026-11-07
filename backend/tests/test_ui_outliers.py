@@ -511,3 +511,30 @@ def test_sidebar_filter_and_notes(server):  # noqa: F811
         assert page.input_value("#sheet-notes") == "Data from experiment 12"
         assert errors == [], errors
         browser.close()
+
+
+def test_analyze_another_way_and_curve_table(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('Example: two groups')")
+        page.wait_for_timeout(300)
+        page.click("#btn-reuse")
+        page.click('#reuse-menu [data-reuse="diagnostic"]')
+        page.wait_for_timeout(800)
+        assert page.input_value('#grid input[data-r="0"][data-c="0"]') == "4.2"
+        assert "Dx" in page.inner_text("#sheet-badge")
+        page.click("#sheet-list li:has-text('dose-respon')")
+        page.wait_for_selector("[data-act=curve-xlsx]")
+        page.click("[data-act=curve-xlsx]")
+        page.wait_for_selector("#toast:not([hidden])")
+        assert "points along the curve" in page.inner_text("#toast")
+        assert errors == [], errors
+        browser.close()

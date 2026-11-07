@@ -280,3 +280,5 @@ kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; background: var(--sof
 .notes-box { margin-top: 10px; font-size: 12.5px; }
 .notes-box summary { cursor: pointer; color: var(--muted); font-weight: 600; }
 .notes-box textarea { width: 100%; margin-top: 6px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; background: var(--panel); color: var(--ink); resize: vertical; }
+.reuse-menu { position: absolute; left: auto; right: 120px; width: auto; top: 44px; z-index: 30; min-width: 320px; }
+.sheet-header { position: relative; }

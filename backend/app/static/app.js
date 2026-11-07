@@ -2469,7 +2469,7 @@
 
   // ---------------------------------------------------------------- XY
   function renderXYResults(r, s) {
-    return renderXYCore(r, s) + renderRuns(r) + (r.predicted ? renderPredicted(r, s) : "") + (r.rout_q ? renderXYOutliers(r, s) : "") + (r.auc ? renderAUC(r.auc, s) : "") + (r.unknowns ? renderUnknowns(r, s) : "");
+    return renderXYCore(r, s) + `<p class="note"><button class="ghost small" data-act="curve-xlsx">Save the fitted curve as an X, Y table (Excel)</button></p>` + renderRuns(r) + (r.predicted ? renderPredicted(r, s) : "") + (r.rout_q ? renderXYOutliers(r, s) : "") + (r.auc ? renderAUC(r.auc, s) : "") + (r.unknowns ? renderUnknowns(r, s) : "");
   }
   function renderPredicted(r, s) {
     return `<div class="opt-label" style="margin-top:10px">Predicted ${esc(s.cols[1] || "Y")} for ${esc(s.cols[0] || "X")} values without Y</div>` +
@@ -3371,6 +3371,7 @@
   function resultsRows(box = $("results")) {
     const rows = [];
     box.querySelectorAll(".summary, .opt-label, table.res tr, .note").forEach(el => {
+      if (el.classList.contains("note") && el.querySelector("button")) return;  // buttons, not results
       if (el.tagName === "TR") {
         const cells = [...el.children].map(td => td.textContent.trim());
         if (el.classList.contains("sec")) rows.push([], [cells[0].toUpperCase()]);
@@ -3568,6 +3569,42 @@
     s.data = blankRows(TYPES[s.type].minRows, s.cols.length); s.excluded = []; save(); renderGrid(); scheduleRun();
     toast("Data cleared. Press Ctrl+Z to undo.");
   };
+  // the same numbers, a different kind of analysis (types whose tables are plain columns of numbers)
+  const REUSE = [["ttest", "Compare groups / describe columns"], ["regression", "XY: first column = X"], ["multivar", "Multiple variables (correlation, regression, PCA)"], ["diagnostic", "ROC or method comparison (first 2 columns)"]];
+  $("btn-reuse").onclick = e => {
+    e.stopPropagation();
+    const s = active(), m = $("reuse-menu");
+    if (!m.hidden) { m.hidden = true; return; }
+    m.innerHTML = REUSE.filter(([t]) => t !== s.type).map(([t, l]) => `<button data-reuse="${t}"><span class="badge t-${t}">${badgeText(t)}</span> ${l}</button>`).join("");
+    m.hidden = false;
+    m.querySelectorAll("[data-reuse]").forEach(b => b.onclick = () => {
+      const type = b.dataset.reuse, src = active(), sh = newSheet(type), t = TYPES[type];
+      const st = TYPES[src.type];
+      const numCols = src.cols.map((_, j) => j).filter(j => !isTextCol(st, j));
+      const take = numCols.slice(0, t.maxCols);
+      sh.cols = take.map(j => src.cols[j] || `Column ${j + 1}`);
+      sh.data = src.data.map(r => take.map(j => (src.excluded || []).includes(exKey(src.data.indexOf(r), j)) ? "" : r[j] ?? ""));
+      while (sh.cols.length < t.minCols) { sh.cols.push(t.newColName(sh.cols.length)); sh.data.forEach(r => r.push("")); }
+      sh.title = `${src.title} (${t.label.toLowerCase()})`;
+      normalize(sh); padRows(sh);
+      project.sheets.splice(project.sheets.findIndex(x => x.id === src.id) + 1, 0, sh);
+      project.activeId = sh.id; m.hidden = true; save(); renderAll();
+      toast(`Copied the numbers into a new <b>${esc(t.label)}</b> analysis.${take.length < numCols.length ? ` Only the first ${take.length} columns fit this kind of table.` : ""} Excluded values were left blank.`);
+    });
+  };
+  document.addEventListener("click", e => { if (!e.target.closest("#reuse-menu, #btn-reuse")) $("reuse-menu").hidden = true; });
+  // fitted curve as a table of X, Y points (results button)
+  $("results").addEventListener("click", async e => {
+    if (!e.target.closest("[data-act=curve-xlsx]")) return;
+    const s = active(), r = lastResult, c = r && (r.model === "linear" ? r.line : r.curve);
+    if (!c) return;
+    const logFit = r.model !== "linear" && r.x_is_log && !s.options.xIsLog;
+    const rows = [["X", "Y (fitted curve)"], ...c.x.map((x, i) => [String(logFit ? Math.pow(10, x) : x), String(c.y[i])])];
+    try {
+      const res = await api("/api/exports/xlsx", { method: "POST", body: JSON.stringify({ filename: `${projectName} - ${s.title} - curve`, title: `${s.title}: fitted curve`, results: rows, data_cols: [], data_rows: [] }) });
+      toast(`Saved <b>${esc(res.file)}</b> (${c.x.length} points along the curve) to the exports folder`, "exports");
+    } catch (err) { toast(esc(err.message || "Export failed.")); }
+  });
   $("btn-dup").onclick = () => {
     const s = active(), copy = JSON.parse(JSON.stringify(s));
     copy.id = uid(); copy.title = `${s.title} (copy)`;
