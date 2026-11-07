@@ -1858,7 +1858,8 @@
       const stat = r.df != null ? `${r.statistic_name}(${r2(r.df, Number.isInteger(r.df) ? 0 : 1)}) = ${r2(r.statistic)}` : `${r.statistic_name} = ${r2(r.statistic, 1)}`;
       const dir = r.difference > 0 ? "higher than" : "lower than";
       const what = np ? (r.kind === "wilcoxon" ? "median difference" : "median difference") : "mean difference";
-      const eff = r.effect && r.effect.cohens_d != null ? `, d = ${r2(r.effect.cohens_d)}` : r.effect && r.effect.cohens_dz != null ? `, d<sub>z</sub> = ${r2(r.effect.cohens_dz)}` : "";
+      const hl = r.hodges_lehmann && r.hodges_lehmann.ci ? `; Hodges-Lehmann estimate ${r2(r.hodges_lehmann.estimate)}, ${pct}% CI ${r2(r.hodges_lehmann.ci[0])} to ${r2(r.hodges_lehmann.ci[1])}` : "";
+      const eff = (r.effect && r.effect.cohens_d != null ? `, d = ${r2(r.effect.cohens_d)}` : r.effect && r.effect.cohens_dz != null ? `, d<sub>z</sub> = ${r2(r.effect.cohens_dz)}` : "") + hl;
       const results = r.significant
         ? `${b} was significantly ${dir} ${a} (${what} ${r2(r.difference)}${r.ci_low != null ? `, ${pct}% CI ${r2(r.ci_low)} to ${r2(r.ci_high)}` : ""}; ${stat}, ${apaP(r.p)}${eff}).`
         : `${b} and ${a} did not differ significantly (${what} ${r2(r.difference)}${r.ci_low != null ? `, ${pct}% CI ${r2(r.ci_low)} to ${r2(r.ci_high)}` : ""}; ${stat}, ${apaP(r.p)}${eff}).`;
@@ -2112,6 +2113,8 @@
       h += T.table([T.sec(esc(r.test_name)), T.row("P value", pOnly(r.p)), T.row(`Significant? (α = ${r.alpha})`, `${r.significant ? "Yes" : "No"} ${st(r.stars)}`),
         T.row(`${r.statistic_name}${r.df != null ? ", df" : ""}`, `${r.statistic_name} = ${fmt(r.statistic)}${r.df != null ? `, df = ${fmt(r.df)}` : ""}`),
         T.row(esc(r.difference_label), fmt(r.difference)), r.ci_low != null ? T.row(`${pct}% CI of ${r.kind === "ratio_paired" ? "ratio" : "difference"}`, ci(r.ci_low, r.ci_high)) : "",
+        r.hodges_lehmann ? T.row(r.kind === "wilcoxon" ? "Hodges-Lehmann median difference" : "Hodges-Lehmann difference (median of all B − A)", fmt(r.hodges_lehmann.estimate)) : "",
+        r.hodges_lehmann && r.hodges_lehmann.ci ? T.row(`${pct}% CI (Hodges-Lehmann)`, ci(...r.hodges_lehmann.ci)) : "",
         r.n_pairs ? T.row("Number of pairs", r.n_pairs) : "", ...effectRows(r), ...normalityRows(r)]);
       if (r.variance_check && r.variance_check.p < 0.05) h += `<p class="note warn">⚠︎ The groups' spreads differ (F test ${fmtP(r.variance_check.p)}). Welch's t test is safer.</p>`;
     } else {

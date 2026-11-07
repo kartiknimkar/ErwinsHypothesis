@@ -55,6 +55,65 @@ def describe(values, name: str = "") -> dict:
     }
 
 
+def _mw_null_cdf(m: int, n: int) -> np.ndarray:
+    """Exact null CDF of the Mann-Whitney U statistic (no ties), index = u."""
+    # f[j][u]: ways to get U = u with i values from sample 1 and j from sample 2 (built up over i)
+    f = [np.zeros(m * n + 1) for _ in range(n + 1)]
+    for j in range(n + 1):
+        f[j][0] = 1.0
+    for i in range(1, m + 1):
+        g = [np.zeros(m * n + 1) for _ in range(n + 1)]
+        g[0][0] = 1.0
+        for j in range(1, n + 1):
+            g[j] = g[j - 1].copy()
+            g[j][j:] += f[j][:-j] if j else f[j]
+        f = g
+    counts = f[n]
+    return np.cumsum(counts) / counts.sum()
+
+
+def _signed_rank_null_cdf(n: int) -> np.ndarray:
+    """Exact null CDF of the Wilcoxon signed-rank statistic T+ (no ties), index = t."""
+    M = n * (n + 1) // 2
+    c = np.zeros(M + 1); c[0] = 1.0
+    for k in range(1, n + 1):
+        c[k:] = c[k:] + c[:-k].copy()
+    return np.cumsum(c) / c.sum()
+
+
+def hodges_lehmann(a, b=None, alpha: float = 0.05) -> dict:
+    """Hodges-Lehmann estimate and CI. Two samples: median of all differences b − a (Mann-Whitney based CI);
+    one sample (paired differences in a): median of Walsh averages (signed-rank based CI). Exact for small samples,
+    normal approximation otherwise."""
+    z = stats.norm.ppf(1 - alpha / 2)
+    if b is not None:
+        x, y = np.asarray(a, float), np.asarray(b, float)
+        m, n = len(x), len(y)
+        d = np.sort((y[:, None] - x[None, :]).ravel())
+        N = m * n
+        if N <= 2500:
+            cdf = _mw_null_cdf(m, n)
+            c = int(np.sum(cdf <= alpha / 2))  # number of u values with P(U <= u) <= alpha/2  → lower index
+        else:
+            c = int(math.floor(N / 2 - z * math.sqrt(N * (m + n + 1) / 12)))
+    else:
+        dd = np.asarray(a, float)
+        dd = dd[dd != 0]
+        n = len(dd)
+        i, j = np.triu_indices(n)
+        d = np.sort((dd[i] + dd[j]) / 2)
+        N = len(d)
+        if n <= 60:
+            cdf = _signed_rank_null_cdf(n)
+            c = int(np.sum(cdf <= alpha / 2))
+        else:
+            c = int(math.floor(N / 2 - z * math.sqrt(n * (n + 1) * (2 * n + 1) / 24)))
+    est = float(np.median(d))
+    if c < 1:
+        return {"estimate": est, "ci": None}
+    return {"estimate": est, "ci": [float(d[c - 1]), float(d[N - c])]}
+
+
 def _effect_two(kind, xa, xb, res) -> dict | None:
     """Effect sizes for two-group comparisons (difference is B − A)."""
     n1, n2 = len(xa), len(xb)
@@ -189,6 +248,7 @@ def t_test(a, b, kind: str = "unpaired", name_a: str = "A", name_b: str = "B",
             raise ValueError("All differences are zero, so there's nothing to test.")
         r = stats.wilcoxon(diffs)
         result.update(
+            hodges_lehmann=hodges_lehmann(diffs, None, alpha),
             test_name="Wilcoxon matched-pairs signed-rank test",
             statistic_name="W",
             statistic=float(r.statistic),
@@ -213,6 +273,8 @@ def t_test(a, b, kind: str = "unpaired", name_a: str = "A", name_b: str = "B",
             ci_low=None,
             ci_high=None,
         )
+        hl = hodges_lehmann(xa, xb, alpha)
+        result["hodges_lehmann"] = hl
     else:
         raise ValueError(f"Unknown test type: {kind}")
 

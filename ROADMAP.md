@@ -255,6 +255,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Every subject measured at every row and column: each effect against its own subject × effect error,
       Geisser-Greenhouse per effect (orthonormal contrasts); F, P and ε match pingouin; paired Šídák comparisons; 175 tests
 
+## Phase 0.57: Hodges-Lehmann (done 2026-11-07)
+- [x] Mann-Whitney and Wilcoxon report the Hodges-Lehmann estimate with an exact (small n) or approximate CI;
+      null distributions checked by enumeration, coverage by simulation; 177 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
