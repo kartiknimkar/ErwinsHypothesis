@@ -140,7 +140,7 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (bm) graph gallery: a "Style presets" dropdown (Prism classic, minimal, journal black & white, presentation large text)
 - [x] (bn) save a graph's Format settings as "My style" and apply it to other graphs (stored in prefs)
 - [x] (bo) apply the current graph's style to every graph in the project (one click)
-- [ ] (bp) results: show which assumptions were checked in a short "Checklist" box (normality, equal variances, outliers, sample size) with plain advice
+- [x] (bp) results: show which assumptions were checked in a short "Checklist" box (normality, equal variances, outliers, sample size) with plain advice
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →

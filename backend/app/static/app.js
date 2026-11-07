@@ -2324,8 +2324,15 @@
           + `<p class="note warn">Outliers are circled in red on the graph. The analysis above still includes them: only remove a value if you have a reason beyond the statistics (e.g. a known technical error).</p>`
         : `<p class="note">No outliers found in any group.</p>`);
     }
+    if (r.checklist) h += checklistBox(r.checklist);
     h += `<div class="opt-label" style="margin-top:10px">Descriptive statistics</div>` + descTable(r.groups);
     return h;
+  }
+  function checklistBox(items) {
+    const icon = { ok: "✓", warn: "!", info: "i" };
+    const nWarn = items.filter(c => c.status === "warn").length;
+    return `<details class="checklist" ${nWarn ? "open" : ""}><summary>Assumptions checklist <span class="pd">${nWarn ? `${nWarn} to look at` : "all fine"}</span></summary><ul>` +
+      items.map(c => `<li class="ck-${c.status}"><span class="ck-icon" aria-hidden="true">${icon[c.status]}</span><div><b>${esc(c.check)}</b> ${esc(c.text)}</div></li>`).join("") + `</ul></details>`;
   }
 
   function renderFreq(r) {

@@ -589,3 +589,24 @@ def test_xy_mean_sd_n_mode(server):  # noqa: F811
         assert err and err[0][:2] == [0.3, 0.4]
         assert errors == [], errors
         browser.close()
+
+
+def test_assumptions_checklist_box(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:nth-child(1)")
+        page.wait_for_selector("#results details.checklist", timeout=10000)
+        txt = page.inner_text("#results details.checklist summary")
+        assert "Assumptions checklist" in txt
+        items = page.eval_on_selector_all("#results details.checklist li b", "els => els.map(e => e.textContent)")
+        assert "Sample size" in items and "Outliers" in items and "Independent values" in items
+        assert errors == [], errors
+        browser.close()

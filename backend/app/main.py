@@ -177,6 +177,8 @@ def run_compare(req: CompareRequest):
                 res["outliers"] = [{"name": n, **outliers.rout_column(stats._clean(g).tolist(), req.q)} for n, g in zip(names, groups)]
             else:
                 res["outliers"] = [{"name": n, "method": "grubbs", **stats.grubbs(g, alpha=0.05)} for n, g in zip(names, groups)]
+        used = res.get("kind") or (kind if len(cols) == 2 or req.kind not in ("rm", "friedman") else req.kind)
+        res["checklist"] = stats.assumption_checklist(res, groups, used)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))

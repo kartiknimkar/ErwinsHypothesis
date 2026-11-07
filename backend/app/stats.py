@@ -946,3 +946,133 @@ def frequency_distribution(groups, names, bin_width=None, bin_start=None, y: str
     return {"kind": "freq", "test_name": "Frequency distribution", "bin_width": h, "bin_start": start, "auto_width": auto,
             "edges": edges.tolist(), "centers": ((edges[:-1] + edges[1:]) / 2).tolist(), "y": y, "cumulative": cumulative,
             "groups": out, "n_groups": len(out)}
+
+
+_PARAMETRIC = {"unpaired", "welch", "paired", "ratio_paired", "ordinary", "rm"}
+_NONPAR_ALT = {"unpaired": "Mann-Whitney", "welch": "Mann-Whitney", "paired": "Wilcoxon signed-rank",
+               "ratio_paired": "Wilcoxon signed-rank", "ordinary": "Kruskal-Wallis", "rm": "Friedman"}
+
+
+def _complete_rows(groups):
+    rows = []
+    for vals in zip(*groups):
+        try:
+            r = [float(v) for v in vals]
+        except (TypeError, ValueError):
+            continue
+        if all(math.isfinite(v) for v in r):
+            rows.append(r)
+    return np.asarray(rows, dtype=float)
+
+
+def assumption_checklist(res: dict, groups, kind: str) -> list:
+    """Plain-language list of the assumptions behind a 2+ group comparison, each checked where possible.
+    Every item: {"check", "status": ok | warn | info, "text"}."""
+    xs = [_clean(g) for g in groups]
+    names = [g["name"] for g in res.get("groups", [])] or [f"Group {i + 1}" for i in range(len(xs))]
+    paired = kind in ("paired", "ratio_paired", "wilcoxon", "rm", "friedman")
+    if paired:
+        Y = _complete_rows(groups)
+        ns = [len(Y)] * len(xs)
+    else:
+        ns = [len(x) for x in xs]
+    out = []
+
+    # 1. sample size
+    nmin = min(ns) if ns else 0
+    unit = "pairs" if paired and len(xs) == 2 else "subjects" if paired else "values per group"
+    if kind == "mannwhitney" and len(xs) == 2:
+        pmin = 2 / math.comb(ns[0] + ns[1], ns[0]) if min(ns) > 0 else 1.0
+    elif kind == "wilcoxon":
+        pmin = 2 / 2 ** nmin if nmin > 0 else 1.0
+    else:
+        pmin = None
+    alpha = res.get("alpha", 0.05)
+    if pmin is not None and pmin >= alpha:
+        out.append({"check": "Sample size", "status": "warn",
+                    "text": f"With only {nmin} {unit} this rank test can never give P < {alpha} (smallest possible P = {pmin:.3g}). Collect more data, or use the t test if the values look normal."})
+    elif nmin < 3:
+        out.append({"check": "Sample size", "status": "warn",
+                    "text": f"Only {nmin} {unit}: too few to check any assumption, and the test has very little power."})
+    elif nmin < 6:
+        out.append({"check": "Sample size", "status": "warn",
+                    "text": f"Small groups ({nmin} {unit}): only large effects can be detected, and the normality and outlier checks below can't tell much. A non-significant result here says little."})
+    else:
+        out.append({"check": "Sample size", "status": "ok", "text": f"At least {nmin} {unit}." + (
+            " With this many values the test copes well with mild departures from normality." if nmin >= 30 and kind in _PARAMETRIC else "")})
+
+    # 2. normality
+    if kind in _PARAMETRIC:
+        if kind == "rm":
+            Y = _complete_rows(groups)
+            norm = [normality((Y - Y.mean(axis=1, keepdims=True) - Y.mean(axis=0) + Y.mean()).ravel())] if len(Y) >= 2 else [None]
+            what = ["the residuals"]
+        else:
+            norm = res.get("normality") or []
+            of = res.get("normality_of")
+            what = ["the differences"] if of == "differences" else ["the log ratios"] if of == "log ratios" else names
+        bad = [w for w, n in zip(what, norm) if n and not n["normal"]]
+        tested = [n for n in norm if n]
+        alt = _NONPAR_ALT.get(kind, "a nonparametric test")
+        if not tested:
+            out.append({"check": "Normal distribution", "status": "info",
+                        "text": "Too few values to test normality. Base the choice on experience with this kind of data."})
+        elif bad:
+            out.append({"check": "Normal distribution", "status": "warn",
+                        "text": f"{', '.join(bad)} {'does' if len(bad) == 1 else 'do'} not look normally distributed (Shapiro-Wilk P < 0.05). "
+                                f"If the values are skewed (e.g. concentrations), try a log transform; otherwise consider the {alt} test." +
+                                (" With this many values the effect on the result is usually small." if nmin >= 30 else "")})
+        else:
+            out.append({"check": "Normal distribution", "status": "ok",
+                        "text": f"{'The residuals' if kind == 'rm' else 'The differences' if what == ['the differences'] else 'The log ratios' if what == ['the log ratios'] else 'Every group'} passed the Shapiro-Wilk test." +
+                                (" With few values this test has little power, so it can't prove normality." if nmin < 8 else "")})
+    else:
+        out.append({"check": "Normal distribution", "status": "info",
+                    "text": "Not required: this test uses ranks (or the whole distribution), not the raw values."})
+
+    # 3. equal spread / sphericity
+    vc = res.get("variance_check")
+    if kind in ("welch",):
+        out.append({"check": "Equal spread (SD)", "status": "ok", "text": "Not required: Welch's test allows the groups to have different SDs."})
+    elif kind in ("paired", "ratio_paired", "wilcoxon"):
+        pass
+    elif kind == "rm":
+        eps = res.get("epsilon")
+        out.append({"check": "Sphericity", "status": "ok" if eps is None or eps >= 0.75 else "info",
+                    "text": "Handled: the P value uses the Geisser-Greenhouse correction" + (f" (ε = {eps:.3f}; 1 means no correction was needed)." if eps is not None else ".")})
+    elif kind in ("unpaired", "ordinary") and vc:
+        name = "F test" if kind == "unpaired" else vc.get("name", "Brown-Forsythe")
+        if vc["p"] < 0.05:
+            out.append({"check": "Equal spread (SD)", "status": "warn",
+                        "text": f"The groups' SDs differ ({name} P = {vc['p']:.3g}). Use Welch's {'t test' if kind == 'unpaired' else 'ANOVA'} instead, which doesn't assume equal SDs."})
+        else:
+            out.append({"check": "Equal spread (SD)", "status": "ok", "text": f"No evidence that the SDs differ ({name} P = {vc['p']:.3g})."})
+    elif kind in ("mannwhitney", "kruskal", "friedman"):
+        out.append({"check": "Similar shape", "status": "info",
+                    "text": "To read the result as a difference in medians, the groups should have similar shapes and spreads; otherwise it tells you the distributions differ."})
+
+    # 4. outliers
+    found = []
+    if res.get("outliers"):
+        found = [(o["name"], [x["value"] for x in o["outliers"]]) for o in res["outliers"] if o["outliers"]]
+        how = "ROUT" if res["outliers"][0].get("method") == "rout" else "Grubbs' test"
+    else:
+        how = "Grubbs' test"
+        for nm, x in zip(names, xs):
+            if len(x) >= 3:
+                g = grubbs(x, alpha=0.05)
+                if g["outliers"]:
+                    found.append((nm, [o["value"] for o in g["outliers"]]))
+    if found:
+        lst = "; ".join(f"{nm}: {', '.join(f'{v:.4g}' for v in vals)}" for nm, vals in found)
+        out.append({"check": "Outliers", "status": "warn",
+                    "text": f"Possible outliers ({how}) in {lst}. Check them for typing or technical errors. Remove a value only with a reason beyond the statistics."
+                            + ("" if kind in _PARAMETRIC else " Rank tests are little affected by single extreme values.")})
+    elif nmin >= 3:
+        out.append({"check": "Outliers", "status": "ok", "text": f"No outliers found ({how}, α = 0.05)."})
+
+    # 5. independence
+    out.append({"check": "Independent values", "status": "info",
+                "text": ("Each pair (subject) should be independent of the others, and the pairing must be real (same subject or matched)." if paired else
+                         "Each value should come from a different, independent subject or experiment. Technical replicates of one sample are not independent: average them first, or use a Nested table.")})
+    return out
