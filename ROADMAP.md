@@ -92,6 +92,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
       Type III for unequal groups; simple-effect comparisons per row; subject trajectories on the graph
 - [x] Verified vs pingouin (balanced, interaction) and statsmodels Type III (unequal groups); 94 tests
 
+## Phase 0.21: Figure layouts (done 2026-11-06)
+- [x] "Figure layout" type: pick analyses, 1–3 columns, panel letters; each panel uses its own graph settings
+- [x] Composite PNG/TIFF export at journal width and chosen DPI (canvas compositing in the browser)
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

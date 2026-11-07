@@ -17,7 +17,7 @@ clean, modern interface. Everything runs on your own computer.
 - **Contingency tables:** Fisher's exact, chi-square, odds ratio, relative risk
 - **Multiple variables:** correlation matrix with heatmap, multiple linear regression, logistic regression, PCA
 - **Diagnostics:** ROC curves (AUC, best cutoff), Bland-Altman method comparison
-- Graphs export as PNG, SVG or TIFF at journal sizes and 150–600 DPI
+- Graphs export as PNG, SVG or TIFF at journal sizes and 150–600 DPI; combine graphs into multi-panel figures (A, B, C…)
 - Also: standard-curve interpolation, area under the curve, Grubbs' outlier test, normalize/transform data
 
 Data can be typed, pasted from Excel, or imported from .xlsx / .csv files.

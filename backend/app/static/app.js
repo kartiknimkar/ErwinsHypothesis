@@ -322,6 +322,48 @@
       renderResults: (r, s) => s.options.analysis === "roc" ? renderROC(r) : renderBA(r),
       draw: (el, r, s) => s.options.analysis === "roc" ? drawROC(el, r, s) : drawBA(el, r, s),
     },
+    // ---------------------------------------------------------------- figure layout
+    layout: {
+      label: "Figure layout", newTitle: "Figure",
+      minCols: 0, maxCols: 0, fixedCols: 0, textCol: -1, addLabel: "", minRows: 0, noData: true,
+      colKind: () => "", newColName: () => "",
+      hint: "", cols: [], options: { panels: [], ncol: 2, letters: true, alpha: 0.05 },
+      graph: { exportSize: "2", letterSize: 16 },
+      examples: () => ({ cols: [], rows: [] }),
+      async runCustom(s) {
+        const ids = (s.options.panels || []).filter(id => project.sheets.some(x => x.id === id && x.type !== "layout"));
+        if (!ids.length) throw new Error("Tick the analyses to include in this figure (left).");
+        const panels = await Promise.all(ids.map(async id => {
+          const sh = project.sheets.find(x => x.id === id);
+          const [url, body] = TYPES[sh.type].request(sh);
+          try {
+            const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            const json = await res.json();
+            return res.ok ? { sheet: sh, result: json } : { sheet: sh, error: json.detail || "Not enough data." };
+          } catch { return { sheet: sh, error: "Can't reach the analysis engine." }; }
+        }));
+        return { kind: "layout", panels };
+      },
+      request: () => null,
+      renderOptions(s) {
+        const others = project.sheets.filter(x => x.type !== "layout");
+        const sel = s.options.panels || [];
+        return `<div class="opt-label">Analyses to include (in order)</div>
+          <div class="panel-list">${others.map(x => `<label class="check"><input type="checkbox" data-panel="${x.id}" ${sel.includes(x.id) ? "checked" : ""}>
+            <span class="badge t-${x.type}">${badgeText(x.type)}</span> ${esc(x.title)}${sel.includes(x.id) ? ` <span class="pd">(${String.fromCharCode(65 + sel.indexOf(x.id))})</span>` : ""}</label>`).join("") || `<p class="hint">Create some analyses first.</p>`}</div>
+          <div class="row"><label>Columns</label><select id="opt-ncol">${[1, 2, 3].map(n => `<option ${s.options.ncol === n ? "selected" : ""}>${n}</option>`).join("")}</select>
+          <label class="check"><input type="checkbox" data-opt="letters" ${s.options.letters ? "checked" : ""}> Panel letters (A, B, C…)</label></div>
+          <p class="hint">Each panel uses that analysis's own graph and Format settings. Export as PNG or TIFF for a single figure file.</p>`;
+      },
+      graphControls: () => [{ k: "letterSize", label: "Letter size", kind: "range", min: 10, max: 28 }],
+      renderResults: r => {
+        const ok = r.panels.filter(p => !p.error);
+        return T.summary("ns", `${ok.length} panel${ok.length === 1 ? "" : "s"} in this figure.`) +
+          T.multi(["Panel", "Analysis", "Result"], r.panels.map((p, i) => [String.fromCharCode(65 + i), esc(p.sheet.title),
+            p.error ? `<span class="pd">${esc(p.error)}</span>` : esc(layoutSummary(p))])).replace('class="res multi"', 'class="res multi left"');
+      },
+      draw: drawLayout,
+    },
     // ---------------------------------------------------------------- survival
     survival: {
       label: "Survival", newTitle: "Survival",
@@ -460,6 +502,7 @@
     add("regression", "Example: dose-response (IC50)", s => { s.options.model = "dr_inhibit"; s.graph.logX = true; });
     add("regression", "Example: standard curve");
     add("survival", "Example: survival");
+    const figPanels = project.sheets.filter(x => ["Example: two groups", "Example: three groups (ANOVA)", "Example: dose-response (IC50)", "Example: survival"].includes(x.title)).map(x => x.id);
     add("contingency", "Example: contingency");
     add("multivar", "Example: correlation matrix");
     add("multivar", "Example: multiple regression", s => { s.options.analysis = "mlr"; });
@@ -467,6 +510,7 @@
     add("multivar", "Example: PCA", s => { s.options.analysis = "pca"; });
     add("diagnostic", "Example: ROC curve");
     add("diagnostic", "Example: Bland-Altman", s => { s.options.analysis = "bland_altman"; });
+    add("layout", "Example: figure layout", s => { s.options.panels = figPanels; });
     project.activeId = first.id;
     return project;
   }
@@ -568,13 +612,15 @@
         <span class="badge t-${s.type}">${badgeText(s.type)}</span><span class="t">${esc(s.title)}</span></li>`).join("");
     $("sheet-list").querySelectorAll("li").forEach(li => li.onclick = () => { project.activeId = li.dataset.id; save(); renderAll(); });
   }
-  const badgeText = t => ({ ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#", multivar: "MV", diagnostic: "Dx" }[t]);
+  const badgeText = t => ({ layout: "▦", ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#", multivar: "MV", diagnostic: "Dx" }[t]);
 
   // ======================================================================
   // data grid
   // ======================================================================
   function renderGrid() {
     const s = active(), t = TYPES[s.type];
+    document.querySelector(".data-card").classList.toggle("no-data", !!t.noData);
+    if (t.noData) { $("grid").innerHTML = ""; $("data-hint").textContent = ""; return; }
     padRows(s);
     const canRemove = j => j >= t.fixedCols && s.cols.length > t.minCols;
     let h = "<thead><tr><th class='rownum'></th>";
@@ -806,7 +852,13 @@
       save(); renderOptions(); renderFormat(); scheduleRun();
     };
     wireParamInputs(s);
-    box.querySelectorAll("[data-opt]").forEach(cb => cb.onchange = () => { s.options[cb.dataset.opt] = cb.checked; save(); renderOptions(); scheduleRun(); });
+    box.querySelectorAll("[data-opt]").forEach(cb => cb.onchange = () => { s.options[cb.dataset.opt] = cb.checked; save(); renderOptions(); if (s.type === "layout") drawPlot(); else scheduleRun(); });
+    box.querySelectorAll("[data-panel]").forEach(cb => cb.onchange = () => {
+      const list = (s.options.panels = (s.options.panels || []).filter(id => id !== cb.dataset.panel));
+      if (cb.checked) list.push(cb.dataset.panel);
+      save(); renderOptions(); scheduleRun();
+    });
+    const nc = $("opt-ncol"); if (nc) nc.onchange = e => { s.options.ncol = Number(e.target.value); save(); drawPlot(); };
     const hy = $("opt-hyp");
     if (hy) hy.oninput = () => { s.options.hypothetical = hy.value.trim(); hy.classList.toggle("bad", hy.value.trim() !== "" && !isNum(hy.value)); save(); scheduleRun(); };
     const bl = $("opt-baseline");
@@ -828,6 +880,7 @@
   function seriesNames(s) {
     if (s.type === "ttest") return filledCols(s).map(j => s.cols[j] || `Group ${letter(j)}`);
     if (s.type === "regression") return ["Curve", ...(s.options.compare ? ["Comparison curve"] : []), "Unknowns"];
+    if (s.type === "layout") return [];
     if (s.type === "multivar") return (s.options.analysis || "correlation") === "correlation" ? [] : s.options.analysis === "logistic" ? ["Curve"] : s.options.analysis === "pca" ? ["Points", "Loadings"] : ["Points"];
     if (s.type === "twoway" && s.options.analysis === "multit") return ["Discoveries"];
     if (s.type === "diagnostic") return s.options.analysis === "roc" ? ["Curve", "Best cutoff"] : ["Points"];
@@ -875,6 +928,12 @@
   function scheduleRun() { clearTimeout(runTimer); runTimer = setTimeout(run, 250); }
   async function run() {
     const s = active(), seq = ++runSeq;
+    if (TYPES[s.type].runCustom) {
+      try { const r = await TYPES[s.type].runCustom(s); if (seq !== runSeq) return; lastResult = r; lastError = null; }
+      catch (e) { if (seq !== runSeq) return; lastResult = null; lastError = e.message; }
+      renderResults(); drawPlot();
+      return;
+    }
     const [url, body] = TYPES[s.type].request(s);
     try {
       const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -1327,6 +1386,55 @@
       xaxis: axis(g, { title: { text: `Average of ${esc(r.names[0])} and ${esc(r.names[1])}` } }), yaxis: yAxis(g, `${esc(r.names[1])} − ${esc(r.names[0])}`) }, PLOT_CONFIG);
   }
 
+  // ---------------------------------------------------------------- figure layout
+  function layoutSummary(p) {
+    const box = document.createElement("div");
+    try { box.innerHTML = TYPES[p.sheet.type].renderResults(p.result, p.sheet); } catch { return ""; }
+    const sm = box.querySelector(".summary");
+    return sm ? sm.textContent.trim().slice(0, 140) : "";
+  }
+  function drawLayout(el, r, s) {
+    Plotly.purge(el);
+    const ncol = s.options.ncol || 2;
+    el.innerHTML = `<div class="layout-grid" style="grid-template-columns:repeat(${ncol},1fr)">${r.panels.map((p, i) =>
+      `<div class="layout-panel">${s.options.letters ? `<span class="panel-letter" style="font-size:${s.graph.letterSize || 16}px">${String.fromCharCode(65 + i)}</span>` : ""}<div class="layout-plot" id="lp-${i}"></div></div>`).join("")}</div>`;
+    r.panels.forEach((p, i) => {
+      const div = document.getElementById(`lp-${i}`);
+      if (p.error) { div.innerHTML = `<div class="empty"><div>${esc(p.sheet.title)}:<br>${esc(p.error)}</div></div>`; return; }
+      try { TYPES[p.sheet.type].draw(div, p.result, p.sheet); } catch (e) { div.textContent = "Couldn't draw this graph."; }
+    });
+  }
+  async function exportLayout(convert) {
+    const s = active(), r = lastResult, g = s.graph;
+    if (!r || !r.panels.length) return;
+    if (!convert) { toast("Figures export as PNG or TIFF. For SVG, export each analysis on its own."); return; }
+    const [wIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["2"];
+    const ncol = Math.min(s.options.ncol || 2, r.panels.length), nrow = Math.ceil(r.panels.length / ncol);
+    const dpi = Number(g.exportDpi || 300), scale = dpi / 96;
+    const pw = Math.round(wIn * 96 / ncol), ph = Math.round(pw * 0.78);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(pw * ncol * scale); canvas.height = Math.round(ph * nrow * scale);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < r.panels.length; i++) {
+      const div = document.getElementById(`lp-${i}`);
+      if (!div || !div.data) continue;
+      const url = await Plotly.toImage(div, { format: "png", width: pw, height: ph, scale });
+      const img = await new Promise(ok => { const im = new Image(); im.onload = () => ok(im); im.src = url; });
+      const x = (i % ncol) * pw * scale, y = Math.floor(i / ncol) * ph * scale;
+      ctx.drawImage(img, x, y, pw * scale, ph * scale);
+      if (s.options.letters) {
+        ctx.fillStyle = "#000"; ctx.font = `bold ${Math.round((g.letterSize || 16) * scale)}px Helvetica, Arial, sans-serif`;
+        ctx.textBaseline = "top"; ctx.fillText(String.fromCharCode(65 + i), x + 6 * scale, y + 4 * scale);
+      }
+    }
+    try {
+      const res = await api("/api/exports", { method: "POST", body: JSON.stringify({ filename: `${projectName} - ${s.title}`,
+        data_url: canvas.toDataURL("image/png"), fmt: convert === "tiff" ? "tiff" : null, dpi }) });
+      toast(`Saved <b>${esc(res.file)}</b> to the exports folder`, "exports");
+    } catch (e) { toast(esc(e.message || "Export failed.")); }
+  }
+
   // ---------------------------------------------------------------- survival
   function renderSurvivalResults(r) {
     let h = "";
@@ -1378,6 +1486,7 @@
   // ======================================================================
   function drawPlot() {
     const s = active(), el = $("plot");
+    el.style.height = s.type === "layout" && lastResult ? "auto" : "";
     if (!lastResult) {
       Plotly.purge(el);
       el.innerHTML = `<div class="empty"><div>Your graph appears here once there is enough data.<br>Click <b>Example</b> to see how it works.</div></div>`;
@@ -1546,6 +1655,7 @@
 
   async function exportPlot(format, convert) {
     if (!lastResult) { toast("Add some data first, then export the graph."); return; }
+    if (active().type === "layout") return exportLayout(format === "png" ? (convert || "png") : null);
     try {
       const g = active().graph, [wIn, hIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["15"];
       // 96 CSS pixels per inch; PNG resolution comes from the scale factor
