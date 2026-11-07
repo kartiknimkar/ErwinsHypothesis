@@ -515,8 +515,9 @@ def correlation(x, y, alpha: float = 0.05) -> dict:
             "spearman_r": float(sr.statistic), "spearman_p": float(sr.pvalue)}
 
 
-def linear_regression(x, y, alpha: float = 0.05, band_points: int = 100) -> dict:
-    """Simple least-squares linear regression of y on x, with a confidence band."""
+def linear_regression(x, y, alpha: float = 0.05, band_points: int = 100, origin: bool = False) -> dict:
+    """Simple least-squares linear regression of y on x, with confidence and prediction bands.
+    origin=True forces the line through (0, 0) (no intercept)."""
     pairs = []
     for vx, vy in zip(list(x), list(y)):
         cx, cy = _clean([vx]), _clean([vy])
@@ -530,6 +531,8 @@ def linear_regression(x, y, alpha: float = 0.05, band_points: int = 100) -> dict
         raise ValueError("All X values are the same, so no line can be fitted.")
 
     n = len(xs)
+    if origin:
+        return _regression_origin(xs, ys, alpha, band_points)
     r = stats.linregress(xs, ys)
     df = n - 2
     tcrit = stats.t.ppf(1 - alpha / 2, df)
@@ -542,6 +545,7 @@ def linear_regression(x, y, alpha: float = 0.05, band_points: int = 100) -> dict
     grid = np.linspace(xs.min(), xs.max(), band_points)
     fit = r.intercept + r.slope * grid
     half = tcrit * sy_x * np.sqrt(1 / n + (grid - x_mean) ** 2 / sxx)
+    phalf = tcrit * sy_x * np.sqrt(1 + 1 / n + (grid - x_mean) ** 2 / sxx)
 
     x_intercept = -r.intercept / r.slope if r.slope != 0 else None
     p = float(r.pvalue)
@@ -571,7 +575,42 @@ def linear_regression(x, y, alpha: float = 0.05, band_points: int = 100) -> dict
         "correlation": correlation(xs, ys, alpha),
         "points": {"x": xs.tolist(), "y": ys.tolist()},
         "line": {"x": grid.tolist(), "y": fit.tolist(),
-                 "low": (fit - half).tolist(), "high": (fit + half).tolist()},
+                 "low": (fit - half).tolist(), "high": (fit + half).tolist(),
+                 "pred_low": (fit - phalf).tolist(), "pred_high": (fit + phalf).tolist()},
+    }
+
+
+def _regression_origin(xs, ys, alpha, band_points):
+    """Least squares line constrained through the origin: Y = slope·X."""
+    n = len(xs)
+    sxx0 = float(np.sum(xs * xs))
+    if sxx0 == 0:
+        raise ValueError("All X values are 0.")
+    slope = float(np.sum(xs * ys) / sxx0)
+    df = n - 1
+    resid = ys - slope * xs
+    ss_res = float(np.sum(resid ** 2))
+    sy_x = math.sqrt(ss_res / df)
+    se = sy_x / math.sqrt(sxx0)
+    tcrit = stats.t.ppf(1 - alpha / 2, df)
+    t = slope / se if se > 0 else float("inf")
+    p = float(2 * stats.t.sf(abs(t), df))
+    ss_tot = float(np.sum((ys - ys.mean()) ** 2))
+    grid = np.linspace(min(0.0, xs.min()), xs.max(), band_points)
+    fit = slope * grid
+    half = tcrit * sy_x * np.abs(grid) / math.sqrt(sxx0)
+    phalf = tcrit * sy_x * np.sqrt(1 + grid ** 2 / sxx0)
+    return {
+        "test_name": "Linear regression through the origin", "origin": True, "n": n,
+        "residuals": {"x": xs.tolist(), "y": resid.tolist()}, "runs_test": runs_test(xs, resid),
+        "slope": slope, "slope_se": se, "slope_ci": [slope - tcrit * se, slope + tcrit * se],
+        "intercept": 0.0, "intercept_se": None, "intercept_ci": None, "x_intercept": 0.0,
+        "r": None, "r_squared": 1 - ss_res / ss_tot if ss_tot > 0 else None, "sy_x": sy_x, "df": df,
+        "F": t * t, "p": p, "stars": stars(p), "significant": p < alpha, "alpha": alpha,
+        "equation": f"Y = {slope:.4g}·X", "correlation": correlation(xs, ys, alpha),
+        "points": {"x": xs.tolist(), "y": ys.tolist()},
+        "line": {"x": grid.tolist(), "y": fit.tolist(), "low": (fit - half).tolist(), "high": (fit + half).tolist(),
+                 "pred_low": (fit - phalf).tolist(), "pred_high": (fit + phalf).tolist()},
     }
 
 

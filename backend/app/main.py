@@ -193,6 +193,7 @@ class FitRequest(BaseModel):
     baseline: float = 0.0
     rout_q: float | None = None  # remove ROUT outliers before fitting (Q, e.g. 0.01)
     weighting: str = "none"      # none | 1/Y | 1/Y2 | 1/X | 1/X2 (nonlinear fits)
+    origin: bool = False         # linear regression forced through (0, 0)
     x_is_log: bool = False
     alpha: float = 0.05
 
@@ -262,7 +263,7 @@ def run_fit(req: FitRequest):
             removed = [{"x": a, "y": b} for a, b, o in zip(px, py, om) if o]
             px = [a for a, o in zip(px, om) if not o]; py = [b for b, o in zip(py, om) if not o]
         if req.model == "linear":
-            res = stats.linear_regression(px, py, alpha=req.alpha)
+            res = stats.linear_regression(px, py, alpha=req.alpha, origin=req.origin)
             res["model"] = "linear"
         else:
             res = curvefit.fit(px, py, req.model, x_is_log=req.x_is_log, alpha=req.alpha, fixed=req.fixed,

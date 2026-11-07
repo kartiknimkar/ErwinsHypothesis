@@ -553,7 +553,7 @@
           equation: s.options.model === "custom" ? (s.options.equation || "") : null,
           initial: s.options.model === "custom" ? Object.fromEntries(Object.entries(s.options.initial || {}).filter(([, v]) => isNum(v)).map(([k, v]) => [k, Number(v)])) : null,
           auc: !!s.options.auc, baseline: isNum(s.options.baseline) ? Number(s.options.baseline) : 0,
-          rout_q: s.options.rout ? Number(s.options.routQ ?? 0.01) : null,
+          rout_q: s.options.rout ? Number(s.options.routQ ?? 0.01) : null, origin: s.options.model === "linear" && !!s.options.origin,
           weighting: s.options.model !== "linear" ? (s.options.weighting || "none") : "none",
           x_is_log: !!s.options.xIsLog, alpha: s.options.alpha }];
       },
@@ -582,6 +582,7 @@
           </details>` : ""}
           ${m && m.log_x ? `<label class="check"><input type="checkbox" id="opt-xislog" ${s.options.xIsLog ? "checked" : ""}> X values are already log10(concentration)</label>
             <p class="hint">Otherwise X is concentration and the app takes the log for you (X = 0 is left out, as it has no log).</p>` : ""}
+          ${!multi && s.options.model === "linear" ? `<label class="check"><input type="checkbox" data-opt="origin" ${s.options.origin ? "checked" : ""}> Force the line through the origin (0, 0)</label>` : ""}
           ${multi || s.options.model === "linear" ? "" : `<div class="row"><label for="opt-weight">Weighting</label><select id="opt-weight">${[["none", "None (equal weights)"], ["1/Y", "1/Y (Poisson-like scatter)"], ["1/Y2", "1/Y² (scatter grows with Y: relative)"], ["1/X", "1/X"], ["1/X2", "1/X²"]]
             .map(([v, l]) => `<option value="${v}" ${(s.options.weighting || "none") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>`}
           ${multi ? "" : `<div class="row"><label class="check"><input type="checkbox" data-opt="rout" ${s.options.rout ? "checked" : ""}> Remove outliers before fitting (ROUT)</label>
@@ -594,7 +595,7 @@
         txt("xlabel", "X axis label", s.cols[0]), txt("ylabel", "Y axis label", s.cols[1]),
         ...(s.cols.length > 2 && s.options.yMode !== "datasets" ? [sel("repMode", "Replicates", [["mean", "Mean ± SD"], ["sem", "Mean ± SEM"], ["all", "All points"]])] : []),
         txt("xmin", "X min", "auto"), txt("xmax", "X max", "auto"), txt("xtick", "X tick every", "auto"),
-        chk("logX", "Log X axis"), chk("band", "95% confidence band"), chk("showEq", "Show equation"),
+        chk("logX", "Log X axis"), chk("band", "95% confidence band"), ...(s.options.model === "linear" && s.options.yMode !== "datasets" ? [chk("predBand", "95% prediction band")] : []), chk("showEq", "Show equation"),
         ...(s.options.yMode === "datasets" ? [] : [sel("xyPlot", "Plot", [["fit", "Data + fitted curve"], ["resid", "Residual plot"]])]),
       ],
       renderResults: (r, s) => r.multi ? renderMultiFit(r, s) : renderXYResults(r, s),
@@ -1840,7 +1841,7 @@
     }
     if (s.type === "regression" && r.model === "linear") {
       const c = r.correlation;
-      return { methods: `The relationship between ${esc(s.cols[0])} and ${esc(s.cols[1])} was analyzed by least-squares linear regression, and correlation was assessed with Pearson's coefficient${r.unknowns ? `; unknown samples were interpolated from the fitted line` : ""}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+      return { methods: `The relationship between ${esc(s.cols[0])} and ${esc(s.cols[1])} was analyzed by least-squares linear regression${r.origin ? " constrained through the origin" : ""}, and correlation was assessed with Pearson's coefficient${r.unknowns ? `; unknown samples were interpolated from the fitted line` : ""}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
         results: `${r.significant ? "There was a significant linear relationship" : "There was no significant linear relationship"} (slope ${r2(r.slope, 4)}, ${pct}% CI ${r2(r.slope_ci[0], 4)} to ${r2(r.slope_ci[1], 4)}; R² = ${r2(r.r_squared, 3)}; F(1, ${r.df}) = ${r2(r.F)}, ${apaP(r.p)}; Pearson r = ${r2(c.pearson_r, 3)}).` };
     }
     if (s.type === "regression") {
@@ -2394,10 +2395,12 @@
         ? T.summary("sig", `<b>Significant linear relationship</b> (${fmtP(r.p)}, ${r.stars}). Y changes by ${fmt(r.slope)} per unit of X. R² = ${fmt(r.r_squared, 3)}.`)
         : T.summary("ns", `<b>No significant linear relationship</b> (${fmtP(r.p)}). The slope isn't distinguishable from zero (R² = ${fmt(r.r_squared, 3)}).`);
       h += T.table([T.sec("Best-fit line"), T.row("Equation", r.equation), T.row("Slope ± SE", `${fmt(r.slope)} ± ${fmt(r.slope_se)}`),
-        T.row("Y-intercept ± SE", `${fmt(r.intercept)} ± ${fmt(r.intercept_se)}`), T.row("X-intercept", fmt(r.x_intercept)),
-        T.row(`Slope ${pct}% CI`, ci(...r.slope_ci)), T.row(`Y-intercept ${pct}% CI`, ci(...r.intercept_ci)),
+        r.origin ? T.row("Y-intercept", `0 <span class="pd">(forced through the origin)</span>`) : T.row("Y-intercept ± SE", `${fmt(r.intercept)} ± ${fmt(r.intercept_se)}`),
+        r.origin ? "" : T.row("X-intercept", fmt(r.x_intercept)),
+        T.row(`Slope ${pct}% CI`, ci(...r.slope_ci)), r.origin ? "" : T.row(`Y-intercept ${pct}% CI`, ci(...r.intercept_ci)),
         T.sec("Goodness of fit"), T.row("R²", fmt(r.r_squared)), T.row("Sy.x", fmt(r.sy_x)), T.row("Number of points", r.n),
         T.sec("Is the slope non-zero?"), T.row("F (1, " + r.df + ")", fmt(r.F)), T.row("P value", `${pOnly(r.p)} ${st(r.stars)}`),
+        ...(r.origin ? [T.row("Note", "R² compares the fit with a horizontal line at the mean, so it can be negative for a line forced through the origin.")] : []),
         T.sec("Correlation"), T.row("Pearson r", `${fmt(c.pearson_r)}${c.pearson_ci ? ` (${pct}% CI ${ci(...c.pearson_ci)})` : ""}`),
         T.row("Pearson P", pOnly(c.pearson_p)), T.row("Spearman r", fmt(c.spearman_r)), T.row("Spearman P", pOnly(c.spearman_p))]);
       return h;
@@ -2924,6 +2927,10 @@
     const rows = s.data.map(row => ({ x: num(row[0]), ys: s.cols.slice(1).map((_, j) => num(row[j + 1])).filter(v => v !== null) }))
       .filter(p => p.x !== null && p.ys.length && (!logFit || p.x > 0));
     const reps = s.cols.length > 2 && g.repMode !== "all";
+    if (g.predBand && r.line && r.line.pred_low) {
+      traces.push({ x: r.line.x, y: r.line.pred_low, mode: "lines", line: { color: c0, width: 1, dash: "dot" }, hoverinfo: "skip" });
+      traces.push({ x: r.line.x, y: r.line.pred_high, mode: "lines", line: { color: c0, width: 1, dash: "dot" }, hoverinfo: "skip" });
+    }
     if (g.band && r.line) {
       traces.push({ x: r.line.x, y: r.line.low, mode: "lines", line: { width: 0 }, hoverinfo: "skip" });
       traces.push({ x: r.line.x, y: r.line.high, mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: c0 + "22", hoverinfo: "skip" });

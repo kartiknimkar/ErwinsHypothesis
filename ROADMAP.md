@@ -243,6 +243,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Right-click any cell: sort rows by that column (numbers, then text; blanks last; exclusions follow their rows),
       fill series (start, + or × step, to a row; e.g. dilution series); undoable; 167 tests
 
+## Phase 0.54: Linear regression extras (done 2026-11-07)
+- [x] Force through the origin (slope, SE, CIs, bands; matches statsmodels OLS without constant);
+      95% prediction band option (matches statsmodels obs intervals); 169 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
