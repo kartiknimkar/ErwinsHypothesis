@@ -51,7 +51,12 @@
   };
   // a color picked by the user for a named series wins over the palette
   const color = (g, i, name) => (name != null && g.colors && g.colors[name]) || (PALETTES[g.palette] || PALETTES.vivid)[i % 8];
-  const COMMON_GRAPH = { pcaPlot: "biplot", pcaLabels: false, title: "", palette: "vivid", pointSize: 8, fontSize: 13, ymin: "", ymax: "", logY: false, exportSize: "15", exportDpi: "300" };
+  const COMMON_GRAPH = {
+    fontFamily: "Arial", textColor: "#1b2130", titleSize: "", tickSize: "",
+    pointSymbol: "default", pointOpacity: 0.85, pointLine: 1, pointLineColor: "#ffffff",
+    lineScale: 1, errWidth: 1.5, capWidth: 9, barOpacity: "", barLine: 1.6, pattern: "none",
+    axisWidth: 1.5, tickDir: "outside", tickLen: 5, grid: false, bg: "white", legendPos: "auto",
+    pcaPlot: "biplot", pcaLabels: false, title: "", palette: "vivid", pointSize: 8, fontSize: 13, ymin: "", ymax: "", logY: false, exportSize: "15", exportDpi: "300" };
   // export sizes in inches (width x height); journals usually ask for 300-600 DPI
   const EXPORT_SIZES = { "1": [3.5, 2.8, "Single column (3.5 × 2.8 in)"], "15": [5.5, 4.2, "1.5 column (5.5 × 4.2 in)"],
     "2": [7.2, 5, "Double column (7.2 × 5 in)"], "slide": [10, 6.5, "Slide (10 × 6.5 in)"], "sq": [4, 4, "Square (4 × 4 in)"] };
@@ -83,6 +88,72 @@
   }
   const PLOT_CONFIG = { displaylogo: false, responsive: true,
     modeBarButtonsToRemove: ["select2d", "lasso2d", "autoScale2d", "toggleSpikelines"] };
+
+
+  // ======================================================================
+  // graph style pass: applies the Format panel's text / point / line / bar / axis settings
+  // to every graph type, right before it is drawn
+  // ======================================================================
+  let styleCtx = null;
+  const PATTERNS = ["/", "\\", "x", ".", "-", "|", "+"];
+  function hexToRgba(c, a) {
+    const m = /^#?([0-9a-f]{6})/i.exec(String(c || ""));
+    if (!m) return c;
+    const n = parseInt(m[1], 16);
+    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+  function applyStyle(data, layout, g) {
+    if (!g) return;
+    const ls = Number(g.lineScale) || 1, family = `${g.fontFamily || "Arial"}, Helvetica, Arial, sans-serif`;
+    layout.font = { ...(layout.font || {}), family, color: g.textColor || "#1b2130" };
+    if (layout.title && layout.title.font) layout.title.font.family = family;
+    Object.keys(layout).filter(k => /^[xy]axis\d*$/.test(k)).forEach(k => {
+      const a = layout[k];
+      if (a.showline) {
+        a.linewidth = Number(g.axisWidth); a.tickwidth = Number(g.axisWidth); a.linecolor = g.textColor;
+        a.ticks = g.tickDir === "none" ? "" : g.tickDir; a.ticklen = Number(g.tickLen); a.tickcolor = g.textColor;
+      }
+      if (g.grid) { a.showgrid = true; a.gridcolor = "#e3e6eb"; a.gridwidth = 1; }
+      if (num(g.tickSize)) a.tickfont = { ...(a.tickfont || {}), size: num(g.tickSize) };
+      if (num(g.titleSize) && a.title) a.title = { ...(typeof a.title === "object" ? a.title : { text: a.title }), font: { size: num(g.titleSize) } };
+    });
+    if (g.bg === "transparent") { layout.paper_bgcolor = "rgba(0,0,0,0)"; layout.plot_bgcolor = "rgba(0,0,0,0)"; }
+    else if (g.bg === "light") { layout.paper_bgcolor = "#ffffff"; layout.plot_bgcolor = "#f4f5f7"; }
+    const pos = { tr: { x: 1, xanchor: "right", y: 1, orientation: "v" }, tl: { x: 0.02, xanchor: "left", y: 1, orientation: "v" },
+      outside: { x: 1.02, xanchor: "left", y: 1, orientation: "v" }, top: { x: 0, y: 1.12, orientation: "h" }, bottom: { x: 0, y: -0.22, orientation: "h" } }[g.legendPos];
+    if (pos && layout.showlegend) layout.legend = { ...(layout.legend || {}), ...pos, bgcolor: "rgba(255,255,255,0)" };
+    if (g.legendPos === "outside" && layout.showlegend) layout.margin = { ...(layout.margin || {}), r: 130 };
+    if (g.legendPos === "hide" || g.legend === "hide") layout.showlegend = false;
+    (layout.shapes || []).forEach(sh => { if (sh.line && sh.line.width) sh.line.width *= ls; });
+    let barIdx = 0;
+    data.forEach(t => {
+      const mk = t.marker;
+      if (t.line && t.line.width) t.line = { ...t.line, width: t.line.width * ls };
+      if (t.error_y) t.error_y = { ...t.error_y, thickness: Number(g.errWidth), width: Number(g.capWidth) };
+      if (mk && (t.type === "scatter" || !t.type) && /markers/.test(t.mode || "")) {
+        const special = mk.symbol && mk.symbol !== "circle";
+        if (!special) {
+          if (g.pointSymbol && g.pointSymbol !== "default") mk.symbol = g.pointSymbol;
+          mk.opacity = Number(g.pointOpacity);
+          mk.line = { ...(mk.line || {}), width: Number(g.pointLine), color: g.pointLineColor };
+        } else if (mk.line && mk.line.width) mk.line = { ...mk.line, width: mk.line.width * ls };
+      }
+      if (t.type === "box" && mk) mk.opacity = Number(g.pointOpacity);
+      if (t.type === "bar" && mk) {
+        const isHex = c => typeof c === "string" && /^#[0-9a-f]{6}/i.test(c);
+        const base = isHex(mk.line && mk.line.color) ? mk.line.color.slice(0, 7) : isHex(mk.color) ? mk.color.slice(0, 7) : null;
+        if (g.barOpacity !== "" && g.barOpacity != null && base) mk.color = hexToRgba(base, Number(g.barOpacity));
+        mk.line = { ...(mk.line || {}), width: Number(g.barLine), color: (mk.line && mk.line.color) || base || "#1b2130" };
+        if (g.pattern && g.pattern !== "none") mk.pattern = { shape: g.pattern === "vary" ? PATTERNS[barIdx % PATTERNS.length] : g.pattern,
+          fgcolor: base || "#1b2130", size: 7, solidity: 0.28, fillmode: "overlay" };
+        barIdx++;
+      }
+    });
+  }
+  function styledReact(el, data, layout, config) {
+    applyStyle(data, layout, styleCtx);
+    return Plotly.react(el, data, layout, config);
+  }
 
   // ======================================================================
   // analysis types
@@ -1205,19 +1276,34 @@
 
   function renderFormat() {
     const s = active(), g = s.graph;
-    const ctrls = [txt("title", "Graph title"), ...TYPES[s.type].graphControls(s),
+    const head = label => ({ kind: "head", label });
+    const rng = (k, label, min, max, step = 1) => ({ k, label, kind: "range", min, max, step });
+    const typeCtrls = TYPES[s.type].graphControls(s);
+    const ctrls = [head("Graph"), txt("title", "Graph title"), ...typeCtrls,
       txt("ymin", "Y min", "auto"), txt("ymax", "Y max", "auto"), txt("ytick", "Y tick every", "auto"), chk("logY", "Log Y axis"),
-      sel("legend", "Legend", [["auto", "Automatic"], ["hide", "Hide"]]),
-      sel("palette", "Colors", [["vivid", "Vivid"], ["colorblind", "Colorblind-safe"], ["classic", "Classic"], ["pastel", "Pastel"], ["grayscale", "Grayscale"]]),
-      { k: "pointSize", label: "Point size", kind: "range", min: 3, max: 16 },
-      { k: "fontSize", label: "Font size", kind: "range", min: 9, max: 22 },
-      sel("exportSize", "Export size", Object.entries(EXPORT_SIZES).map(([k, v]) => [k, v[2]])),
-      sel("exportDpi", "Export resolution (PNG/TIFF)", [["150", "150 DPI (screen)"], ["300", "300 DPI (print)"], ["600", "600 DPI (high)"]])];
+      head("Text"), sel("fontFamily", "Font", [["Arial", "Arial"], ["Helvetica", "Helvetica"], ["Times New Roman", "Times New Roman"], ["Calibri", "Calibri"], ["Verdana", "Verdana"], ["Georgia", "Georgia"], ["Courier New", "Courier New"]]),
+      rng("fontSize", "Base font size", 8, 24), txt("titleSize", "Axis title size", "auto"), txt("tickSize", "Tick label size", "auto"),
+      { k: "textColor", label: "Text & axis color", kind: "color" },
+      head("Colors"), sel("palette", "Palette", [["vivid", "Vivid"], ["colorblind", "Colorblind-safe"], ["classic", "Classic"], ["pastel", "Pastel"], ["grayscale", "Grayscale"]]),
+      head("Points"), sel("pointSymbol", "Shape", [["default", "Default"], ["circle", "Circle"], ["square", "Square"], ["diamond", "Diamond"], ["triangle-up", "Triangle"],
+        ["circle-open", "Open circle"], ["square-open", "Open square"], ["triangle-up-open", "Open triangle"], ["x", "Cross"]]),
+      rng("pointSize", "Size", 2, 20), rng("pointOpacity", "Opacity", 0.1, 1, 0.05), rng("pointLine", "Outline width", 0, 3, 0.25),
+      { k: "pointLineColor", label: "Outline color", kind: "color" },
+      head("Lines & error bars"), rng("lineScale", "Line thickness", 0.25, 4, 0.25), rng("errWidth", "Error bar thickness", 0.5, 4, 0.25), rng("capWidth", "Error bar cap width", 0, 20),
+      head("Bars & fills"), sel("barOpacity", "Fill opacity", [["", "Automatic"], ["0", "0% (outline only)"], ["0.15", "15%"], ["0.3", "30%"], ["0.5", "50%"], ["0.75", "75%"], ["1", "100% (solid)"]]),
+      rng("barLine", "Outline width", 0, 4, 0.25), sel("pattern", "Pattern", [["none", "None"], ["/", "Diagonal ////"], ["\\", "Diagonal \\\\"], ["x", "Cross-hatch"], [".", "Dots"], ["-", "Horizontal"], ["|", "Vertical"], ["vary", "Different per series"]]),
+      head("Axes & background"), rng("axisWidth", "Axis thickness", 0.5, 4, 0.25), sel("tickDir", "Ticks", [["outside", "Outside"], ["inside", "Inside"], ["none", "None"]]),
+      rng("tickLen", "Tick length", 0, 12), chk("grid", "Gridlines"), sel("bg", "Background", [["white", "White"], ["transparent", "Transparent (for figures)"], ["light", "Light gray plot area"]]),
+      sel("legendPos", "Legend", [["auto", "Automatic"], ["tr", "Top right (inside)"], ["tl", "Top left (inside)"], ["outside", "Right (outside)"], ["top", "Above graph"], ["bottom", "Below graph"], ["hide", "Hide"]]),
+      head("Export"), sel("exportSize", "Size", Object.entries(EXPORT_SIZES).map(([k, v]) => [k, v[2]])),
+      sel("exportDpi", "Resolution (PNG/TIFF)", [["150", "150 DPI (screen)"], ["300", "300 DPI (print)"], ["600", "600 DPI (high)"]])];
     $("graph-format").innerHTML = ctrls.map(c => {
       const v = g[c.k];
       if (c.kind === "select") return `<label>${c.label}<select data-g="${c.k}">${c.opts.map(([o, l]) => `<option value="${o}" ${v === o ? "selected" : ""}>${l}</option>`).join("")}</select></label>`;
       if (c.kind === "check") return `<label class="check"><input type="checkbox" data-g="${c.k}" ${v ? "checked" : ""}> ${c.label}</label>`;
-      if (c.kind === "range") return `<label>${c.label} <input type="range" data-g="${c.k}" min="${c.min}" max="${c.max}" value="${v}"></label>`;
+      if (c.kind === "range") return `<label>${c.label} <span class="rv">${v}</span><input type="range" data-g="${c.k}" min="${c.min}" max="${c.max}" step="${c.step || 1}" value="${v}"></label>`;
+      if (c.kind === "head") return `<div class="fhead">${c.label}</div>`;
+      if (c.kind === "color") return `<label>${c.label}<input type="color" data-g="${c.k}" value="${toHex(v)}"></label>`;
       return `<label>${c.label}<input type="text" data-g="${c.k}" value="${esc(v ?? "")}" placeholder="${esc(c.ph || "")}"></label>`;
     }).join("") + (!seriesNames(s).length ? "" : `<div class="wide colors"><span>Series colors</span>${seriesNames(s).map((n, i) =>
       `<label class="swatch" title="${esc(n)}"><input type="color" data-color="${esc(n)}" value="${toHex(color(g, i, n))}"><span>${esc(n)}</span></label>`).join("")}
@@ -1231,6 +1317,7 @@
     $("graph-format").querySelectorAll("[data-g]").forEach(el => {
       el.oninput = el.onchange = () => {
         g[el.dataset.g] = el.type === "checkbox" ? el.checked : el.type === "range" ? Number(el.value) : el.value;
+        if (el.type === "range") el.previousElementSibling.textContent = el.value;
         save(); drawPlot();
       };
     });
@@ -1530,7 +1617,7 @@
       text: pts.map(i => esc(i.name)), marker: { color: col, size: g.pointSize + 1, line: { color: "#fff", width: 1 } },
       hovertemplate: "%{text}: difference %{x:.3g}, P %{customdata}<extra></extra>", customdata: pts.map(i => fmt(i.p, 3)) });
     const annotations = hit.length <= 15 ? hit.map(i => ({ x: i.diff, y: -Math.log10(Math.max(i.p, 1e-300)), text: esc(i.name), showarrow: false, yanchor: "bottom", yshift: 6, font: { size: (g.fontSize || 13) - 2 } })) : [];
-    Plotly.react(el, [tr(rest, "#9aa3b2", "Not significant"), tr(hit, color(g, 1, "Discoveries"), `Discoveries (q < ${r.q_level})`)],
+    styledReact(el, [tr(rest, "#9aa3b2", "Not significant"), tr(hit, color(g, 1, "Discoveries"), `Discoveries (q < ${r.q_level})`)],
       { ...baseLayout(g), showlegend: true, legend: { orientation: "h", y: 1.08, x: 0 }, annotations,
         xaxis: axis(g, { title: { text: `Difference (${esc(r.names[1])} − ${esc(r.names[0])})` }, zeroline: true, zerolinecolor: "#d0d4db" }),
         yaxis: yAxis(g, g.ylabel && g.ylabel !== "Response" ? g.ylabel : "−log10(P)") }, PLOT_CONFIG);
@@ -1582,7 +1669,7 @@
       topExtra = Math.max(topExtra, height + span * 0.04);
     }
     const lo = g.style === "bars" ? Math.min(0, ymin) : ymin - span * 0.08;
-    Plotly.react(el, traces, { ...baseLayout(g), shapes, annotations, showlegend: true, barmode: "overlay",
+    styledReact(el, traces, { ...baseLayout(g), shapes, annotations, showlegend: true, barmode: "overlay",
       legend: { orientation: "h", y: 1.1, x: 0 },
       xaxis: axis(g, { tickvals: r.rows.map((_, i) => i), ticktext: r.rows.map(esc), range: [-0.6, nr - 0.4], title: { text: esc(s.cols[0] || "") } }),
       yaxis: yAxis(g, g.ylabel, { range: [lo, ymax + topExtra] }) }, PLOT_CONFIG);
@@ -1639,7 +1726,7 @@
     });
     const xa = axis(g, { title: { text: esc(g.xlabel || s.cols[0] || "X") } });
     if (g.logX) xa.type = "log";
-    Plotly.react(el, traces, { ...baseLayout(g), showlegend: true, legend: { x: 1, xanchor: "right", y: 1, bgcolor: "rgba(255,255,255,0.7)" },
+    styledReact(el, traces, { ...baseLayout(g), showlegend: true, legend: { x: 1, xanchor: "right", y: 1, bgcolor: "rgba(255,255,255,0.7)" },
       xaxis: xa, yaxis: yAxis(g, g.ylabel || "Response") }, PLOT_CONFIG);
   }
   function renderUnknowns(r, s) {
@@ -1732,7 +1819,7 @@
       annotations.push({ x: j, y: i, text: `${fmt(v, 2)}${i !== j && r.p[i][j] < r.alpha ? "<br>" + stars(r.p[i][j]) : ""}`, showarrow: false,
         font: { size: Math.max(9, (g.fontSize || 13) - (k > 6 ? 3 : 1)), color: Math.abs(v) > 0.6 ? "#fff" : "#1b2130" } });
     }));
-    Plotly.react(el, [{ type: "heatmap", z, x: r.names.map((_, j) => j), y: r.names.map((_, i) => i), zmin: -1, zmax: 1,
+    styledReact(el, [{ type: "heatmap", z, x: r.names.map((_, j) => j), y: r.names.map((_, i) => i), zmin: -1, zmax: 1,
       colorscale: [[0, "#2166ac"], [0.25, "#92c5de"], [0.5, "#f7f7f7"], [0.75, "#f4a582"], [1, "#b2182b"]],
       colorbar: { title: { text: "r" }, thickness: 12 }, hovertemplate: "r = %{z:.3f}<extra></extra>", xgap: 2, ygap: 2 }],
       { ...baseLayout(g), annotations, margin: { l: 90, r: 20, t: g.title ? 44 : 20, b: 80 },
@@ -1763,7 +1850,7 @@
   function drawPCA(el, r, s) {
     const g = s.graph;
     if (g.pcaPlot === "scree") {
-      Plotly.react(el, [{ type: "bar", x: r.eigenvalues.map((_, i) => `PC${i + 1}`), y: r.variance_pct, marker: { color: color(g, 0, "Points") + "aa", line: { color: color(g, 0, "Points"), width: 1.4 } },
+      styledReact(el, [{ type: "bar", x: r.eigenvalues.map((_, i) => `PC${i + 1}`), y: r.variance_pct, marker: { color: color(g, 0, "Points") + "aa", line: { color: color(g, 0, "Points"), width: 1.4 } },
         hovertemplate: "%{x}: %{y:.1f}%<extra></extra>", name: "% of variance" },
         { x: r.eigenvalues.map((_, i) => `PC${i + 1}`), y: r.cumulative_pct, mode: "lines+markers", line: { color: "#1b2130", width: 2 }, marker: { size: g.pointSize }, name: "Cumulative %", hovertemplate: "Cumulative %{y:.1f}%<extra></extra>" }],
         { ...baseLayout(g), showlegend: true, legend: { orientation: "h", y: 1.08, x: 0 }, xaxis: axis(g), yaxis: yAxis(g, "% of variance", { range: [0, 105] }) }, PLOT_CONFIG);
@@ -1779,7 +1866,7 @@
       annotations.push({ x, y, ax: 0, ay: 0, xref: "x", yref: "y", axref: "x", ayref: "y", showarrow: true, arrowhead: 2, arrowwidth: 1.6, arrowcolor: color(g, 1, "Loadings"), text: "" },
         { x: x * 1.1, y: y * 1.1, text: `<b>${esc(n)}</b>`, showarrow: false, font: { color: color(g, 1, "Loadings"), size: (g.fontSize || 13) - 1 } });
     });
-    Plotly.react(el, [{ x: px, y: py, mode: g.pcaLabels ? "markers+text" : "markers", text: px.map((_, i) => String(i + 1)), textposition: "top center",
+    styledReact(el, [{ x: px, y: py, mode: g.pcaLabels ? "markers+text" : "markers", text: px.map((_, i) => String(i + 1)), textposition: "top center",
       marker: { color: color(g, 0, "Points"), size: g.pointSize, opacity: 0.8, line: { color: "#fff", width: 1 } }, hovertemplate: "Row %{text}: PC1 %{x:.3g}, PC2 %{y:.3g}<extra></extra>" }],
       { ...baseLayout(g), shapes, annotations,
         xaxis: axis(g, { title: { text: `PC1 (${fmt(r.variance_pct[0], 3)}%)` }, zeroline: true, zerolinecolor: "#d0d4db" }),
@@ -1802,7 +1889,7 @@
   }
   function drawMLR(el, r, s) {
     const g = s.graph, a = r.points.actual, p = r.points.predicted, lo = Math.min(...a, ...p), hi = Math.max(...a, ...p);
-    Plotly.react(el, [{ x: [lo, hi], y: [lo, hi], mode: "lines", line: { color: "#9aa3b2", dash: "dot" }, hoverinfo: "skip" },
+    styledReact(el, [{ x: [lo, hi], y: [lo, hi], mode: "lines", line: { color: "#9aa3b2", dash: "dot" }, hoverinfo: "skip" },
       { x: p, y: a, mode: "markers", marker: { color: color(g, 0, "Points"), size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: "Predicted %{x:.4g}, actual %{y:.4g}<extra></extra>" }],
       { ...baseLayout(g), annotations: [{ xref: "paper", yref: "paper", x: 0.02, y: 0.98, xanchor: "left", yanchor: "top", showarrow: false, text: `R² = ${fmt(r.r_squared, 3)}`, font: { color: "#6b7385" } }],
         xaxis: axis(g, { title: { text: `Predicted ${esc(r.y_name)}` } }), yaxis: yAxis(g, `Actual ${esc(r.y_name)}`) }, PLOT_CONFIG);
@@ -1839,7 +1926,7 @@
   }
   function drawROC(el, r, s) {
     const g = s.graph, c = color(g, 0, "Curve");
-    Plotly.react(el, [
+    styledReact(el, [
       { x: [0, 100], y: [0, 100], mode: "lines", line: { color: "#9aa3b2", dash: "dot", width: 1.2 }, hoverinfo: "skip" },
       { x: r.curve.map(p => p.fpr * 100), y: r.curve.map(p => p.tpr * 100), mode: "lines+markers", line: { color: c, width: 2.4, shape: "linear" },
         marker: { size: Math.max(3, g.pointSize - 3), color: c }, customdata: r.curve.map(p => p.cut == null ? "" : fmt(p.cut)),
@@ -1863,7 +1950,7 @@
     const g = s.graph, c = color(g, 0, "Points");
     const xs = r.points.avg, lo = Math.min(...xs), hi = Math.max(...xs), pad = (hi - lo) * 0.05 || 1;
     const line = (y, dash, col, label) => ({ x: [lo - pad, hi + pad], y: [y, y], mode: "lines", line: { color: col, width: 1.6, dash }, hoverinfo: "skip", name: label });
-    Plotly.react(el, [
+    styledReact(el, [
       line(0, "dot", "#9aa3b2"), line(r.bias, "solid", "#1b2130"), line(r.loa[0], "dash", "#d62728"), line(r.loa[1], "dash", "#d62728"),
       { x: xs, y: r.points.diff, mode: "markers", marker: { color: c, size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: "Average %{x:.4g}, difference %{y:.4g}<extra></extra>" },
     ], { ...baseLayout(g), annotations: [["Bias", r.bias], ["+95% LoA", r.loa[1]], ["−95% LoA", r.loa[0]]].map(([t, y]) => ({ x: 1, xref: "paper", xanchor: "right", y, yanchor: "bottom",
@@ -1886,13 +1973,35 @@
     r.panels.forEach((p, i) => {
       const div = document.getElementById(`lp-${i}`);
       if (p.error) { div.innerHTML = `<div class="empty"><div>${esc(p.sheet.title)}:<br>${esc(p.error)}</div></div>`; return; }
+      styleCtx = p.sheet.graph;
       try { TYPES[p.sheet.type].draw(div, p.result, p.sheet); } catch (e) { div.textContent = "Couldn't draw this graph."; }
     });
+  }
+  async function exportLayoutSVG() {
+    const s = active(), r = lastResult, g = s.graph;
+    const [wIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["2"];
+    const ncol = Math.min(s.options.ncol || 2, r.panels.length), nrow = Math.ceil(r.panels.length / ncol);
+    const pw = Math.round(wIn * 96 / ncol), ph = Math.round(pw * 0.78), W = pw * ncol, H = ph * nrow;
+    let body = "";
+    for (let i = 0; i < r.panels.length; i++) {
+      const div = document.getElementById(`lp-${i}`);
+      if (!div || !div.data) continue;
+      const url = await Plotly.toImage(div, { format: "svg", width: pw, height: ph });
+      let svg = decodeURIComponent(url.replace(/^data:image\/svg\+xml,/, ""));
+      svg = svg.replace(/^<svg/, `<svg x="${(i % ncol) * pw}" y="${Math.floor(i / ncol) * ph}"`);
+      body += `<g id="panel-${String.fromCharCode(65 + i)}">${svg}</g>`;
+      if (s.options.letters) body += `<text x="${(i % ncol) * pw + 6}" y="${Math.floor(i / ncol) * ph + (g.letterSize || 16) + 2}" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="${g.letterSize || 16}">${String.fromCharCode(65 + i)}</text>`;
+    }
+    const doc = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${body}</svg>`;
+    try {
+      const res = await api("/api/exports", { method: "POST", body: JSON.stringify({ filename: `${projectName} - ${s.title}`, data_url: "data:image/svg+xml," + encodeURIComponent(doc) }) });
+      toast(`Saved <b>${esc(res.file)}</b> (editable SVG) to the exports folder`, "exports");
+    } catch (e) { toast(esc(e.message || "Export failed.")); }
   }
   async function exportLayout(convert) {
     const s = active(), r = lastResult, g = s.graph;
     if (!r || !r.panels.length) return;
-    if (!convert) { toast("Figures export as PNG or TIFF. For SVG, export each analysis on its own."); return; }
+    if (!convert) return exportLayoutSVG();
     const [wIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["2"];
     const ncol = Math.min(s.options.ncol || 2, r.panels.length), nrow = Math.ceil(r.panels.length / ncol);
     const dpi = Number(g.exportDpi || 300), scale = dpi / 96;
@@ -1978,6 +2087,7 @@
       return;
     }
     if (el.querySelector(".empty")) el.innerHTML = "";
+    styleCtx = s.graph;
     TYPES[s.type].draw(el, lastResult, masked(s));
     if (s.graph.legend === "hide" && el.layout && el.layout.showlegend) Plotly.relayout(el, { showlegend: false });
   }
@@ -2054,7 +2164,7 @@
       topExtra = Math.max(topExtra, height + span * 0.04);
     }
     const lo = g.style === "bars" ? Math.min(0, ymin) : ymin - span * 0.08;
-    Plotly.react(el, traces, { ...baseLayout(g), shapes, annotations,
+    styledReact(el, traces, { ...baseLayout(g), shapes, annotations,
       xaxis: axis(g, { tickvals: groups.map((_, i) => i), ticktext: r.groups.map(x => esc(x.name)), range: [-0.6, groups.length - 0.4] }),
       yaxis: yAxis(g, g.ylabel, { range: [lo, ymax + topExtra] }) }, PLOT_CONFIG);
   }
@@ -2106,7 +2216,7 @@
     if (g.logX) xa.type = "log";
     const xlo = num(g.xmin), xhi = num(g.xmax);
     if (xlo !== null && xhi !== null) xa.range = g.logX ? [Math.log10(Math.max(xlo, 1e-12)), Math.log10(Math.max(xhi, 1e-12))] : [xlo, xhi];
-    Plotly.react(el, traces, { ...baseLayout(g), annotations, xaxis: xa, yaxis: yAxis(g, g.ylabel || s.cols[1] || "Y") }, PLOT_CONFIG);
+    styledReact(el, traces, { ...baseLayout(g), annotations, xaxis: xa, yaxis: yAxis(g, g.ylabel || s.cols[1] || "Y") }, PLOT_CONFIG);
   }
 
   function drawSurvival(el, r, s) {
@@ -2124,7 +2234,7 @@
       if (g.showCensor && c.censored.t.length) traces.push({ x: c.censored.t, y: c.censored.s.map(v => v * 100), mode: "markers", showlegend: false,
         marker: { symbol: "line-ns", size: g.pointSize + 4, line: { color: col, width: 2 } }, hovertemplate: "Censored at %{x}<extra></extra>" });
     });
-    Plotly.react(el, traces, { ...baseLayout(g), showlegend: true, legend: { x: 1, xanchor: "right", y: 1, bgcolor: "rgba(255,255,255,0.7)" },
+    styledReact(el, traces, { ...baseLayout(g), showlegend: true, legend: { x: 1, xanchor: "right", y: 1, bgcolor: "rgba(255,255,255,0.7)" },
       xaxis: axis(g, { title: { text: esc(g.xlabel || s.cols[0] || "Time") }, rangemode: "tozero" }),
       yaxis: yAxis(g, g.ylabel, { range: [0, 105] }) }, PLOT_CONFIG);
   }
@@ -2135,7 +2245,7 @@
       y: r.table.map((row, i) => g.mode === "count" ? row[j] : r.row_pct[i][j]),
       marker: { color: color(g, j, c), line: { color: "#1b2130", width: 0.8 } },
       hovertemplate: `${esc(c)}: %{y:.3g}${g.mode === "count" ? "" : "%"}<extra></extra>` }));
-    Plotly.react(el, traces, { ...baseLayout(g), barmode: "group", bargap: 0.3, showlegend: true,
+    styledReact(el, traces, { ...baseLayout(g), barmode: "group", bargap: 0.3, showlegend: true,
       legend: { orientation: "h", y: 1.08, x: 0 },
       xaxis: axis(g), yaxis: yAxis(g, g.ylabel || (g.mode === "count" ? "Count" : "Percent of row")) }, PLOT_CONFIG);
   }

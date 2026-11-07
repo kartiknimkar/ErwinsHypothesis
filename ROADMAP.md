@@ -129,6 +129,14 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] "Compare groups (mean, SD, n)": exact Welch/unpaired t, one-way/Welch ANOVA + Tukey/Games-Howell
       from summary statistics (SD or SEM input); bar/mean graph; verified vs scipy from_stats; 106 tests
 
+## Phase 0.30: Full graph styling + editable SVG (done 2026-11-06)
+- [x] Format panel in sections: text (font, sizes, color), colors, points (shape, size, opacity, outline),
+      lines & error bars (thickness, cap width), bars (fill opacity, outline, hatch patterns), axes (thickness,
+      tick direction/length, gridlines), background (white/transparent), legend position, export
+- [x] One style pass (applyStyle/styledReact in app.js) applies these to every graph type
+- [x] SVG export keeps text and shapes editable (Illustrator/Inkscape/PowerPoint); figure layouts export as one
+      combined editable SVG with panel letters as text; 107 tests (tests/test_ui_style.py)
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
