@@ -337,6 +337,9 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Survival: 95% CI of median survival (matches lifelines), hazard ratio by the log-rank method alongside Mantel-Haenszel
 - [x] Column statistics: CI of the median (exact, order statistics) with its actual confidence level; 202 tests
 
+## Phase 0.78: Sign test + proportion CIs (done 2026-11-07)
+- [x] Column statistics: sign test vs the hypothetical value; contingency: each row's proportion with a Wilson CI; 203 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

@@ -36,3 +36,17 @@ def test_goodness_of_fit():
     assert np.isclose(b["binomial_p"], ss.binomtest(62, 100, 0.5).pvalue)
     with pytest.raises(ValueError):
         contingency.goodness_of_fit(["a", "b"], [1, 2], [0, 1])
+
+
+def test_row_proportion_wilson_and_sign_test():
+    import math
+    from app import stats
+    r = contingency.analyze([[38, 12], [23, 27]], ["T", "P"], ["Yes", "No"])
+    p = r["row_props"][0]
+    z, n, ph = 1.959964, 50, 38 / 50
+    centre = (ph + z * z / (2 * n)) / (1 + z * z / n)
+    half = z / (1 + z * z / n) * math.sqrt(ph * (1 - ph) / n + z * z / (4 * n * n))
+    assert np.isclose(p["ci"][0], centre - half, atol=1e-5) and np.isclose(p["ci"][1], centre + half, atol=1e-5)
+    d = stats.column_stats([5, 7, 8, 9, 6, 10, 11, 4], hypothetical=5)
+    assert d["sign_test"]["above"] == 6 and d["sign_test"]["below"] == 1
+    assert np.isclose(d["sign_test"]["p"], ss.binomtest(6, 7, 0.5).pvalue)

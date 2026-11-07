@@ -23,6 +23,12 @@ def analyze(table, row_names, col_names, alpha: float = 0.05) -> dict:
     res = {"test_name": "Contingency table", "rows": rows, "cols": cols, "table": t.astype(int).tolist(),
            "row_pct": (t / t.sum(axis=1, keepdims=True) * 100).tolist(), "alpha": alpha,
            "total": int(t.sum())}
+    # each row's proportion in the first outcome column, with a Wilson score CI
+    res["row_props"] = []
+    for i in range(t.shape[0]):
+        k_, n_ = int(t[i, 0]), int(t[i].sum())
+        ci_ = stats.binomtest(k_, n_).proportion_ci(confidence_level=1 - alpha, method="wilson")
+        res["row_props"].append({"row": rows[i], "k": k_, "n": n_, "p": k_ / n_, "ci": [float(ci_.low), float(ci_.high)]})
     chi = stats.chi2_contingency(t, correction=False)
     res["chi_square"] = {"chi2": float(chi.statistic), "df": int(chi.dof), "p": float(chi.pvalue),
                          "min_expected": float(chi.expected_freq.min())}

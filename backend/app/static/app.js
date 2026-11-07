@@ -2310,7 +2310,8 @@
         : `No column's mean differs significantly from ${fmt(r.hypothetical)}.`);
       rows.push(row(`One-sample t test vs ${fmt(r.hypothetical)}: P`, g => g.one_sample_t ? `${pOnly(g.one_sample_t.p)} ${st(g.one_sample_t.stars)}` : null),
         row("Mean − hypothetical", g => g.one_sample_t ? fmt(g.one_sample_t.diff) : null),
-        row(`Wilcoxon signed-rank vs ${fmt(r.hypothetical)}: P`, g => g.wilcoxon ? `${pOnly(g.wilcoxon.p)} ${st(g.wilcoxon.stars)}` : null));
+        row(`Wilcoxon signed-rank vs ${fmt(r.hypothetical)}: P`, g => g.wilcoxon ? `${pOnly(g.wilcoxon.p)} ${st(g.wilcoxon.stars)}` : null),
+        row(`Sign test vs ${fmt(r.hypothetical)}: P`, g => g.sign_test ? `${pOnly(g.sign_test.p)} ${st(g.sign_test.stars)} <span class="pd">(${g.sign_test.above} above, ${g.sign_test.below} below)</span>` : null));
     } else h += T.summary("ns", `Descriptive statistics for ${G.length} column${G.length > 1 ? "s" : ""}. Enter a hypothetical value to test each column's mean against it.`);
     h += T.multi(["", ...G.map(g => esc(g.name))], rows);
     h += `<p class="note">Percentiles use the (n+1)p rank method, as Prism does. Geometric values need all values > 0.</p>`;
@@ -2944,6 +2945,8 @@
     h += T.table(rows);
     if (r.chi_square.min_expected < 5 && !r.fisher) h += `<p class="note warn">⚠︎ Some expected counts are below 5, so the chi-square P value is approximate.</p>`;
     if (r.odds_ratio) h += `<p class="note">Odds ratio and relative risk compare the first row with the second, for the outcome in the first column.</p>`;
+    if (r.row_props) h += `<div class="opt-label" style="margin-top:10px">Proportion of each row with "${esc(r.cols[0])}"</div>` +
+      T.multi(["", "Proportion", `${pct}% CI (Wilson)`], r.row_props.map(p => [esc(p.row), `${fmt(p.p * 100, 3)}% <span class="pd">(${p.k}/${p.n})</span>`, `${fmt(p.ci[0] * 100, 3)}% – ${fmt(p.ci[1] * 100, 3)}%`]));
     if (r.trend) h += T.table([T.sec("Chi-square test for trend (rows in order, scores 1, 2, 3…)"), T.row("Chi-square, df", `${fmt(r.trend.chi2)}, 1`),
       T.row("P value", `${pOnly(r.trend.p)} ${st(stars(r.trend.p))}`), T.row(`Proportion of ${esc(r.cols[0])}`, r.trend.p < r.alpha ? `<b>${r.trend.direction}</b> down the rows` : "no significant trend")]);
     return h;

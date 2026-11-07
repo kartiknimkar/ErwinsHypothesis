@@ -813,6 +813,10 @@ def column_stats(values, name: str = "", hypothetical: float | None = None, alph
         d["one_sample_t"] = {"hypothetical": hypothetical, "t": float(t.statistic), "df": n - 1, "p": float(t.pvalue),
                              "stars": stars(float(t.pvalue)), "diff": d["mean"] - hypothetical}
         diffs = x - hypothetical
+        above, below = int(np.sum(diffs > 0)), int(np.sum(diffs < 0))
+        if above + below:
+            sp = float(stats.binomtest(above, above + below, 0.5).pvalue)
+            d["sign_test"] = {"above": above, "below": below, "p": sp, "stars": stars(sp)}
         if np.any(diffs != 0):
             w = stats.wilcoxon(diffs)
             d["wilcoxon"] = {"hypothetical": hypothetical, "W": float(w.statistic), "p": float(w.pvalue),
