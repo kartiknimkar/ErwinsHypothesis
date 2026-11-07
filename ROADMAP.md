@@ -333,6 +333,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Results "Copy" puts both tab-separated text and an HTML table on the clipboard (real tables in Word/PowerPoint)
 - [x] Grouped graphs: show n under row labels; 200 tests
 
+## Phase 0.77: Median CIs + log-rank HR (done 2026-11-07)
+- [x] Survival: 95% CI of median survival (matches lifelines), hazard ratio by the log-rank method alongside Mantel-Haenszel
+- [x] Column statistics: CI of the median (exact, order statistics) with its actual confidence level; 202 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

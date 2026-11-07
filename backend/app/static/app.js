@@ -2291,7 +2291,8 @@
     const rows = [
       row("Number of values", g => g.n), row("Mean", g => fmt(g.mean)), row("Std. deviation", g => fmt(g.sd)), row("Std. error of mean", g => fmt(g.sem)),
       row(`Lower ${pct}% CI of mean`, g => fmt(g.ci_low)), row(`Upper ${pct}% CI of mean`, g => fmt(g.ci_high)),
-      row("Minimum", g => fmt(g.min)), row("25% percentile", g => fmt(g.q1)), row("Median", g => fmt(g.median)), row("75% percentile", g => fmt(g.q3)),
+      row("Minimum", g => fmt(g.min)), row("25% percentile", g => fmt(g.q1)), row("Median", g => fmt(g.median)),
+      row("CI of median", g => g.median_ci ? `${ci(...g.median_ci)} <span class="pd">(${fmt(g.median_ci_conf * 100, 3)}%)</span>` : null), row("75% percentile", g => fmt(g.q3)),
       row("Maximum", g => fmt(g.max)), row("Range", g => fmt(g.range)), row("Interquartile range", g => fmt(g.iqr)),
       row("Coefficient of variation", g => g.cv == null ? null : fmt(g.cv, 4) + "%"),
       row("Geometric mean", g => g.geo_mean == null ? null : fmt(g.geo_mean)), row("Geometric SD factor", g => g.geo_sd_factor == null ? null : fmt(g.geo_sd_factor)),
@@ -2897,7 +2898,8 @@
         : T.summary("ns", `<b>No significant difference in survival</b> (log-rank ${fmtP(r.p)}).`);
     } else h += T.summary("ns", `Kaplan-Meier estimate for one group. Add another group column to compare.`);
     h += T.multi(["", ...c.map(x => esc(x.name))], [["Subjects", ...c.map(x => x.n)], ["Events", ...c.map(x => x.events)],
-      ["Censored", ...c.map(x => x.n - x.events)], ["Median survival", ...c.map(x => x.median == null ? "Undefined" : fmt(x.median))]]);
+      ["Censored", ...c.map(x => x.n - x.events)], ["Median survival", ...c.map(x => x.median == null ? "Undefined" : fmt(x.median))],
+      ["95% CI of median", ...c.map(x => x.median_ci && x.median_ci[0] != null ? `${fmt(x.median_ci[0])} to ${x.median_ci[1] == null ? "not reached" : fmt(x.median_ci[1])}` : "—")]]);
     if (r.logrank) {
       const rows = [T.sec("Log-rank (Mantel-Cox) test"), T.row("Chi-square, df", `${fmt(r.logrank.chi2)}, ${r.logrank.df}`),
         T.row("P value", `${pOnly(r.p)} ${st(stars(r.p))}`)];
@@ -2907,6 +2909,8 @@
         T.row("P value", `${pOnly(r.trend.p)} ${st(stars(r.trend.p))}`));
       if (r.hazard_ratio) rows.push(T.sec("Hazard ratio (Mantel-Haenszel)"), T.row(esc(r.hazard_ratio.label), fmt(r.hazard_ratio.value)),
         T.row("95% CI", ci(...r.hazard_ratio.ci)));
+      if (r.hazard_ratio_logrank) rows.push(T.sec("Hazard ratio (log-rank method)"), T.row(esc(r.hazard_ratio_logrank.label), fmt(r.hazard_ratio_logrank.value)),
+        T.row("95% CI", ci(...r.hazard_ratio_logrank.ci)));
       if (r.median_ratio) rows.push(T.row("Ratio of medians", fmt(r.median_ratio)));
       h += T.table(rows);
       if (r.pairwise) h += `<div class="opt-label" style="margin-top:10px">Pairwise log-rank comparisons (Holm-Šídák adjusted)</div>` +

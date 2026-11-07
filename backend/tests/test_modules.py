@@ -170,3 +170,20 @@ def test_pairwise_logrank():
     ref = lf.logrank_test(T1, T2, E1, E2)
     assert ab["a"] == "A" and ab["b"] == "B" and np.isclose(ab["p_raw"], ref.p_value)
     assert all(p["p"] >= p["p_raw"] for p in r["pairwise"])
+
+
+def test_median_ci_matches_lifelines_and_logrank_hr():
+    lf = pytest.importorskip("lifelines")
+    from lifelines.utils import median_survival_times
+    km = survival.kaplan_meier(np.array(T2, float), np.array(E2))
+    k = lf.KaplanMeierFitter().fit(T2, E2)
+    ci = median_survival_times(k.confidence_interval_)
+    assert km["median"] == k.median_survival_time_
+    assert km["median_ci"][0] == pytest.approx(float(ci.iloc[0, 0]))
+    up = float(ci.iloc[0, 1])
+    assert (km["median_ci"][1] is None and np.isinf(up)) or km["median_ci"][1] == pytest.approx(up)
+    times = T1 + T2
+    r = survival.analyze(times, {"A": E1 + [""] * len(T2), "B": [""] * len(T1) + E2})
+    lr = r["logrank"]
+    hr = (lr["observed"][1] / lr["expected"][1]) / (lr["observed"][0] / lr["expected"][0])
+    assert r["hazard_ratio_logrank"]["value"] == pytest.approx(hr)

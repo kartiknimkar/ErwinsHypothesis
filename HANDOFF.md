@@ -60,7 +60,7 @@ Every session starts by reading it and ends by updating it (then committing).
 - Sizes measured: ~266 MB (system Python), ~410 MB (private Python).
 
 ## Current state
-- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 200 tests pass (incl. tests/test_ui_smoke.py: Playwright opens all 28 examples and walks every branch of the 'Help me choose' guide (GUIDE tree in app.js) and checks 'Text for your paper' (reportText in app.js); run it after UI changes). Multiple variables type also does multiple linear + logistic regression (multivar.py). 8 analysis types (+ nested): ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
+- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 202 tests pass (incl. tests/test_ui_smoke.py: Playwright opens all 28 examples and walks every branch of the 'Help me choose' guide (GUIDE tree in app.js) and checks 'Text for your paper' (reportText in app.js); run it after UI changes). Multiple variables type also does multiple linear + logistic regression (multivar.py). 8 analysis types (+ nested): ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
 - [x] User confirmed the app runs on their Windows PC (C: drive, private Python fallback)
 - [x] Interface rewritten around a TYPES registry in `static/app.js` (each type: data layout,
       options, request, results renderer, graph drawer, format controls). Add new modules there.
@@ -121,8 +121,10 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (au) XY: replicate points shown as mean ± SD *and* individual points together option
 - [x] (av) Grouped (two-way) graphs: option "Show n under labels" and median/IQR like column graphs
 - [x] (aw) Results: "Copy as table" puts results on the clipboard as a tab-separated table AND as HTML for Word
-- [ ] (ax) Survival: hazard ratio via log-rank method alongside Mantel-Haenszel (Prism shows both); confidence interval for median survival
-- [ ] (ay) Column statistics: confidence interval of the median (exact binomial, as Prism)
+- [x] (ax) Survival: hazard ratio via log-rank method alongside Mantel-Haenszel (Prism shows both); confidence interval for median survival
+- [x] (ay) Column statistics: confidence interval of the median (exact binomial, as Prism)
+- [ ] (az) one-sample: sign test and binomial test option in column statistics (vs hypothetical median / proportion)
+- [ ] (ba) contingency: exact (Clopper-Pearson / Wilson) CIs for each row's proportion
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →

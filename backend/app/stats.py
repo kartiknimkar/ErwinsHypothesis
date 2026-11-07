@@ -786,6 +786,15 @@ def column_stats(values, name: str = "", hypothetical: float | None = None, alph
     if n > 1:
         tq = stats.t.ppf(1 - alpha / 2, n - 1)
         d["ci_low"], d["ci_high"] = d["mean"] - tq * d["sem"], d["mean"] + tq * d["sem"]
+    if n >= 2:
+        # CI of the median from order statistics (exact binomial): largest j with P(Bin(n, 1/2) <= j - 1) <= alpha/2
+        xs = np.sort(x)
+        j = 0
+        while j + 1 <= n and stats.binom.cdf(j, n, 0.5) <= alpha / 2:
+            j += 1
+        if j >= 1:
+            d["median_ci"] = [float(xs[j - 1]), float(xs[n - j])]
+            d["median_ci_conf"] = float(1 - 2 * stats.binom.cdf(j - 1, n, 0.5))
     if np.all(x > 0):
         lx = np.log(x)
         d["geo_mean"] = float(np.exp(lx.mean()))

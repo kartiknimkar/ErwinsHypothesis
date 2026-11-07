@@ -47,9 +47,12 @@ def kaplan_meier(t: np.ndarray, e: np.ndarray, alpha: float = 0.05) -> dict:
             lo = hi = s
         steps.append({"t": float(ti), "s": s, "lo": lo, "hi": hi, "at_risk": n, "events": d})
     median = next((st["t"] for st in steps if st["s"] <= 0.5), None)
+    # CI of the median from the pointwise confidence band (first times the lower and upper limits reach 50%)
+    med_lo = next((st["t"] for st in steps if st["lo"] <= 0.5), None)
+    med_hi = next((st["t"] for st in steps if st["hi"] <= 0.5), None)
     censored = sorted(float(x) for x in t[e == 0])
     cens_s = [next(st["s"] for st in reversed(steps) if st["t"] <= c) for c in censored]
-    return {"steps": steps, "median": median, "n": int(len(t)), "events": int(e.sum()),
+    return {"steps": steps, "median": median, "median_ci": [med_lo, med_hi], "n": int(len(t)), "events": int(e.sum()),
             "censored": {"t": censored, "s": cens_s}}
 
 
@@ -138,6 +141,13 @@ def analyze(times: list, groups: dict[str, list], alpha: float = 0.05) -> dict:
                 res["hazard_ratio"] = {"value": math.exp(lhr), "ci": [math.exp(lhr - z / math.sqrt(V2)),
                                        math.exp(lhr + z / math.sqrt(V2))],
                                        "label": f"{curves[1]['name']} vs {curves[0]['name']}"}
+            O1, E1 = lr["observed"][0], lr["expected"][0]
+            if E1 > 0 and E2 > 0 and O1 > 0 and O2 > 0:
+                hr = (O2 / E2) / (O1 / E1)
+                se = math.sqrt(1 / E1 + 1 / E2)
+                z = stats.norm.ppf(1 - alpha / 2)
+                res["hazard_ratio_logrank"] = {"value": hr, "ci": [hr * math.exp(-z * se), hr * math.exp(z * se)],
+                                               "label": f"{curves[1]['name']} vs {curves[0]['name']}"}
             m1, m2 = curves[0]["median"], curves[1]["median"]
             if m1 and m2:
                 res["median_ratio"] = m2 / m1

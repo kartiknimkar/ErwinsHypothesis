@@ -30,3 +30,16 @@ def test_endpoint():
     c = TestClient(app)
     r = c.post("/api/colstats", json={"groups": [X, [], [1, 2]], "names": ["A", "B", "C"], "hypothetical": None}).json()
     assert r["n_groups"] == 2 and r["groups"][1]["name"] == "C" and "one_sample_t" not in r["groups"][0]
+
+
+def test_median_ci_order_statistics():
+    import numpy as np
+    from scipy import stats as ss
+    from app import stats
+    x = [3.1, 2.2, 5.0, 4.4, 3.9, 2.8, 4.1, 3.3, 3.6, 4.8, 2.5, 3.0]
+    d = stats.column_stats(x)
+    xs = sorted(x)
+    # n = 12: P(Bin(12, .5) <= 2) = 0.0193 <= 0.025, P(<= 3) = 0.073 > 0.025 -> j = 3: x(3) .. x(10)
+    assert d["median_ci"] == [xs[2], xs[9]]
+    assert np.isclose(d["median_ci_conf"], 1 - 2 * ss.binom.cdf(2, 12, 0.5))
+    assert "median_ci" not in stats.column_stats([1, 2, 3, 4])  # too few values for a 95% interval
