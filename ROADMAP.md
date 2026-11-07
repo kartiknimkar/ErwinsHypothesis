@@ -149,6 +149,7 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Compare groups: identify outliers with ROUT (default, finds several) or Grubbs; choose Q
 - [x] XY fits (linear, all nonlinear models, custom equations): "Remove outliers before fitting"; red crosses on the
       graph, removed-points table, paper text; 118 tests
+- [x] Violin plots (with inner box, mean line and points) for Compare groups
 
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol

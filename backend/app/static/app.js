@@ -138,7 +138,7 @@
           mk.line = { ...(mk.line || {}), width: Number(g.pointLine), color: g.pointLineColor };
         } else if (mk.line && mk.line.width) mk.line = { ...mk.line, width: mk.line.width * ls };
       }
-      if (t.type === "box" && mk) mk.opacity = Number(g.pointOpacity);
+      if ((t.type === "box" || t.type === "violin") && mk) mk.opacity = Number(g.pointOpacity);
       if (t.type === "bar" && mk) {
         const isHex = c => typeof c === "string" && /^#[0-9a-f]{6}/i.test(c);
         const base = isHex(mk.line && mk.line.color) ? mk.line.color.slice(0, 7) : isHex(mk.color) ? mk.color.slice(0, 7) : null;
@@ -243,7 +243,7 @@
         sel("freqBars", "Several columns", [["overlay", "Overlapping"], ["group", "Side by side"], ["stack", "Stacked"]]),
         chk("normalCurve", "Show normal curve"), txt("xlabel", "Values axis label"),
       ] : [
-        sel("style", "Style", [["dots", "Dots + mean"], ["bars", "Bars + dots"], ["box", "Box plot"],
+        sel("style", "Style", [["dots", "Dots + mean"], ["bars", "Bars + dots"], ["box", "Box plot"], ["violin", "Violin plot"],
           ...(s.options.design === "repeated" ? [["lines", "Before-after (connect subjects)"]] : [])]),
         sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
         sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]),
@@ -2249,6 +2249,12 @@
         return;
       }
       const xs = vals.map((_, k) => i + ((k * 0.618) % 1 - 0.5) * 0.3);
+      if (g.style === "violin") {
+        traces.push({ type: "violin", x: vals.map(() => i), y: vals, width: 0.75, points: g.showPoints ? "all" : false, jitter: 0.35, pointpos: 0,
+          spanmode: "hard", meanline: { visible: true, color: c, width: 1.5 }, box: { visible: true, width: 0.12, fillcolor: "#ffffff", line: { color: c, width: 1.2 } },
+          marker: { color: c, size: g.pointSize * 0.7, opacity: 0.85 }, line: { color: c, width: 1.6 }, fillcolor: c + "26", hoverinfo: "y", name: esc(stt.name) });
+        return;
+      }
       if (g.style === "box") {
         traces.push({ type: "box", x: vals.map(() => i), y: vals, width: 0.5, boxpoints: g.showPoints ? "all" : false, jitter: 0.45, pointpos: 0,
           marker: { color: c, size: g.pointSize * 0.8, opacity: 0.85 }, line: { color: c, width: 1.6 }, fillcolor: c + "22", hoverinfo: "y", name: esc(stt.name) });

@@ -42,9 +42,12 @@ def test_styles_apply_to_every_graph_and_svg_is_editable(server):  # noqa: F811
             page.wait_for_timeout(200)
             assert page.query_selector("#plot .main-svg") is not None
         assert errors == [], errors
-        # first example (compare groups) → SVG
+        # first example (compare groups) → violin plot, then SVG
         page.click("#sheet-list li:nth-child(1)")
         page.wait_for_timeout(500)
+        page.click("#btn-format"); page.select_option('#graph-format [data-g="style"]', "violin"); page.click("#btn-format")
+        page.wait_for_timeout(400)
+        assert page.query_selector("#plot .violinlayer path") is not None
         fonts = page.eval_on_selector_all("#plot text", "els => els.map(e => e.style.fontFamily).join('|')")
         assert "Times New Roman" in fonts
         exports = os.path.join(os.environ["EH_HOME"], "exports")
