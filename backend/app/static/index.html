@@ -121,6 +121,7 @@
           <button data-type="contingency"><span class="badge t-contingency">#</span><span><b>Contingency table</b><small>Chi-square · Fisher's exact · odds ratio</small></span></button>
         </div>
       </div>
+      <input id="sheet-filter" class="sheet-filter" type="search" placeholder="Find an analysis…" aria-label="Find an analysis" hidden>
       <ul id="sheet-list" class="sheet-list"></ul>
       <div class="side-foot">Autosaved to <b>projects</b>. Exports go to <b>exports</b>.</div>
     </aside>
@@ -154,6 +155,8 @@
           <div class="grid-wrap"><table id="grid" class="grid"></table></div>
           <div class="card-head sub"><h2>Analysis</h2></div>
           <div id="options" class="options"></div>
+          <details class="notes-box" id="notes-box"><summary>Notes</summary>
+            <textarea id="sheet-notes" rows="3" placeholder="Your notes for this analysis (e.g. where the data came from, decisions you made). Saved with the project and included in the report."></textarea></details>
         </section>
 
         <div class="right-col">

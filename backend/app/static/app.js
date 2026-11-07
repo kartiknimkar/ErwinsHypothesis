@@ -1086,7 +1086,9 @@
   // sidebar & header
   // ======================================================================
   function renderSidebar() {
-    $("sheet-list").innerHTML = project.sheets.map(s =>
+    const f = $("sheet-filter"), q = f.value.trim().toLowerCase();
+    f.hidden = project.sheets.length < 8 && !q;
+    $("sheet-list").innerHTML = project.sheets.filter(s => !q || s.title.toLowerCase().includes(q) || TYPES[s.type].label.toLowerCase().includes(q)).map(s =>
       `<li data-id="${s.id}" draggable="true" class="${s.id === project.activeId ? "active" : ""}" title="${esc(TYPES[s.type].label)}. Drag to reorder.">
         <span class="badge t-${s.type}">${badgeText(s.type)}</span><span class="t">${esc(s.title)}</span></li>`).join("");
     $("sheet-list").querySelectorAll("li").forEach(li => {
@@ -3296,6 +3298,7 @@
           try { paper = reportText(r, sh); } catch { paper = null; }
         }
         parts.push(`<section><h2>${esc(sh.title)} <small>${esc(t.label)}</small></h2>
+          ${sh0.notes ? `<p class="usernotes"><b>Notes:</b> ${esc(sh0.notes).replace(/\n/g, "<br>")}</p>` : ""}
           ${err ? `<p class="note warn">${esc(err)}</p>` : ""}${svg ? `<div class="graph">${svg}</div>` : ""}<div class="results">${results}</div>
           ${paper ? `<div class="paper"><h3>Text for your paper</h3><p><b>Methods.</b> ${paper.methods}</p><p><b>Results.</b> ${paper.results}</p></div>` : ""}</section>`);
       }
@@ -3502,6 +3505,8 @@
     const s = active();
     project.activeId = s.id;
     $("sheet-title").value = s.title;
+    $("sheet-notes").value = s.notes || "";
+    $("notes-box").open = !!s.notes;
     $("sheet-kind").textContent = TYPES[s.type].label;
     $("sheet-badge").className = `badge t-${s.type}`; $("sheet-badge").textContent = badgeText(s.type);
     lastResult = null; lastError = null; selA = selB = null;
@@ -3517,6 +3522,8 @@
     box.addEventListener("change", () => recordUndo(), true);
     box.addEventListener("click", e => { if (e.target.closest("button[data-set], button[data-design], #btn-add-note, [data-note-del], #btn-reset-edits, #btn-reset-colors")) recordUndo(true); }, true);
   });
+  $("sheet-filter").addEventListener("input", renderSidebar);
+  $("sheet-notes").addEventListener("input", e => { active().notes = e.target.value; save(); });
   const grid = $("grid");
   grid.addEventListener("input", onGridInput);
   grid.addEventListener("paste", onGridPaste);

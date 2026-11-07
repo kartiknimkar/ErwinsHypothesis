@@ -344,6 +344,9 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Format: Y and X axis number formats (decimals, thousands separator, scientific)
 - [x] Data table footer shows n and mean of each number column, updating as you type; 204 tests
 
+## Phase 0.80: Find + notes (done 2026-11-07)
+- [x] Sidebar "Find an analysis" filter (appears with 8+ analyses); per-analysis Notes box, saved and included in the report; 205 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

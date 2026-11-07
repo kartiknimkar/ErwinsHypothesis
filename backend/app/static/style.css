@@ -276,3 +276,7 @@ kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; background: var(--sof
 .empty small { color: var(--muted); }
 .grid tfoot td { position: sticky; bottom: 0; background: var(--head); font-size: 11px; color: var(--muted); text-align: right; padding: 4px 8px; white-space: nowrap; border-top: 1px solid var(--line); }
 .grid tfoot td.rownum { text-align: center; }
+.sheet-filter { margin: 4px 10px 6px; width: calc(100% - 20px); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; font-size: 12.5px; background: var(--panel); color: var(--ink); }
+.notes-box { margin-top: 10px; font-size: 12.5px; }
+.notes-box summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+.notes-box textarea { width: 100%; margin-top: 6px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; background: var(--panel); color: var(--ink); resize: vertical; }

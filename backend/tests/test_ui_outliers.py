@@ -481,3 +481,33 @@ def test_grid_footer_and_number_format(server):  # noqa: F811
         assert page.evaluate("document.getElementById('plot').layout.yaxis.tickformat") == ",.2f"
         assert errors == [], errors
         browser.close()
+
+
+def test_sidebar_filter_and_notes(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#btn-projects"); page.click("#btn-examples")  # a project with many analyses
+        page.wait_for_timeout(1500)
+        assert page.is_visible("#sheet-filter")
+        page.fill("#sheet-filter", "survival")
+        page.wait_for_timeout(200)
+        names = page.eval_on_selector_all("#sheet-list li .t", "els => els.map(e => e.textContent)")
+        assert names and all("urvival" in n for n in names)
+        page.fill("#sheet-filter", "")
+        page.click("#sheet-list li:nth-child(1)")
+        page.click("#notes-box summary")
+        page.fill("#sheet-notes", "Data from experiment 12")
+        page.click("#sheet-list li:nth-child(2)"); page.wait_for_timeout(200)
+        assert page.input_value("#sheet-notes") == ""
+        page.click("#sheet-list li:nth-child(1)"); page.wait_for_timeout(200)
+        assert page.input_value("#sheet-notes") == "Data from experiment 12"
+        assert errors == [], errors
+        browser.close()
