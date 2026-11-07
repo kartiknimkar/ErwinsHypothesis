@@ -50,6 +50,11 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Per-series color pickers in the Format panel (by series name, saved with the graph)
 - [x] 72 tests
 
+## Phase 0.12: Outliers + AUC (done 2026-11-06)
+- [x] Grubbs' outlier test (iterative, two-sided) per group; outliers circled on the graph
+- [x] Area under the curve for XY data (trapezoid on mean Y, baseline, exact split at crossings)
+- [x] 75 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

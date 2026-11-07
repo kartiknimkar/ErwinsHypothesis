@@ -43,6 +43,7 @@ class CompareRequest(BaseModel):
     names: list[str]
     kind: str = "unpaired"  # 2 groups: unpaired|welch|paired|mannwhitney; 3+: ordinary|welch|kruskal
     alpha: float = 0.05
+    outliers: bool = False  # also run Grubbs' outlier test on each group
 
 
 class RegressionRequest(BaseModel):
@@ -85,6 +86,8 @@ def run_compare(req: CompareRequest):
             kind = req.kind if req.kind in ("ordinary", "welch", "kruskal") else "ordinary"
             res = stats.one_way_anova(groups, names, kind=kind, alpha=req.alpha)
         res["n_groups"] = len(cols)
+        if req.outliers:
+            res["outliers"] = [{"name": n, **stats.grubbs(g, alpha=0.05)} for n, g in zip(names, groups)]
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))
@@ -98,6 +101,8 @@ class FitRequest(BaseModel):
     fixed: dict | None = None   # {parameter name: value} constraints
     equation: str | None = None # user-defined equation when model == "custom"
     initial: dict | None = None # starting values for a user-defined equation
+    auc: bool = False           # also compute area under the curve of the data
+    baseline: float = 0.0
     x_is_log: bool = False
     alpha: float = 0.05
 
@@ -172,6 +177,11 @@ def run_fit(req: FitRequest):
                     res["comparison"] = curvefit.compare(px, py, req.model, req.compare, x_is_log=req.x_is_log, alpha=req.alpha, fixed=req.fixed)
                 except ValueError as e:
                     res["comparison"] = {"error": str(e)}
+        if req.auc:
+            try:
+                res["auc"] = stats.area_under_curve(px, py, baseline=req.baseline)
+            except ValueError as e:
+                res["auc"] = {"error": str(e)}
         unk = _unknowns(req.x, req.ys)
         if unk:
             res["x_was_log"] = bool(req.x_is_log)

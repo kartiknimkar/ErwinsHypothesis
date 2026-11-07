@@ -364,3 +364,54 @@ def linear_regression(x, y, alpha: float = 0.05, band_points: int = 100) -> dict
         "line": {"x": grid.tolist(), "y": fit.tolist(),
                  "low": (fit - half).tolist(), "high": (fit + half).tolist()},
     }
+
+
+def grubbs(values, alpha: float = 0.05) -> dict:
+    """Iterative two-sided Grubbs' test: flags at most one point per round, repeats on the rest."""
+    x = _clean(values)
+    flagged = []
+    rest = list(x)
+    while len(rest) >= 3:
+        arr = np.asarray(rest)
+        sd = arr.std(ddof=1)
+        if sd == 0:
+            break
+        dev = np.abs(arr - arr.mean())
+        i = int(np.argmax(dev))
+        G = dev[i] / sd
+        n = len(arr)
+        t = stats.t.ppf(1 - alpha / (2 * n), n - 2)
+        g_crit = (n - 1) / math.sqrt(n) * math.sqrt(t ** 2 / (n - 2 + t ** 2))
+        if G <= g_crit:
+            break
+        flagged.append({"value": float(arr[i]), "G": float(G), "critical": float(g_crit)})
+        rest.pop(i)
+    return {"outliers": flagged, "n": int(len(x)), "alpha": alpha}
+
+
+def area_under_curve(x, y, baseline: float = 0.0) -> dict:
+    """Trapezoid area under the curve of mean Y at each X (X sorted), relative to a baseline."""
+    pts = {}
+    for vx, vy in zip(x, y):
+        pts.setdefault(float(vx), []).append(float(vy))
+    xs = np.array(sorted(pts))
+    if len(xs) < 2:
+        raise ValueError("Area under the curve needs at least 2 different X values.")
+    ys = np.array([np.mean(pts[v]) for v in xs]) - baseline
+    seg = (ys[:-1] + ys[1:]) / 2 * np.diff(xs)
+    # split segments that cross the baseline so positive and negative areas are exact
+    pos = neg = 0.0
+    for x0, x1, y0, y1 in zip(xs[:-1], xs[1:], ys[:-1], ys[1:]):
+        if y0 >= 0 and y1 >= 0:
+            pos += (y0 + y1) / 2 * (x1 - x0)
+        elif y0 <= 0 and y1 <= 0:
+            neg += (y0 + y1) / 2 * (x1 - x0)
+        else:
+            xc = x0 + (x1 - x0) * y0 / (y0 - y1)
+            a0, a1 = y0 / 2 * (xc - x0), y1 / 2 * (x1 - xc)
+            pos += max(a0, 0) + max(a1, 0)
+            neg += min(a0, 0) + min(a1, 0)
+    peak = int(np.argmax(ys))
+    return {"total": float(seg.sum()), "positive": float(pos), "negative": float(neg), "baseline": baseline,
+            "x_range": [float(xs[0]), float(xs[-1])], "peak_x": float(xs[peak]), "peak_y": float(ys[peak] + baseline),
+            "n_x": int(len(xs))}

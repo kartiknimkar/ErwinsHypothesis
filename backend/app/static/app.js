@@ -127,7 +127,7 @@
       },
       request(s) {
         return ["/api/compare", { groups: s.cols.map((_, j) => s.data.map(r => num(r[j]))), names: s.cols.map((c, j) => c || `Group ${letter(j)}`),
-          kind: kindFor(s, filledCols(s).length), alpha: s.options.alpha }];
+          kind: kindFor(s, filledCols(s).length), alpha: s.options.alpha, outliers: !!s.options.outliers }];
       },
       renderOptions(s) {
         const n = filledCols(s).length, key = choiceKey(s, n), cur = kindFor(s, n);
@@ -135,7 +135,8 @@
         return `<div class="seg"><button data-design="independent" class="${rep ? "" : "on"}">Different subjects in each group</button><button data-design="repeated" class="${rep ? "on" : ""}">Same subjects (each row = one subject)</button></div>
           <div class="opt-label">${n >= 3 ? `${n} groups: compare all` : "2 groups"}</div>` +
           CHOICES[key].map(([k, name, d]) => `<label class="choice ${cur === k ? "on" : ""}"><input type="radio" name="kind${key}" value="${k}" ${cur === k ? "checked" : ""}><span><b>${name}</b><small>${d}</small></span></label>`).join("") +
-          (n >= 3 ? "" : `<p class="hint">Have 3 or more groups? Click <b>+ Group</b> to add a column.</p>`) + alphaSelect(s);
+          (n >= 3 ? "" : `<p class="hint">Have 3 or more groups? Click <b>+ Group</b> to add a column.</p>`) +
+          `<label class="check"><input type="checkbox" data-opt="outliers" ${s.options.outliers ? "checked" : ""}> Identify outliers (Grubbs' test, α = 0.05)</label>` + alphaSelect(s);
       },
       graphControls: s => [
         sel("style", "Style", [["dots", "Dots + mean"], ["bars", "Bars + dots"], ["box", "Box plot"],
@@ -198,6 +199,7 @@
           fixed: Object.fromEntries(Object.entries((s.options.fixed || {})[s.options.model] || {}).filter(([, v]) => isNum(v)).map(([k, v]) => [k, Number(v)])),
           equation: s.options.model === "custom" ? (s.options.equation || "") : null,
           initial: s.options.model === "custom" ? Object.fromEntries(Object.entries(s.options.initial || {}).filter(([, v]) => isNum(v)).map(([k, v]) => [k, Number(v)])) : null,
+          auc: !!s.options.auc, baseline: isNum(s.options.baseline) ? Number(s.options.baseline) : 0,
           x_is_log: !!s.options.xIsLog, alpha: s.options.alpha }];
       },
       renderOptions(s) {
@@ -219,6 +221,8 @@
           </details>` : ""}
           ${m && m.log_x ? `<label class="check"><input type="checkbox" id="opt-xislog" ${s.options.xIsLog ? "checked" : ""}> X values are already log10(concentration)</label>
             <p class="hint">Otherwise X is concentration and the app takes the log for you (X = 0 is left out, as it has no log).</p>` : ""}
+          <div class="row"><label class="check"><input type="checkbox" data-opt="auc" ${s.options.auc ? "checked" : ""}> Area under the curve</label>
+            ${s.options.auc ? `<label>baseline Y =</label><input type="text" id="opt-baseline" value="${esc(s.options.baseline ?? "0")}" style="width:70px" inputmode="decimal">` : ""}</div>
           ${alphaSelect(s)}`;
       },
       graphControls: s => [
@@ -629,6 +633,9 @@
       save(); renderOptions(); renderFormat(); scheduleRun();
     };
     wireParamInputs(s);
+    box.querySelectorAll("[data-opt]").forEach(cb => cb.onchange = () => { s.options[cb.dataset.opt] = cb.checked; save(); renderOptions(); scheduleRun(); });
+    const bl = $("opt-baseline");
+    if (bl) bl.oninput = () => { s.options.baseline = bl.value.trim(); bl.classList.toggle("bad", bl.value.trim() !== "" && !isNum(bl.value)); save(); scheduleRun(); };
     const eq = $("opt-equation");
     if (eq) {
       let t = null;
@@ -753,6 +760,13 @@
       if (r.kind === "rm" || r.kind === "friedman") h += `<p class="note">Only rows with a value in every column are used (${r.n_subjects} subjects).</p>`;
       if (r.variance_check && r.variance_check.p < 0.05) h += `<p class="note warn">⚠︎ The groups' spreads differ (Brown-Forsythe ${fmtP(r.variance_check.p)}). Welch's ANOVA is safer.</p>`;
     }
+    if (r.outliers) {
+      const found = r.outliers.filter(o => o.outliers.length);
+      h += `<div class="opt-label" style="margin-top:10px">Outliers (Grubbs' test, α = 0.05)</div>` + (found.length
+        ? T.multi(["Group", "Suspected outliers", ""], r.outliers.map(o => [esc(o.name), o.outliers.length ? o.outliers.map(x => `<b>${fmt(x.value)}</b>`).join(", ") : "none", o.n < 3 ? `<span class="pd">needs 3+ values</span>` : ""]))
+          + `<p class="note warn">Outliers are circled in red on the graph. The analysis above still includes them: only remove a value if you have a reason beyond the statistics (e.g. a known technical error).</p>`
+        : `<p class="note">No outliers found in any group.</p>`);
+    }
     h += `<div class="opt-label" style="margin-top:10px">Descriptive statistics</div>` + descTable(r.groups);
     return h;
   }
@@ -832,7 +846,14 @@
 
   // ---------------------------------------------------------------- XY
   function renderXYResults(r, s) {
-    return renderXYCore(r, s) + (r.unknowns ? renderUnknowns(r, s) : "");
+    return renderXYCore(r, s) + (r.auc ? renderAUC(r.auc, s) : "") + (r.unknowns ? renderUnknowns(r, s) : "");
+  }
+  function renderAUC(a, s) {
+    if (a.error) return `<p class="note warn">${esc(a.error)}</p>`;
+    return T.table([T.sec(`Area under the curve (baseline Y = ${fmt(a.baseline)})`), T.row("Total area", `<b>${fmt(a.total)}</b>`),
+      T.row("Area above baseline", fmt(a.positive)), T.row("Area below baseline", fmt(a.negative)),
+      T.row(`${esc(s.cols[0] || "X")} range`, `${fmt(a.x_range[0])} to ${fmt(a.x_range[1])}`), T.row("Peak (X, Y)", `${fmt(a.peak_x)}, ${fmt(a.peak_y)}`)]) +
+      `<p class="note">Trapezoid rule on the mean Y at each X, using the actual X units.</p>`;
   }
   function renderUnknowns(r, s) {
     const xName = esc(s.cols[0] || "X");
@@ -998,6 +1019,13 @@
       }
       if (g.style === "bars") traces.push({ type: "bar", x: [i], y: [stt.mean], width: 0.58, marker: { color: c + "30", line: { color: c, width: 1.6 } },
         error_y: { type: "data", array: [err || 0], visible: g.err !== "none", color: "#1b2130", thickness: 1.5, width: 9 }, hoverinfo: "skip" });
+      const outl = ((r.outliers || [])[i] || { outliers: [] }).outliers.map(o => o.value);
+      if (outl.length) {
+        const ox = [], oy = [];
+        vals.forEach((v, k) => { if (outl.includes(v)) { ox.push(xs[k]); oy.push(v); } });
+        traces.push({ type: "scatter", mode: "markers", x: ox, y: oy, hovertemplate: "Possible outlier: %{y}<extra></extra>",
+          marker: { symbol: "circle-open", size: g.pointSize + 9, line: { color: "#d62728", width: 2 } } });
+      }
       if (g.showPoints) traces.push({ type: "scatter", mode: "markers", x: xs, y: vals,
         marker: { color: c, size: g.pointSize, opacity: 0.85, line: { color: "#fff", width: 1 } }, hovertemplate: `${esc(stt.name)}: %{y}<extra></extra>` });
       if (g.style === "dots") traces.push({ type: "scatter", mode: "markers", x: [i], y: [stt.mean],
