@@ -352,6 +352,7 @@ def import_file(req: ImportRequest):
 
 
 class MultiRequest(BaseModel):
+    sd_ratio: float | None = None   # Deming: SD of method B's error / SD of method A's error
     columns: list
     names: list[str]
     analysis: str = "correlation"   # correlation | roc | bland_altman
@@ -384,8 +385,11 @@ def run_multi(req: MultiRequest):
         else:
             if len(req.columns) < 2:
                 raise ValueError("Enter two columns.")
-            fn = multivar.roc if req.analysis == "roc" else multivar.bland_altman
-            res = fn(req.columns[0], req.columns[1], names=tuple(req.names[:2]), alpha=req.alpha)
+            if req.analysis == "deming":
+                res = multivar.deming(req.columns[0], req.columns[1], names=tuple(req.names[:2]), sd_ratio=req.sd_ratio, alpha=req.alpha)
+            else:
+                fn = multivar.roc if req.analysis == "roc" else multivar.bland_altman
+                res = fn(req.columns[0], req.columns[1], names=tuple(req.names[:2]), alpha=req.alpha)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))

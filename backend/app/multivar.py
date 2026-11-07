@@ -368,3 +368,44 @@ def cox(time_col, event_col, x_cols, x_names, alpha: float = 0.05) -> dict:
             "coefs": coefs, "loglik": float(ll), "loglik0": float(ll0), "lr_chi2": float(lr), "df": k, "p": plr, "stars": stars(plr),
             "score_chi2": score, "score_p": float(stats.chi2.sf(score, k)), "wald_chi2": wald, "wald_p": float(stats.chi2.sf(wald, k)),
             "concordance": (conc + 0.5 * tied) / pairs if pairs else None, "ties": "efron", "alpha": alpha}
+
+
+def _deming_fit(x, y, delta):
+    """Deming slope and intercept; delta = (error variance of Y) / (error variance of X)."""
+    mx, my = x.mean(), y.mean()
+    sxx, syy, sxy = np.mean((x - mx) ** 2), np.mean((y - my) ** 2), np.mean((x - mx) * (y - my))
+    if sxy == 0:
+        raise ValueError("The two methods show no relationship, so a Deming line can't be fitted.")
+    b = (syy - delta * sxx + math.sqrt((syy - delta * sxx) ** 2 + 4 * delta * sxy ** 2)) / (2 * sxy)
+    return b, my - b * mx
+
+
+def deming(a, b, names=("Method A", "Method B"), sd_ratio: float | None = None, alpha: float = 0.05) -> dict:
+    """Deming regression of method B (Y) on method A (X), allowing for measurement error in both.
+    sd_ratio = SD of method B's error / SD of method A's error (default 1: equally precise, orthogonal regression).
+    Standard errors and CIs by jackknife (leave-one-out), as is standard for method comparison."""
+    pairs = [(x, y) for x, y in zip(map(_num, a), map(_num, b)) if x is not None and y is not None]
+    n = len(pairs)
+    if n < 4:
+        raise ValueError("Enter at least 4 samples measured by both methods (one row per sample).")
+    x = np.array([p[0] for p in pairs]); y = np.array([p[1] for p in pairs])
+    r = float(sd_ratio) if sd_ratio else 1.0
+    if not r > 0:
+        raise ValueError("The SD ratio must be greater than 0.")
+    delta = r * r
+    slope, icpt = _deming_fit(x, y, delta)
+    jk = np.array([_deming_fit(np.delete(x, i), np.delete(y, i), delta) for i in range(n)])
+    se = np.sqrt((n - 1) / n * np.sum((jk - jk.mean(axis=0)) ** 2, axis=0))
+    t = stats.t.ppf(1 - alpha / 2, n - 2)
+    ci_s = [slope - t * se[0], slope + t * se[0]]
+    ci_i = [icpt - t * se[1], icpt + t * se[1]]
+    p_slope = float(2 * stats.t.sf(abs(slope - 1) / se[0], n - 2))
+    p_icpt = float(2 * stats.t.sf(abs(icpt) / se[1], n - 2))
+    xs = np.linspace(min(x.min(), y.min()), max(x.max(), y.max()), 50)
+    ols = stats.linregress(x, y)
+    return {"test_name": "Deming regression", "kind": "deming", "names": list(names), "n": n, "sd_ratio": r,
+            "slope": float(slope), "intercept": float(icpt), "slope_se": float(se[0]), "intercept_se": float(se[1]),
+            "slope_ci": [float(v) for v in ci_s], "intercept_ci": [float(v) for v in ci_i],
+            "p_slope_1": p_slope, "p_intercept_0": p_icpt, "stars_slope": stars(p_slope), "stars_intercept": stars(p_icpt),
+            "pearson_r": float(ols.rvalue), "ols_slope": float(ols.slope), "alpha": alpha,
+            "points": {"x": x.tolist(), "y": y.tolist()}, "line": {"x": xs.tolist(), "y": (icpt + slope * xs).tolist()}}

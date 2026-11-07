@@ -612,25 +612,29 @@
     diagnostic: {
       label: "ROC & method comparison", newTitle: "Diagnostic",
       minCols: 2, maxCols: 2, fixedCols: 2, textCol: -1, addLabel: "+ Column", minRows: 15,
-      colKind: (j, s) => (s && s.options.analysis === "bland_altman") ? ["Method A", "Method B"][j] : ["Controls", "Patients"][j],
+      colKind: (j, s) => (s && (s.options.analysis === "bland_altman" || s.options.analysis === "deming")) ? ["Method A (X)", "Method B (Y)"][j] : ["Controls", "Patients"][j],
       newColName: j => `Column ${j + 1}`,
       hint: "ROC: the test's values for people without the condition (Controls) and with it (Patients). Bland-Altman: the same samples measured by two methods, one row per sample.",
       cols: ["Controls", "Patients"],
       options: { analysis: "roc", alpha: 0.05 },
       graph: {},
-      examples: s => s.options.analysis === "bland_altman" ? {
+      examples: s => s.options.analysis === "bland_altman" || s.options.analysis === "deming" ? {
         cols: ["Lab analyzer", "Point-of-care"],
         rows: [[5.1, 5.3], [6.8, 7.1], [4.4, 4.3], [9.2, 9.8], [7.5, 7.6], [5.9, 6.3], [8.1, 8.2], [10.4, 11.1], [6.2, 6.1], [7.0, 7.4], [4.9, 5.2], [8.8, 9.3]],
       } : {
         cols: ["Healthy", "Disease"],
         rows: [[1.2, 2.9], [0.8, 3.6], [1.9, 1.7], [1.5, 4.2], [2.4, 2.8], [0.9, 3.1], [1.1, 5.0], [2.0, 2.2], [1.6, 3.9], [1.3, 2.6], [2.7, 4.4], [1.0, 3.3]],
       },
-      request: s => ["/api/multi", { columns: [0, 1].map(j => s.data.map(r => num(r[j]))), names: s.cols.slice(0, 2), analysis: s.options.analysis, alpha: s.options.alpha }],
-      renderOptions: s => `<div class="seg"><button data-set="analysis:roc" class="${s.options.analysis === "roc" ? "on" : ""}">ROC curve</button><button data-set="analysis:bland_altman" class="${s.options.analysis === "bland_altman" ? "on" : ""}">Bland-Altman agreement</button></div>
-        <p class="hint">${s.options.analysis === "roc" ? "How well does the test separate patients from controls? Gives the area under the ROC curve and the best cutoff." : "Do two methods agree? Shows the average difference (bias) and the range where 95% of differences fall (limits of agreement)."}</p>${alphaSelect(s)}`,
+      request: s => ["/api/multi", { columns: [0, 1].map(j => s.data.map(r => num(r[j]))), names: s.cols.slice(0, 2), analysis: s.options.analysis, alpha: s.options.alpha,
+        sd_ratio: s.options.analysis === "deming" && isNum(s.options.sdRatio) ? Number(s.options.sdRatio) : null }],
+      renderOptions: s => `<div class="seg"><button data-set="analysis:roc" class="${s.options.analysis === "roc" ? "on" : ""}">ROC curve</button><button data-set="analysis:bland_altman" class="${s.options.analysis === "bland_altman" ? "on" : ""}">Bland-Altman agreement</button><button data-set="analysis:deming" class="${s.options.analysis === "deming" ? "on" : ""}">Deming regression</button></div>
+        <p class="hint">${s.options.analysis === "roc" ? "How well does the test separate patients from controls? Gives the area under the ROC curve and the best cutoff."
+          : s.options.analysis === "deming" ? "Fits a line through two methods' results when <b>both</b> have measurement error (ordinary regression assumes X is exact). A slope of 1 and intercept of 0 mean the methods agree."
+          : "Do two methods agree? Shows the average difference (bias) and the range where 95% of differences fall (limits of agreement)."}</p>
+        ${s.options.analysis === "deming" ? `<div class="row"><label for="opt-sdr">Error SD of B ÷ error SD of A</label><input type="text" id="opt-sdr" data-num="sdRatio" value="${esc(s.options.sdRatio ?? "")}" placeholder="1 (equal)" style="width:90px" inputmode="decimal"></div>` : ""}${alphaSelect(s)}`,
       graphControls: () => [],
-      renderResults: (r, s) => s.options.analysis === "roc" ? renderROC(r) : renderBA(r),
-      draw: (el, r, s) => s.options.analysis === "roc" ? drawROC(el, r, s) : drawBA(el, r, s),
+      renderResults: (r, s) => r.kind === "deming" ? renderDeming(r) : s.options.analysis === "roc" ? renderROC(r) : renderBA(r),
+      draw: (el, r, s) => r.kind === "deming" ? drawDeming(el, r, s) : s.options.analysis === "roc" ? drawROC(el, r, s) : drawBA(el, r, s),
     },
     // ---------------------------------------------------------------- figure layout
     layout: {
@@ -843,6 +847,7 @@
     add("multivar", "Example: Cox regression", s => { s.options.analysis = "cox"; });
     add("multivar", "Example: PCA", s => { s.options.analysis = "pca"; });
     add("diagnostic", "Example: ROC curve");
+    add("diagnostic", "Example: Deming regression", s => { s.options.analysis = "deming"; });
     add("diagnostic", "Example: Bland-Altman", s => { s.options.analysis = "bland_altman"; });
     add("layout", "Example: figure layout", s => { s.options.panels = figPanels; });
     project.activeId = first.id;
@@ -1259,7 +1264,9 @@
       ["Find the main patterns", "reduce many variables to a few", rec("Principal component analysis", "Biplot and scree plot of the main components.", "multivar", s => { s.options.analysis = "pca"; })] ] }],
     ["Evaluate a test or compare two methods", "diagnostic accuracy, method agreement", { q: "Which question?", opts: [
       ["How well does a test separate patients from controls?", "", rec("ROC curve", "Area under the curve, best cutoff, sensitivity and specificity.", "diagnostic", s => {})],
-      ["Do two methods give the same values?", "same samples measured twice", rec("Bland-Altman", "Bias and 95% limits of agreement.", "diagnostic", s => { s.options.analysis = "bland_altman"; s.cols = ["Method A", "Method B"]; })] ] }],
+      ["Do two methods give the same values?", "same samples measured twice", { q: "What do you want to see?", opts: [
+        ["How far apart they are", "average difference and its range", rec("Bland-Altman", "Bias and 95% limits of agreement.", "diagnostic", s => { s.options.analysis = "bland_altman"; s.cols = ["Method A", "Method B"]; })],
+        ["Constant or proportional bias", "a line relating the two methods", rec("Deming regression", "Slope and intercept allowing for error in both methods; slope 1 and intercept 0 mean agreement.", "diagnostic", s => { s.options.analysis = "deming"; s.cols = ["Method A", "Method B"]; })] ] }] ] }],
     ["Make a multi-panel figure", "combine existing graphs", rec("Figure layout", "Tick the analyses to include; export as one PNG or TIFF.", "layout", s => {})],
   ] };
   let guidePath = [];
@@ -1501,7 +1508,7 @@
     if (s.type === "nested") return [...new Set(s.data.map(r => String(r[0] ?? "").trim()).filter(Boolean))];
     if (s.type === "multivar") return (s.options.analysis || "correlation") === "correlation" ? [] : s.options.analysis === "logistic" ? ["Curve"] : s.options.analysis === "pca" ? ["Points", "Loadings"] : ["Points"];
     if (s.type === "twoway" && s.options.analysis === "multit") return ["Discoveries"];
-    if (s.type === "diagnostic") return s.options.analysis === "roc" ? ["Curve", "Best cutoff"] : ["Points"];
+    if (s.type === "diagnostic") return s.options.analysis === "roc" ? ["Curve", "Best cutoff"] : s.options.analysis === "deming" ? ["Points", "Deming line"] : ["Points"];
     if (s.type === "contingency" && s.options.analysis === "gof") return ["Observed", "Expected"];
     return s.cols.slice(1).map((c, j) => c || (s.type === "contingency" ? `Outcome ${j + 1}` : `Group ${letter(j)}`));
   }
@@ -1748,6 +1755,10 @@
       const sig = r.pairs.filter(p => p.significant);
       return { methods: `Associations between variables were assessed with ${r.method === "pearson" ? "Pearson" : "Spearman"} correlation coefficients (pairwise complete observations). ${ALPHA(r)} Analyses were performed in ${SW}.`,
         results: `${sig.length} of ${r.pairs.length} pairs were significantly correlated. ${r.pairs.slice(0, 4).map(p => `${esc(p.a)} and ${esc(p.b)}: r = ${r2(p.r)}, ${apaP(p.p)}`).join("; ")}.` };
+    }
+    if (s.type === "diagnostic" && r.kind === "deming") {
+      return { methods: `${esc(r.names[0])} and ${esc(r.names[1])} were compared by Deming regression (ratio of error standard deviations ${r2(r.sd_ratio, 3)}); confidence intervals were obtained by the jackknife method. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+        results: `The Deming slope was ${r2(r.slope, 3)} (${pct}% CI ${r2(r.slope_ci[0], 3)} to ${r2(r.slope_ci[1], 3)}) and the intercept ${r2(r.intercept, 3)} (${pct}% CI ${r2(r.intercept_ci[0], 3)} to ${r2(r.intercept_ci[1], 3)}; n = ${r.n}).` };
     }
     if (s.type === "diagnostic" && r.test_name === "ROC curve") {
       return { methods: `Diagnostic performance was evaluated by receiver operating characteristic (ROC) analysis; the standard error of the area under the curve was calculated by the Hanley-McNeil method and the optimal cutoff by the Youden index. Analyses were performed in ${SW}.`,
@@ -2403,6 +2414,27 @@
       T.sec("Does the difference depend on the size of the value?"), T.row("Slope of difference vs average", fmt(r.trend_slope)), T.row("P value", pOnly(r.trend_p))]);
     if (r.trend_p != null && r.trend_p < r.alpha) h += `<p class="note warn">⚠︎ The difference grows (or shrinks) with the size of the measurement, so a single bias doesn't describe the disagreement well. Consider analyzing ratios (log values).</p>`;
     return h;
+  }
+  function renderDeming(r) {
+    const pct = Math.round((1 - r.alpha) * 100);
+    const slopeOk = r.slope_ci[0] <= 1 && r.slope_ci[1] >= 1, icptOk = r.intercept_ci[0] <= 0 && r.intercept_ci[1] >= 0;
+    let h = T.summary(slopeOk && icptOk ? "ns" : "sig", slopeOk && icptOk
+      ? `<b>No evidence of systematic disagreement</b>: the slope's ${pct}% CI includes 1 and the intercept's includes 0.`
+      : `<b>The methods differ systematically</b>: ${!slopeOk ? `a <b>proportional</b> difference (slope ${fmt(r.slope, 4)}, ${pct}% CI ${ci(...r.slope_ci)})` : ""}${!slopeOk && !icptOk ? " and " : ""}${!icptOk ? `a <b>constant</b> difference (intercept ${fmt(r.intercept, 4)}, ${pct}% CI ${ci(...r.intercept_ci)})` : ""}.`);
+    h += T.table([T.sec(`Deming regression: ${esc(r.names[1])} = slope × ${esc(r.names[0])} + intercept`),
+      T.row("Slope", `${fmt(r.slope)} ± ${fmt(r.slope_se, 3)}`), T.row(`${pct}% CI`, ci(...r.slope_ci)), T.row("Is the slope different from 1?", `P ${pOnly(r.p_slope_1)} ${st(r.stars_slope)}`),
+      T.row("Intercept", `${fmt(r.intercept)} ± ${fmt(r.intercept_se, 3)}`), T.row(`${pct}% CI`, ci(...r.intercept_ci)), T.row("Is the intercept different from 0?", `P ${pOnly(r.p_intercept_0)} ${st(r.stars_intercept)}`),
+      T.sec("Other"), T.row("Error SD ratio (B ÷ A)", fmt(r.sd_ratio)), T.row("Pearson r", fmt(r.pearson_r, 4)), T.row("Ordinary regression slope (for comparison)", fmt(r.ols_slope)), T.row("Samples", r.n)]);
+    h += `<p class="note">Standard errors and CIs by jackknife (leaving out one sample at a time). The dashed line is the line of identity (Y = X).</p>`;
+    return h;
+  }
+  function drawDeming(el, r, s) {
+    const g = s.graph, lo = Math.min(...r.line.x), hi = Math.max(...r.line.x);
+    const traces = [{ x: [lo, hi], y: [lo, hi], mode: "lines", line: { color: "#8a93a3", width: 1.3, dash: "dash" }, hoverinfo: "skip", name: "Identity (Y = X)" },
+      { x: r.line.x, y: r.line.y, mode: "lines", line: { color: color(g, 1, "Deming line"), width: 2.4 }, name: "Deming line", hovertemplate: "Fit: %{y:.4g}<extra></extra>" },
+      { x: r.points.x, y: r.points.y, mode: "markers", name: "Samples", marker: { color: color(g, 0, "Points"), size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: "(%{x}, %{y})<extra></extra>" }];
+    styledReact(el, traces, { ...baseLayout(g), showlegend: true, legend: { x: 0.02, y: 1, bgcolor: "rgba(255,255,255,0.7)" },
+      xaxis: axis(g, { title: { text: esc(r.names[0]) } }), yaxis: yAxis(g, r.names[1]) }, PLOT_CONFIG);
   }
   function drawBA(el, r, s) {
     const g = s.graph, c = color(g, 0, "Points");

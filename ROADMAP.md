@@ -188,6 +188,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
       matched odds ratio), chi-square goodness of fit (+ exact binomial for 2 categories), observed vs expected graph
 - [x] Verified vs statsmodels/scipy; guide branch; 3 new examples; 141 tests
 
+## Phase 0.40: Deming regression (done 2026-11-07)
+- [x] Method comparison: Deming regression with error SD ratio, jackknife SE/CI, tests of slope = 1 and intercept = 0,
+      identity line on graph; equals orthogonal regression (ratio 1) and scipy.odr (other ratios); 144 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
