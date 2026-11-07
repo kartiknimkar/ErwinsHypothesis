@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import outliers, nested, anova2, contingency, curvefit, importer, multivar, stats, storage, survival
+from . import outliers, nested, power, anova2, contingency, curvefit, importer, multivar, stats, storage, survival
 
 STATIC = Path(__file__).parent / "static"
 PLOTLY_JS = STATIC / "vendor" / "plotly.min.js"  # plotly.js (MIT), bundled so the app works offline
@@ -349,6 +349,28 @@ class ThreeWayRequest(BaseModel):
 def run_threeway(req: ThreeWayRequest):
     try:
         res = anova2.three_way(req.factors, req.values, req.names, alpha=req.alpha, compare=req.compare)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(_json_safe(res))
+
+
+class PowerRequest(BaseModel):
+    design: str = "unpaired"     # unpaired | paired | anova | proportions
+    alpha: float = 0.05
+    power: float | None = 0.8
+    n: float | None = None
+    difference: float | None = None
+    sd: float | None = None
+    effect: float | None = None
+    k: int = 3
+    p1: float | None = None
+    p2: float | None = None
+
+
+@app.post("/api/power")
+def run_power(req: PowerRequest):
+    try:
+        res = power.analyze(**req.model_dump())
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))

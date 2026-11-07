@@ -20,6 +20,7 @@ clean, modern interface. Everything runs on your own computer.
 - **Multiple variables:** correlation matrix with heatmap, multiple linear regression, logistic regression, PCA
 - **Diagnostics:** ROC curves (AUC, best cutoff), Bland-Altman method comparison
 - Nested t test and nested one-way ANOVA (several measurements per subject, mixed-effects model)
+- Power and sample size calculator (t tests, ANOVA, proportions)
 - Cox proportional hazards regression (hazard ratios, forest plot)
 - ROUT outlier detection (groups and curve fits, removes outliers before fitting) and Grubbs' test
 - Frequency distributions (histograms, cumulative, normal curve) and normal Q-Q plots

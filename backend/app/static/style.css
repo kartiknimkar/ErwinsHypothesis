@@ -76,7 +76,7 @@ input, select { font: inherit; color: inherit; }
 .menu small { display: block; color: var(--muted); margin-top: 1px; }
 .badge { flex: none; width: 22px; height: 22px; border-radius: 6px; display: inline-grid; place-items: center; color: #fff; font-size: 10px; font-weight: 700; letter-spacing: -.2px; }
 .t-ttest { background: var(--c-ttest); } .t-regression { background: var(--c-regression); }
-.t-survival { background: var(--c-survival); } .t-multivar { background: #0e7490; } .t-layout { background: #475569; } .t-summary { background: #4f46e5; } .t-diagnostic { background: #be185d; } .t-twoway { background: var(--c-twoway); } .t-nested { background: #7c3aed; } .t-threeway { background: #b45309; } .t-contingency { background: var(--c-contingency); }
+.t-survival { background: var(--c-survival); } .t-multivar { background: #0e7490; } .t-layout { background: #475569; } .t-summary { background: #4f46e5; } .t-diagnostic { background: #be185d; } .t-twoway { background: var(--c-twoway); } .t-nested { background: #7c3aed; } .t-threeway { background: #b45309; } .t-power { background: #0f766e; } .t-contingency { background: var(--c-contingency); }
 .sheet-list { list-style: none; margin: 0; padding: 0 6px; flex: 1; overflow: auto; }
 .sheet-list li { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 7px; cursor: pointer; }
 .sheet-list li:hover { background: var(--soft); }
@@ -177,7 +177,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px;
 .graph-format .rv { float: right; font-weight: 400; color: var(--ink); }
 .graph-format input[type=color] { width: 100%; height: 26px; padding: 0 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 .data-card.no-data .grid-wrap, .data-card.no-data #data-hint, .data-card.no-data .card-actions { display: none; }
-.data-card.no-data > .card-head:first-child h2::after { content: " (not needed for a figure)"; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.data-card.no-data > .card-head:first-child h2::after { content: " (none needed here)"; text-transform: none; letter-spacing: 0; font-weight: 400; }
 .panel-list { display: grid; gap: 4px; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
 .panel-list .badge { width: 18px; height: 18px; font-size: 9px; }
 .layout-grid { display: grid; gap: 8px; }

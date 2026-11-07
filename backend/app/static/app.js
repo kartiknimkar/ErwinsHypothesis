@@ -675,6 +675,58 @@
       renderResults: (r, s) => r.kind === "deming" ? renderDeming(r) : s.options.analysis === "roc" ? renderROC(r) : renderBA(r),
       draw: (el, r, s) => r.kind === "deming" ? drawDeming(el, r, s) : s.options.analysis === "roc" ? drawROC(el, r, s) : drawBA(el, r, s),
     },
+    // ---------------------------------------------------------------- power / sample size
+    power: {
+      label: "Power & sample size", newTitle: "Sample size",
+      minCols: 0, maxCols: 0, fixedCols: 0, textCol: -1, addLabel: "", minRows: 0, noData: true,
+      colKind: () => "", newColName: () => "",
+      hint: "", cols: [], options: { design: "unpaired", solve: "n", power: "0.8", difference: "5", sd: "10", n: "10", alpha: 0.05, k: "3", effect: "0.25", p1: "0.3", p2: "0.5", useD: false },
+      graph: {},
+      examples: () => ({ cols: [], rows: [] }),
+      request: s => {
+        const o = s.options, n = x => isNum(x) ? Number(x) : null;
+        const body = { design: o.design, alpha: o.alpha, power: o.solve === "n" ? n(o.power) : null, n: o.solve === "power" ? n(o.n) : null };
+        if (o.design === "anova") Object.assign(body, { effect: n(o.effect), k: Math.round(n(o.k) || 3) });
+        else if (o.design === "proportions") Object.assign(body, { p1: n(o.p1), p2: n(o.p2) });
+        else if (o.useD) body.effect = n(o.dval);
+        else Object.assign(body, { difference: n(o.difference), sd: n(o.sd) });
+        return ["/api/power", body];
+      },
+      renderOptions(s) {
+        const o = s.options, inp = (k, label, ph = "", w = 80) => `<label for="pw-${k}">${label}</label><input type="text" id="pw-${k}" data-num="${k}" value="${esc(o[k] ?? "")}" placeholder="${ph}" style="width:${w}px" inputmode="decimal">`;
+        const design = [["unpaired", "Two groups (unpaired t test)"], ["paired", "Before / after (paired t test)"], ["anova", "3+ groups (one-way ANOVA)"], ["proportions", "Two proportions (yes/no outcome)"]];
+        return `<p class="hint">Plan an experiment: how many subjects do you need to detect the effect you care about, or how much power does a given sample size give?</p>
+          <div class="opt-label">Design</div><select id="pw-design">${design.map(([v, l]) => `<option value="${v}" ${o.design === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+          <div class="seg" style="margin-top:8px"><button data-set="solve:n" class="${o.solve !== "power" ? "on" : ""}">Find the sample size</button><button data-set="solve:power" class="${o.solve === "power" ? "on" : ""}">Find the power</button></div>
+          <div class="row">${o.solve === "power" ? inp("n", o.design === "paired" ? "Pairs" : "n per group") : inp("power", "Power", "0.8")}</div>
+          <div class="opt-label">Effect to detect</div>
+          ${o.design === "anova" ? `<div class="row">${inp("k", "Groups")}${inp("effect", "Cohen's f", "0.25")}</div><p class="hint">f = SD of the group means ÷ SD within groups. 0.10 small, 0.25 medium, 0.40 large.</p>`
+            : o.design === "proportions" ? `<div class="row">${inp("p1", "Proportion in group 1")}${inp("p2", "in group 2")}</div><p class="hint">e.g. 0.30 response with control vs 0.50 with treatment.</p>`
+            : `<label class="check"><input type="checkbox" data-opt="useD" ${o.useD ? "checked" : ""}> Enter Cohen's d directly</label>
+              <div class="row">${o.useD ? inp("dval", "Cohen's d", "0.5") : inp("difference", o.design === "paired" ? "Mean change" : "Difference in means") + inp("sd", o.design === "paired" ? "SD of the changes" : "SD (within groups)")}</div>
+              <p class="hint">${o.useD ? "0.2 small, 0.5 medium, 0.8 large." : "Use the smallest difference that would matter, and an SD from a pilot study or the literature."}</p>`}
+          ${alphaSelect(s)}`;
+      },
+      graphControls: () => [],
+      renderResults: r => {
+        const des = { unpaired: "per group", paired: "pairs", anova: "per group", proportions: "per group" }[r.design];
+        let h = r.mode === "n"
+          ? T.summary("sig", `You need <b>${r.n} ${des}</b>${r.design === "paired" ? "" : ` (${r.total_n} in total)`} for ${fmt(r.target_power * 100, 3)}% power to detect ${esc(r.effect_label)} at α = ${r.alpha}.`)
+          : T.summary(r.power >= 0.8 ? "sig" : "ns", `With ${r.n} ${des}, the power to detect ${esc(r.effect_label)} is <b>${fmt(r.power * 100, 3)}%</b>${r.power < 0.8 ? " (below the usual 80%)" : ""}.`);
+        h += T.table([T.sec("Details"), T.row("Effect", esc(r.effect_label)), T.row("Significance level (two-sided)", r.alpha),
+          T.row(r.design === "paired" ? "Pairs" : "n per group", r.mode === "n" ? `${r.n} <span class="pd">(exact ${fmt(r.n_exact, 4)}, rounded up)</span>` : r.n),
+          T.row("Power", `${fmt(r.power * 100, 4)}%`)]);
+        h += `<p class="note">${r.design === "proportions" ? "Normal approximation (no continuity correction)." : "Exact noncentral " + (r.design === "anova" ? "F" : "t") + " distribution."} Plan for drop-outs: add a few extra subjects. The graph shows how power grows with sample size.</p>`;
+        return h;
+      },
+      draw: (el, r, s) => {
+        const g = s.graph, c0 = color(g, 0, "Power");
+        styledReact(el, [{ x: r.curve.n, y: r.curve.power.map(p => p * 100), mode: "lines", line: { color: c0, width: 2.4 }, hovertemplate: "n = %{x}: %{y:.1f}%<extra></extra>" },
+          { x: [r.n], y: [r.power * 100], mode: "markers", marker: { color: c0, size: g.pointSize + 4, line: { color: "#fff", width: 1.5 } }, hovertemplate: "n = %{x}: %{y:.1f}%<extra></extra>" }],
+          { ...baseLayout(g), shapes: [{ type: "line", xref: "paper", x0: 0, x1: 1, y0: 80, y1: 80, line: { color: "#8a93a3", width: 1, dash: "dash" } }],
+            xaxis: axis(g, { title: { text: r.design === "paired" ? "Number of pairs" : "n per group" } }), yaxis: yAxis(g, "Power (%)", { range: [0, 102] }) }, PLOT_CONFIG);
+      },
+    },
     // ---------------------------------------------------------------- figure layout
     layout: {
       label: "Figure layout", newTitle: "Figure",
@@ -868,6 +920,7 @@
       s.options.mode = "freq"; s.graph.normalCurve = true; s.graph.ylabel = "Cell size (µm)"; });
     add("ttest", "Example: column statistics", s => { s.cols = ["A", "B", "C"]; s.options.mode = "describe"; s.options.hypothetical = "12"; });
     add("nested", "Example: nested (cells within animals)");
+    add("power", "Example: sample size for a t test");
     add("threeway", "Example: three-way ANOVA");
     add("twoway", "Example: two-way ANOVA");
     add("twoway", "Example: multiple t tests", s => { s.options.analysis = "multit"; });
@@ -1024,7 +1077,7 @@
   }
   // a type's text (label) columns: textCol is one index, or a list for long-format tables
   const isTextCol = (t, j) => Array.isArray(t.textCol) ? t.textCol.includes(j) : j === t.textCol;
-  const badgeText = t => ({ threeway: "3W", nested: "N", layout: "▦", summary: "Σ", ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#", multivar: "MV", diagnostic: "Dx" }[t]);
+  const badgeText = t => ({ power: "n", threeway: "3W", nested: "N", layout: "▦", summary: "Σ", ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#", multivar: "MV", diagnostic: "Dx" }[t]);
 
   // ======================================================================
   // data grid
@@ -1315,6 +1368,7 @@
       ["By three factors", "e.g. sex × treatment × time", rec("Three-way ANOVA", "All three main effects and their interactions. One row per measurement with the level of each factor.", "threeway", s => {})],
       ["Many separate items (genes, proteins…)", "the same two groups compared for each item", rec("Multiple t tests with FDR", "One test per item with false-discovery-rate correction and a volcano plot.", "twoway", s => { s.options.analysis = "multit"; s.cols = ["Gene", "Control", "Treated"]; })] ] }],
     ["Compare groups with several measurements per subject", "e.g. many cells from each animal (technical replicates)", rec("Nested t test / nested ANOVA", "Uses every replicate but compares groups by subject-to-subject variation, so replicates aren't treated as independent.", "nested", s => {})],
+    ["Plan an experiment", "how many subjects do I need?", rec("Power & sample size", "Sample size for a target power (or power for a given sample size) for t tests, ANOVA and proportions.", "power", s => {})],
     ["Compare groups from published means", "I only have mean, SD (or SEM) and n for each group", rec("Compare groups (mean, SD, n)", "Exact t tests and ANOVA from summary statistics: one row per group.", "summary", s => {})],
     ["See how my values are distributed", "histogram, Q-Q plot, is it normal?", rec("Frequency distribution + Q-Q plot", "Histogram of each column with a normal curve, a normal Q-Q plot and normality tests. Switch the plot under Format.", "ttest", s => { s.options.mode = "freq"; s.graph.normalCurve = true; })],
     ["Describe my data", "mean, SD, median, normality; or compare to a known value", rec("Column statistics", "Full descriptive statistics for each column; enter a hypothetical value to test against it.", "ttest", s => { s.options.mode = "describe"; })],
@@ -1592,6 +1646,7 @@
       save(); renderOptions(); scheduleRun();
     };
     const tw = $("opt-twcmp"); if (tw) tw.onchange = e => { s.options.twCompare = e.target.value; save(); scheduleRun(); };
+    const pd = $("pw-design"); if (pd) pd.onchange = e => { s.options.design = e.target.value; save(); renderOptions(); scheduleRun(); };
     const c3 = $("opt-3cmp"); if (c3) c3.onchange = e => { s.options.threeCompare = e.target.value; save(); scheduleRun(); };
     const wph = $("opt-wph"); if (wph) wph.onchange = e => { s.options.welchPosthoc = e.target.value; save(); renderOptions(); scheduleRun(); };
     const ph = $("opt-posthoc"); if (ph) ph.onchange = e => { s.options.posthoc = e.target.value; save(); scheduleRun(); };
@@ -1771,6 +1826,10 @@
       const m = `Descriptive statistics were calculated for each group, and normality was assessed with the Shapiro-Wilk test${r.hypothetical != null ? `; each group was compared with a hypothetical value of ${fmt(r.hypothetical)} using a one-sample t test` : ""} (${SW}).`;
       const res = r.groups.map(g => `${esc(g.name)}: ${r2(g.mean)} ± ${r2(g.sd)} (mean ± SD, n = ${g.n})${g.one_sample_t ? `, t(${g.one_sample_t.df}) = ${r2(g.one_sample_t.t)}, ${apaP(g.one_sample_t.p)}` : ""}`).join("; ") + ".";
       return { methods: m, results: res };
+    }
+    if (s.type === "power") {
+      return { methods: `Sample size was estimated for a two-sided ${{ unpaired: "unpaired t test", paired: "paired t test", anova: "one-way ANOVA", proportions: "comparison of two proportions" }[r.design]} with α = ${r.alpha} and ${r2(r.power * 100, 1)}% power to detect ${esc(r.effect_label)} (${SW}).`,
+        results: r.mode === "n" ? `The required sample size is ${r.n} ${r.design === "paired" ? "pairs" : "per group"}.` : `With ${r.n} ${r.design === "paired" ? "pairs" : "per group"}, power is ${r2(r.power * 100, 1)}%.` };
     }
     if (s.type === "threeway") {
       const sig = r.table.filter(x => x.F !== null && x.p < r.alpha), dfr = r.table[r.table.length - 1].df;

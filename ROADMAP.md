@@ -247,6 +247,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Force through the origin (slope, SE, CIs, bands; matches statsmodels OLS without constant);
       95% prediction band option (matches statsmodels obs intervals); 169 tests
 
+## Phase 0.55: Power & sample size (done 2026-11-07)
+- [x] New "Power & sample size" type (no data table): unpaired / paired t (noncentral t), one-way ANOVA (noncentral F,
+      Cohen's f), two proportions (Fleiss); find n or power; power curve; matches statsmodels; 172 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
