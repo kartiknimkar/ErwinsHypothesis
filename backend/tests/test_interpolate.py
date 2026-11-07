@@ -48,3 +48,20 @@ def test_endpoint_blank_x_rows_are_unknowns():
     u = r["unknowns"]
     assert [q["row"] for q in u] == [6, 7] and u[0]["y"] == approx(0.31) and u[0]["n"] == 2
     assert u[0]["x"] == approx((0.31 - r["intercept"]) / r["slope"])
+
+
+def test_predict_y_for_x_without_y():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    c = TestClient(app)
+    x = [1, 2, 3, 4, 5, 2.5, 10]
+    y = [2.1, 3.9, 6.2, 8.0, 9.8, None, None]
+    r = c.post("/api/fit", json={"x": x, "ys": [y], "model": "linear"}).json()
+    pred = {p["x"]: p for p in r["predicted"]}
+    assert abs(pred[2.5]["y"] - (r["slope"] * 2.5 + r["intercept"])) < 1e-9 and pred[2.5]["note"] == ""
+    assert pred[10]["note"] != ""
+    conc = [0.01, 0.1, 1, 10, 100, 0.5]
+    resp = [98, 90, 50, 10, 3, None]
+    d = c.post("/api/fit", json={"x": conc, "ys": [resp], "model": "dr_inhibit"}).json()
+    p = d["predicted"][0]
+    assert p["x"] == 0.5 and 50 < p["y"] < 90

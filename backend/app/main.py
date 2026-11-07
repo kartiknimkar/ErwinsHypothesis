@@ -280,6 +280,16 @@ def run_fit(req: FitRequest):
                 res["auc"] = stats.area_under_curve(px, py, baseline=req.baseline)
             except ValueError as e:
                 res["auc"] = {"error": str(e)}
+        xonly = []
+        for i, vx in enumerate(req.x):
+            try:
+                fx = float(vx)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(fx) and all(i >= len(col) or col[i] is None or str(col[i]).strip() == "" for col in req.ys):
+                xonly.append(fx)
+        if xonly:
+            res["predicted"] = curvefit.predict(res, xonly, x_was_log=bool(req.x_is_log), equation=req.equation, initial=req.initial)
         unk = _unknowns(req.x, req.ys)
         if unk:
             res["x_was_log"] = bool(req.x_is_log)

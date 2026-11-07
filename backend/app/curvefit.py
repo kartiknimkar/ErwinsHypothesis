@@ -331,6 +331,31 @@ def compare(x, y, model_a: str, model_b: str, x_is_log: bool = False, alpha: flo
     return out
 
 
+def predict(res: dict, xs, x_was_log: bool = False, equation: str | None = None, initial: dict | None = None) -> list[dict]:
+    """Y on the fitted curve at each X (X in the units the user entered). Flags X outside the data's range."""
+    out = []
+    if res.get("model") == "linear":
+        lo, hi = min(res["points"]["x"]), max(res["points"]["x"])
+        for x in xs:
+            out.append({"x": x, "y": float(res["slope"] * x + res["intercept"]), "note": "" if lo <= x <= hi else "outside the data's X range"})
+        return out
+    model = res["model"]
+    mdl = custom_model(equation or "", initial) if model == "custom" else MODELS[model]
+    vals = [p["value"] for p in res["params"]]
+    lo, hi = min(res["points"]["x"]), max(res["points"]["x"])
+    for x in xs:
+        xx = x
+        if mdl["log_x"] and not x_was_log:
+            if x <= 0:
+                out.append({"x": x, "y": None, "note": "X must be > 0 for this model"})
+                continue
+            xx = math.log10(x)
+        with np.errstate(all="ignore"):
+            y = float(mdl["f"](np.array([xx]), *vals)[0])
+        out.append({"x": x, "y": y if np.isfinite(y) else None, "note": "" if lo <= xx <= hi else "outside the data's X range"})
+    return out
+
+
 def interpolate(res: dict, ys, equation: str | None = None, initial: dict | None = None) -> list[dict]:
     """Read unknown samples off a fitted curve: for each Y, find X with f(X) = Y.
 

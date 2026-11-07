@@ -531,7 +531,7 @@
       label: "XY: curves & regression", newTitle: "XY analysis",
       minCols: 2, maxCols: 13, fixedCols: 1, textCol: -1, addLabel: "+ Replicate", minRows: 15,
       colKind: j => j === 0 ? "X" : `Y${j}`, newColName: j => `Y${j}`,
-      hint: "X in the first column; Y values to the right. Add Y columns for replicates. Unknown samples: leave X blank and enter their Y; the app reads their X off the fitted curve (standard-curve interpolation).",
+      hint: "X in the first column; Y values to the right. Add Y columns for replicates. Unknown samples: leave X blank and enter their Y; the app reads their X off the fitted curve (standard-curve interpolation). To predict Y, enter an X and leave Y blank.",
       cols: ["X", "Y"],
       options: { model: "linear", xIsLog: false, alpha: 0.05 },
       graph: { xlabel: "", ylabel: "", band: true, showEq: true, repMode: "mean", logX: false, xmin: "", xmax: "" },
@@ -2405,7 +2405,12 @@
 
   // ---------------------------------------------------------------- XY
   function renderXYResults(r, s) {
-    return renderXYCore(r, s) + renderRuns(r) + (r.rout_q ? renderXYOutliers(r, s) : "") + (r.auc ? renderAUC(r.auc, s) : "") + (r.unknowns ? renderUnknowns(r, s) : "");
+    return renderXYCore(r, s) + renderRuns(r) + (r.predicted ? renderPredicted(r, s) : "") + (r.rout_q ? renderXYOutliers(r, s) : "") + (r.auc ? renderAUC(r.auc, s) : "") + (r.unknowns ? renderUnknowns(r, s) : "");
+  }
+  function renderPredicted(r, s) {
+    return `<div class="opt-label" style="margin-top:10px">Predicted ${esc(s.cols[1] || "Y")} for ${esc(s.cols[0] || "X")} values without Y</div>` +
+      T.multi([esc(s.cols[0] || "X"), `Predicted ${esc(s.cols[1] || "Y")}`, ""], r.predicted.map(p => [fmt(p.x), p.y == null ? "—" : `<b>${fmt(p.y)}</b>`, p.note ? `<span class="pd">${esc(p.note)}</span>` : ""])) +
+      `<p class="note">Rows with an X but no Y are read off the fitted curve (rows with a Y but no X are interpolated the other way).</p>`;
   }
   function renderRuns(r) {
     const t = r.runs_test;
@@ -3051,6 +3056,10 @@
       traces.push({ x: pts.map(p => p[0]), y: pts.map(p => p[1]), mode: "markers",
         marker: { color: "#1b2130", size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: "(%{x}, %{y})<extra></extra>" });
     }
+    const pr = (r.predicted || []).filter(p => p.y != null);
+    if (pr.length) traces.push({ x: pr.map(p => p.x), y: pr.map(p => p.y), mode: "markers", name: "Predicted",
+      marker: { symbol: "square-open", color: color(g, 2, "Predicted"), size: g.pointSize + 3, line: { width: 2, color: color(g, 2, "Predicted") } },
+      hovertemplate: "Predicted: X = %{x:.4g}, Y = %{y:.4g}<extra></extra>" });
     if ((r.outliers || []).length) traces.push({ x: r.outliers.map(p => p.x), y: r.outliers.map(p => p.y), mode: "markers", name: "Outliers",
       marker: { symbol: "x-thin-open", color: "#d62728", size: g.pointSize + 8, line: { color: "#d62728", width: 2.2 } }, hovertemplate: "Outlier (not fitted): (%{x}, %{y})<extra></extra>" });
     const unk = (r.unknowns || []).filter(u => u.x != null);

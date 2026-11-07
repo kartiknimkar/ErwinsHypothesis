@@ -277,6 +277,11 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Grid draws 400 rows at a time and more on scroll (keyboard navigation extends it); all rows always analyzed.
       20,000 rows × 3: paste 0.05 s, typing ~1 ms per keystroke, sheet switch < 1 s; 183 tests
 
+## Phase 0.63: Checks + predict Y (done 2026-11-07)
+- [x] Packaged app rebuilt with PyInstaller (204 MB) and its API smoke-tested (T3, power, nested, weighted ROUT fit)
+- [x] Dark mode checked for menus, help and format panel
+- [x] XY: rows with X but no Y get a predicted Y from the fitted curve (table + open squares on graph); 184 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
