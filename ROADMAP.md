@@ -104,6 +104,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Methods + results sentences (APA-style statistics) for every analysis type, with Copy button
 - [x] UI test checks every example produces text without undefined/NaN gaps
 
+## Phase 0.24: Spreadsheet-style editing (done 2026-11-06)
+- [x] Block selection (drag, Shift+click, Shift+arrows, row numbers), copy/cut as TSV, Delete clears, undoable
+- [x] Right-click row number: insert row above/below, delete row(s); 96 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

@@ -96,3 +96,37 @@ def test_guide_every_recommendation_creates_working_analysis(server):
         assert leaves >= 20
         assert errors == [], errors
         browser.close()
+
+
+def test_grid_block_selection_copy_delete_rows(server):
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        ctx = browser.new_context(viewport={"width": 1400, "height": 900})
+        ctx.grant_permissions(["clipboard-read", "clipboard-write"])
+        page = ctx.new_page()
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click('#sheet-list li:has-text("Example: two groups")')
+        page.wait_for_timeout(800)
+        cell = lambda r, c: f'input[data-r="{r}"][data-c="{c}"]'  # noqa: E731
+        col0 = lambda n: [page.input_value(cell(r, 0)) for r in range(n)]  # noqa: E731
+        a = page.locator(cell(0, 0)).bounding_box(); z = page.locator(cell(2, 1)).bounding_box()
+        page.mouse.move(a["x"] + 10, a["y"] + 5); page.mouse.down(); page.mouse.move(z["x"] + 10, z["y"] + 5, steps=5); page.mouse.up()
+        assert page.locator("input.cell.sel").count() == 6
+        page.keyboard.press("Control+c"); page.wait_for_timeout(150)
+        assert page.evaluate("navigator.clipboard.readText()") == "4.2\t6.1\n5.1\t7.3\n3.8\t6.8"
+        page.keyboard.press("Delete"); page.wait_for_timeout(200)
+        assert col0(4) == ["", "", "", "4.9"]
+        page.click("#btn-undo"); page.wait_for_timeout(200)
+        assert col0(4) == ["4.2", "5.1", "3.8", "4.9"]
+        page.click('[data-row="1"]', button="right"); page.click('#row-menu button[data-act="above"]'); page.wait_for_timeout(200)
+        assert col0(3) == ["4.2", "", "5.1"]
+        page.click('[data-row="1"]', button="right"); page.click('#row-menu button[data-act="delete"]'); page.wait_for_timeout(200)
+        assert col0(3) == ["4.2", "5.1", "3.8"]
+        assert errors == [], errors
+        browser.close()

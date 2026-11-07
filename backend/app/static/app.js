@@ -630,7 +630,7 @@
     });
     h += "</tr></thead><tbody>";
     s.data.forEach((r, i) => {
-      h += `<tr><td class="rownum">${i + 1}</td>`;
+      h += `<tr><td class="rownum" data-row="${i}" title="Click to select the row; right-click to insert or delete rows">${i + 1}</td>`;
       r.forEach((v, j) => {
         const text = j === t.textCol;
         const bad = !text && String(v).trim() !== "" && !isNum(v) ? " bad" : "";
@@ -656,6 +656,7 @@
       return;
     }
     if (el.dataset.r === undefined) return;
+    if (multiSel()) clearSel();
     recordUndo();
     const c = +el.dataset.c;
     s.data[+el.dataset.r][c] = el.value;
@@ -683,16 +684,117 @@
     });
     padRows(s); save(); renderGrid(); renderOptions(); scheduleRun();
   }
+  // ---------------------------------------------------------------- cell selection (blocks / rows)
+  let selA = null, selB = null, dragging = false;
+  const selRange = () => selA && selB ? { r0: Math.min(selA.r, selB.r), r1: Math.max(selA.r, selB.r), c0: Math.min(selA.c, selB.c), c1: Math.max(selA.c, selB.c) } : null;
+  const multiSel = () => { const g = selRange(); return g && (g.r0 !== g.r1 || g.c0 !== g.c1); };
+  function paintSel() {
+    const g = selRange(), multi = multiSel();
+    $("grid").querySelectorAll("input.cell").forEach(inp => {
+      const r = +inp.dataset.r, c = +inp.dataset.c;
+      inp.classList.toggle("sel", !!(multi && r >= g.r0 && r <= g.r1 && c >= g.c0 && c <= g.c1));
+    });
+  }
+  function clearSel() { selA = selB = null; paintSel(); }
+  function selectedTSV() {
+    const s = active(), g = selRange();
+    const lines = [];
+    for (let r = g.r0; r <= g.r1; r++) lines.push(s.data[r].slice(g.c0, g.c1 + 1).map(v => String(v ?? "")).join("\t"));
+    return lines.join("\n");
+  }
+  function clearSelectedCells() {
+    const s = active(), g = selRange();
+    recordUndo(true);
+    for (let r = g.r0; r <= g.r1; r++) for (let c = g.c0; c <= g.c1; c++) s.data[r][c] = "";
+    save(); renderGrid(); paintSel(); scheduleRun();
+  }
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); }
+    catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+  }
+  function onGridMouseDown(e) {
+    const s = active();
+    const rn = e.target.closest("[data-row]");
+    if (rn && e.button === 0) {   // row number: select whole rows
+      const r = +rn.dataset.row;
+      if (e.shiftKey && selA) selB = { r, c: s.cols.length - 1 };
+      else { selA = { r, c: 0 }; selB = { r, c: s.cols.length - 1 }; }
+      dragging = true; paintSel(); e.preventDefault();
+      const first = cellAt(selA.r, 0); if (first) first.focus({ preventScroll: true });
+      return;
+    }
+    const el = e.target.closest("input.cell");
+    if (!el || e.button !== 0) return;
+    const pos = { r: +el.dataset.r, c: +el.dataset.c };
+    if (e.shiftKey && selA) { selB = pos; e.preventDefault(); paintSel(); return; }
+    selA = pos; selB = pos; dragging = true; paintSel();
+  }
+  function onGridMouseOver(e) {
+    if (!dragging || !selA) return;
+    const rn = e.target.closest("[data-row]");
+    if (rn && selA.c === 0 && selB && selB.c === active().cols.length - 1) { selB = { r: +rn.dataset.row, c: selB.c }; paintSel(); return; }
+    const el = e.target.closest("input.cell");
+    if (!el) return;
+    const pos = { r: +el.dataset.r, c: +el.dataset.c };
+    if (pos.r !== selB.r || pos.c !== selB.c) { selB = pos; paintSel(); window.getSelection()?.removeAllRanges(); }
+  }
+  document.addEventListener("mouseup", () => { dragging = false; });
+  // right-click a row number: insert / delete rows
+  function onGridContext(e) {
+    const rn = e.target.closest("[data-row]");
+    if (!rn) return;
+    e.preventDefault();
+    const s = active(), r = +rn.dataset.row;
+    const g = selRange();
+    const rows = g && g.c0 === 0 && g.c1 === s.cols.length - 1 && r >= g.r0 && r <= g.r1 ? [g.r0, g.r1] : [r, r];
+    const menu = $("row-menu");
+    menu.innerHTML = `<button data-act="above">Insert row above</button><button data-act="below">Insert row below</button>
+      <button data-act="delete" class="danger">Delete ${rows[1] > rows[0] ? `rows ${rows[0] + 1}–${rows[1] + 1}` : `row ${r + 1}`}</button>`;
+    menu.style.left = `${e.clientX}px`; menu.style.top = `${e.clientY}px`; menu.hidden = false;
+    menu.querySelectorAll("button").forEach(b => b.onclick = () => {
+      recordUndo(true);
+      const blank = () => Array(s.cols.length).fill("");
+      if (b.dataset.act === "above") s.data.splice(rows[0], 0, blank());
+      else if (b.dataset.act === "below") s.data.splice(rows[1] + 1, 0, blank());
+      else s.data.splice(rows[0], rows[1] - rows[0] + 1);
+      menu.hidden = true; clearSel(); padRows(s); save(); renderGrid(); scheduleRun();
+    });
+  }
+  document.addEventListener("click", e => { if (!e.target.closest("#row-menu")) $("row-menu").hidden = true; });
+  // copy / cut / delete for a selected block, wherever keyboard focus is (grid cell or page)
+  function blockKey(e) {
+    const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+    if (mod && k === "c") { e.preventDefault(); copyText(selectedTSV()); toast("Copied the selected cells."); return true; }
+    if (mod && k === "x") { e.preventDefault(); copyText(selectedTSV()); clearSelectedCells(); return true; }
+    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); clearSelectedCells(); return true; }
+    if (e.key === "Escape") { clearSel(); return true; }
+    return false;
+  }
+  document.addEventListener("keydown", e => {
+    if (!multiSel() || e.defaultPrevented) return;
+    if (e.target !== document.body && !e.target.closest("#grid")) return;
+    blockKey(e);
+  });
+
   function onGridKey(e) {
     const el = e.target;
     if (el.dataset.r === undefined) return;
     const r = +el.dataset.r, c = +el.dataset.c;
+    if (multiSel() && blockKey(e)) return;
+    if (e.shiftKey && ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+      if (!selA) selA = { r, c };
+      const b = selB || { r, c };
+      const d = { ArrowDown: [1, 0], ArrowUp: [-1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[e.key];
+      const nr = Math.max(0, Math.min(active().data.length - 1, b.r + d[0])), nc = Math.max(0, Math.min(active().cols.length - 1, b.c + d[1]));
+      selB = { r: nr, c: nc }; e.preventDefault(); paintSel();
+      return;
+    }
     let target = null;
     if (e.key === "Enter" || e.key === "ArrowDown") target = cellAt(r + 1, c);
     else if (e.key === "ArrowUp") target = cellAt(r - 1, c);
     else if (e.key === "ArrowRight" && el.selectionStart === el.value.length) target = cellAt(r, c + 1);
     else if (e.key === "ArrowLeft" && el.selectionStart === 0) target = cellAt(r, c - 1);
-    if (target) { e.preventDefault(); target.focus(); target.select(); }
+    if (target) { e.preventDefault(); clearSel(); target.focus(); target.select(); selA = selB = { r: +target.dataset.r, c: +target.dataset.c }; }
   }
   function onGridClick(e) {
     const b = e.target.closest("[data-rm]");
@@ -1963,7 +2065,7 @@
     $("sheet-title").value = s.title;
     $("sheet-kind").textContent = TYPES[s.type].label;
     $("sheet-badge").className = `badge t-${s.type}`; $("sheet-badge").textContent = badgeText(s.type);
-    lastResult = null; lastError = null;
+    lastResult = null; lastError = null; selA = selB = null;
     renderSidebar(); renderGrid(); renderOptions(); renderFormat(); renderResults(); drawPlot(); updateUndoButtons();
     run();
   }
@@ -1973,6 +2075,9 @@
   grid.addEventListener("paste", onGridPaste);
   grid.addEventListener("keydown", onGridKey);
   grid.addEventListener("click", onGridClick);
+  grid.addEventListener("mousedown", onGridMouseDown);
+  grid.addEventListener("mouseover", onGridMouseOver);
+  grid.addEventListener("contextmenu", onGridContext);
 
   $("sheet-title").addEventListener("input", e => { active().title = e.target.value; save(); renderSidebar(); });
   $("btn-new").onclick = e => { e.stopPropagation(); $("new-menu").hidden = !$("new-menu").hidden; };
