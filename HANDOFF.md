@@ -106,6 +106,10 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (af) two-way ANOVA: compare every cell mean with every other (Tukey)
 - [x] (ag) XY graphs: different point symbol per data set option
 - [x] (ah) README: full feature list refresh for the user
+- [ ] (ai) repeated-measures one-way ANOVA: comparison choices (Tukey, Dunnett vs control, Holm-Šídák, Bonferroni)
+- [ ] (aj) Friedman: Dunn's vs control option
+- [ ] (ak) column graphs: option to show n under each group label
+- [ ] (al) Help me choose: entries for ratio paired t, Kolmogorov-Smirnov, nested, three-way, Deming (check all types reachable)
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →
