@@ -715,6 +715,84 @@
   }
 
   // ======================================================================
+  // "Help me choose": a short question flow that recommends and creates an analysis
+  // ======================================================================
+  const NORMAL_Q = (next) => ({ q: "Are the values roughly bell-shaped (normally distributed)?", opts: [
+    ["Yes, or I'm not sure", "Most lab measurements are. The app checks normality for you in the results.", next(true)],
+    ["No: skewed, ranked or scores", "e.g. very skewed data, ranks, pain scores, counts with many zeros.", next(false)] ] });
+  const rec = (title, why, type, setup) => ({ rec: { title, why, type, setup } });
+  const GUIDE = { q: "What do you want to do?", opts: [
+    ["Compare groups", "e.g. control vs treated; several doses; before vs after", { q: "How are your groups defined?", opts: [
+      ["By one factor", "e.g. treatment only (control, drug A, drug B)", { q: "How many groups?", opts: [
+        ["Two groups", "", { q: "Are the same subjects measured in both groups?", opts: [
+          ["No: different subjects", "e.g. separate mice per group", NORMAL_Q(n => n
+            ? rec("Welch's t test", "Compares two independent means without assuming equal spread; a safe default.", "ttest", s => { s.options.design = "independent"; s.options.kind2i = "welch"; })
+            : rec("Mann-Whitney test", "Compares two independent groups by ranks; no normality needed.", "ttest", s => { s.options.design = "independent"; s.options.kind2i = "mannwhitney"; }))],
+          ["Yes: before/after or matched pairs", "each row is one subject or pair", NORMAL_Q(n => n
+            ? rec("Paired t test", "Tests whether the average within-subject difference is zero.", "ttest", s => { s.options.design = "repeated"; s.options.kind2r = "paired"; })
+            : rec("Wilcoxon signed-rank test", "Nonparametric paired test on the within-subject differences.", "ttest", s => { s.options.design = "repeated"; s.options.kind2r = "wilcoxon"; }))] ] }],
+        ["Three or more groups", "", { q: "Are the same subjects measured in every group?", opts: [
+          ["No: different subjects", "", NORMAL_Q(n => n
+            ? rec("One-way ANOVA + Tukey", "Tests whether any group mean differs, then compares every pair with Tukey's test. If the results warn that spreads differ, switch to Welch's ANOVA.", "ttest", s => { s.options.design = "independent"; s.cols = ["Group A", "Group B", "Group C"]; s.data = s.data.map(r => [...r, ""]); s.options.kind3i = "ordinary"; })
+            : rec("Kruskal-Wallis + Dunn's", "Nonparametric comparison of three or more independent groups.", "ttest", s => { s.options.design = "independent"; s.cols = ["Group A", "Group B", "Group C"]; s.data = s.data.map(r => [...r, ""]); s.options.kind3i = "kruskal"; }))],
+          ["Yes: repeated measures", "each row is one subject measured in every column", NORMAL_Q(n => n
+            ? rec("Repeated-measures ANOVA + Tukey", "Accounts for subject-to-subject differences; Geisser-Greenhouse corrected.", "ttest", s => { s.options.design = "repeated"; s.cols = ["Time 1", "Time 2", "Time 3"]; s.data = s.data.map(r => [...r, ""]); s.options.kind3r = "rm"; })
+            : rec("Friedman test + Dunn's", "Nonparametric repeated-measures comparison.", "ttest", s => { s.options.design = "repeated"; s.cols = ["Time 1", "Time 2", "Time 3"]; s.data = s.data.map(r => [...r, ""]); s.options.kind3r = "friedman"; }))] ] }] ] }],
+      ["By two factors", "e.g. treatment × sex, or treatment × time", { q: "Is one factor time points (or conditions) measured on the same subjects?", opts: [
+        ["No: every value is a different subject", "", rec("Two-way ANOVA", "Tests both factors and their interaction, then compares groups within each row.", "twoway", s => {})],
+        ["Yes: e.g. each animal measured on several days", "", rec("Two-way repeated-measures ANOVA", "Mixed ANOVA for time courses: put time points as row names and groups as columns.", "twoway", s => { s.options.rm = true; s.graph.style = "lines"; s.graph.err = "sem"; })] ] }],
+      ["Many separate items (genes, proteins…)", "the same two groups compared for each item", rec("Multiple t tests with FDR", "One test per item with false-discovery-rate correction and a volcano plot.", "twoway", s => { s.options.analysis = "multit"; s.cols = ["Gene", "Control", "Treated"]; })] ] }],
+    ["Describe my data", "mean, SD, median, normality; or compare to a known value", rec("Column statistics", "Full descriptive statistics for each column; enter a hypothetical value to test against it.", "ttest", s => { s.options.mode = "describe"; })],
+    ["Relationship between X and Y", "dose-response, standard curves, correlation, kinetics", { q: "What kind of relationship?", opts: [
+      ["A straight line or correlation", "", rec("Linear regression + correlation", "Slope, intercept, R², Pearson and Spearman correlation.", "regression", s => {})],
+      ["Dose-response (IC50 / EC50)", "response vs concentration", { q: "Does the response go down or up with dose?", opts: [
+        ["Down (inhibition)", "", rec("Dose-response: inhibition (IC50)", "4-parameter logistic fit; enter concentrations as X (the app takes the log).", "regression", s => { s.options.model = "dr_inhibit"; s.graph.logX = true; })],
+        ["Up (stimulation)", "", rec("Dose-response: stimulation (EC50)", "4-parameter logistic fit; enter concentrations as X.", "regression", s => { s.options.model = "dr_stim"; s.graph.logX = true; })] ] }],
+      ["Read unknowns off a standard curve", "ELISA, BCA, Bradford, qPCR", rec("Standard curve + interpolation", "Enter standards with X, and unknowns with X left blank: their concentrations are read off the fitted line. Switch the fit to 4PL for ELISA.", "regression", s => {})],
+      ["Enzyme kinetics, decay, growth or binding", "", rec("Curve fitting", "Choose Michaelis-Menten, exponential decay/growth or one-phase association in the Fit list.", "regression", s => { s.options.model = "michaelis"; })] ] }],
+    ["Time until an event", "survival, relapse, time to failure", rec("Kaplan-Meier survival + log-rank", "Survival curves, median survival, log-rank test and hazard ratio.", "survival", s => {})],
+    ["Compare proportions (yes/no outcomes)", "e.g. responders vs non-responders by group", rec("Contingency table", "Fisher's exact test (2×2) or chi-square, with odds ratio and relative risk.", "contingency", s => {})],
+    ["Many variables at once", "correlations, predicting an outcome, PCA", { q: "What do you want to learn?", opts: [
+      ["How all the variables correlate", "", rec("Correlation matrix", "Every pair of variables, with a heatmap.", "multivar", s => {})],
+      ["Predict a measured outcome", "e.g. blood pressure from age, BMI, dose", rec("Multiple linear regression", "Outcome in the first column, predictors to the right.", "multivar", s => { s.options.analysis = "mlr"; })],
+      ["Predict a yes/no outcome", "e.g. disease from risk factors", rec("Logistic regression", "Outcome (1/0) in the first column; results are odds ratios.", "multivar", s => { s.options.analysis = "logistic"; })],
+      ["Find the main patterns", "reduce many variables to a few", rec("Principal component analysis", "Biplot and scree plot of the main components.", "multivar", s => { s.options.analysis = "pca"; })] ] }],
+    ["Evaluate a test or compare two methods", "diagnostic accuracy, method agreement", { q: "Which question?", opts: [
+      ["How well does a test separate patients from controls?", "", rec("ROC curve", "Area under the curve, best cutoff, sensitivity and specificity.", "diagnostic", s => {})],
+      ["Do two methods give the same values?", "same samples measured twice", rec("Bland-Altman", "Bias and 95% limits of agreement.", "diagnostic", s => { s.options.analysis = "bland_altman"; s.cols = ["Method A", "Method B"]; })] ] }],
+    ["Make a multi-panel figure", "combine existing graphs", rec("Figure layout", "Tick the analyses to include; export as one PNG or TIFF.", "layout", s => {})],
+  ] };
+  let guidePath = [];
+  function showGuide() { guidePath = []; renderGuide(); $("guide-backdrop").hidden = false; }
+  function renderGuide() {
+    let node = GUIDE;
+    const crumbs = [];
+    guidePath.forEach(i => { crumbs.push(node.opts[i][0]); node = node.opts[i][2]; });
+    const back = guidePath.length ? `<button class="ghost small" id="guide-back">← Back</button>` : "<span></span>";
+    const path = crumbs.length ? `<div class="guide-path">${crumbs.map(esc).join(" › ")}</div>` : "";
+    if (node.rec) {
+      const r = node.rec;
+      $("guide-body").innerHTML = `${path}<div class="guide-rec">Use: <b>${esc(r.title)}</b><br>${esc(r.why)}</div>
+        <div class="guide-foot">${back}<button class="primary small" id="guide-create">Create this analysis</button></div>`;
+      $("guide-create").onclick = () => {
+        const sh = newSheet(r.type);
+        r.setup(sh);
+        sh.title = r.title;
+        normalize(sh);
+        project.sheets.push(sh); project.activeId = sh.id;
+        $("guide-backdrop").hidden = true;
+        save(); renderAll();
+        toast(`Created <b>${esc(r.title)}</b>. Click <b>Example</b> to see sample data, or type/paste your own.`);
+      };
+    } else {
+      $("guide-body").innerHTML = `${path}<div class="guide-q">${esc(node.q)}</div><div class="guide-opts">${node.opts.map(([t, d], i) =>
+        `<button data-gi="${i}"><b>${esc(t)}</b>${d ? `<small>${esc(d)}</small>` : ""}</button>`).join("")}</div><div class="guide-foot">${back}<span></span></div>`;
+      $("guide-body").querySelectorAll("[data-gi]").forEach(b => b.onclick = () => { guidePath.push(Number(b.dataset.gi)); renderGuide(); });
+    }
+    const bk = $("guide-back"); if (bk) bk.onclick = () => { guidePath.pop(); renderGuide(); };
+  }
+
+  // ======================================================================
   // import data from Excel / CSV
   // ======================================================================
   function readBase64(file) {
@@ -1796,6 +1874,9 @@
   $("btn-addcol").onclick = addColumn;
   $("btn-import-data").onclick = () => $("file-data").click();
   $("btn-transform").onclick = showTransform;
+  $("btn-guide").onclick = showGuide;
+  $("guide-close").onclick = () => { $("guide-backdrop").hidden = true; };
+  $("guide-backdrop").onclick = e => { if (e.target.id === "guide-backdrop") $("guide-backdrop").hidden = true; };
   $("tf-close").onclick = () => { $("transform-backdrop").hidden = true; };
   $("transform-backdrop").onclick = e => { if (e.target.id === "transform-backdrop") $("transform-backdrop").hidden = true; };
   $("tf-apply").onclick = applyTransform;
@@ -1819,7 +1900,7 @@
   $("btn-copy").onclick = copyResults;
   $("btn-xlsx").onclick = exportXlsx;
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") { hideProjects(); $("transform-backdrop").hidden = true; }
+    if (e.key === "Escape") { hideProjects(); $("transform-backdrop").hidden = true; $("guide-backdrop").hidden = true; }
     const mod = e.ctrlKey || e.metaKey;
     if (!mod) return;
     const inGridOrBody = e.target === document.body || e.target.closest("#grid");

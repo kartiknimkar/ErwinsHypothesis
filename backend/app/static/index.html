@@ -49,12 +49,20 @@
     </div>
   </div>
 
+  <div id="guide-backdrop" class="backdrop" hidden>
+    <div class="dialog" role="dialog" aria-labelledby="guide-title">
+      <div class="dialog-head"><h3 id="guide-title">Help me choose an analysis</h3><button id="guide-close" class="icon" aria-label="Close">✕</button></div>
+      <div id="guide-body"></div>
+    </div>
+  </div>
+
   <div id="toast" class="toast" hidden></div>
 
   <div class="layout">
     <aside class="sidebar">
       <div class="new-wrap">
         <button id="btn-new" class="primary block">+ New analysis</button>
+        <button id="btn-guide" class="ghost block guide-btn">Not sure which test? Help me choose</button>
         <div id="new-menu" class="menu" hidden>
           <button data-type="ttest"><span class="badge t-ttest">G</span><span><b>Compare groups</b><small>t tests · ANOVA · nonparametric</small></span></button>
           <button data-type="twoway"><span class="badge t-twoway">2W</span><span><b>Grouped (two factors)</b><small>Two-way ANOVA · multiple t tests with FDR</small></span></button>

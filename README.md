@@ -20,7 +20,8 @@ clean, modern interface. Everything runs on your own computer.
 - Graphs export as PNG, SVG or TIFF at journal sizes and 150–600 DPI; combine graphs into multi-panel figures (A, B, C…)
 - Also: standard-curve interpolation, area under the curve, Grubbs' outlier test, normalize/transform data
 
-Data can be typed, pasted from Excel, or imported from .xlsx / .csv files.
+Data can be typed, pasted from Excel, or imported from .xlsx / .csv files. Not sure which test to use?
+Click **Help me choose**: a few plain-language questions recommend and set up the right analysis.
 
 See `ROADMAP.md` for what's coming.
 

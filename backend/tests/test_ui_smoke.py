@@ -52,3 +52,41 @@ def test_every_example_renders(server):
             page.click("#btn-format"); page.wait_for_timeout(100); page.click("#btn-format")
         assert errors == [], errors
         browser.close()
+
+
+def test_guide_every_recommendation_creates_working_analysis(server):
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+
+        def walk(path):
+            page.click("#btn-guide")
+            for i in path:
+                page.click(f'#guide-body [data-gi="{i}"]')
+            if page.query_selector("#guide-create"):
+                title = page.inner_text(".guide-rec b")
+                page.click("#guide-create")
+                assert page.input_value("#sheet-title") == title
+                if page.is_visible("#btn-example"):
+                    page.click("#btn-example")
+                    try:
+                        page.wait_for_function("(() => { const t = document.querySelector('#results').textContent;"
+                                               " return t.trim().length > 0 && !t.includes('Not enough to analyze'); })()", timeout=15000)
+                    except Exception:
+                        raise AssertionError(f"{title}: {page.inner_text('#results')[:200]}")
+                return 1
+            n = len(page.query_selector_all("#guide-body [data-gi]"))
+            page.click("#guide-close")
+            return sum(walk(path + [i]) for i in range(n))
+
+        leaves = walk([])
+        assert leaves >= 20
+        assert errors == [], errors
+        browser.close()

@@ -96,6 +96,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] "Figure layout" type: pick analyses, 1–3 columns, panel letters; each panel uses its own graph settings
 - [x] Composite PNG/TIFF export at journal width and chosen DPI (canvas compositing in the browser)
 
+## Phase 0.22: "Help me choose" guide (done 2026-11-06)
+- [x] Plain-language question flow → recommended analysis with reason → creates it pre-configured
+- [x] Browser test walks every branch (22+ recommendations) and runs each with example data; 95 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
