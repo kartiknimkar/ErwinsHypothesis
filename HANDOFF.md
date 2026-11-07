@@ -59,7 +59,7 @@ Every session starts by reading it and ends by updating it (then committing).
 - Sizes measured: ~266 MB (system Python), ~410 MB (private Python).
 
 ## Current state
-- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 147 tests pass (incl. tests/test_ui_smoke.py: Playwright opens all 27 examples and walks every branch of the 'Help me choose' guide (GUIDE tree in app.js) and checks 'Text for your paper' (reportText in app.js); run it after UI changes). Multiple variables type also does multiple linear + logistic regression (multivar.py). 8 analysis types (+ nested): ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
+- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 150 tests pass (incl. tests/test_ui_smoke.py: Playwright opens all 27 examples and walks every branch of the 'Help me choose' guide (GUIDE tree in app.js) and checks 'Text for your paper' (reportText in app.js); run it after UI changes). Multiple variables type also does multiple linear + logistic regression (multivar.py). 8 analysis types (+ nested): ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
 - [x] User confirmed the app runs on their Windows PC (C: drive, private Python fallback)
 - [x] Interface rewritten around a TYPES registry in `static/app.js` (each type: data layout,
       options, request, results renderer, graph drawer, format controls). Add new modules there.
@@ -67,6 +67,18 @@ Every session starts by reading it and ends by updating it (then committing).
 - [x] Graph styling: every graph goes through `styledReact()` (never call Plotly.react directly in a drawer);
       `styleCtx` = the sheet's graph settings (set in drawPlot / per panel in drawLayout). New style keys live in
       COMMON_GRAPH. Layout SVG export: exportLayoutSVG (nested <svg> per panel). Test: tests/test_ui_style.py.
+
+## AUTO-WORK MODE (user, 2026-11-07): keep going chunk by chunk without asking, until the session runs out.
+Each turn: schedule the next auto-continue with send_later (1 min), do one chunk, test, commit, push, tell user in one line.
+Chunk list (mark [x] when done):
+- [x] (a) normality: Anderson-Darling + KS (Lilliefors) in column stats; KS two-sample test; ratio paired t test
+- [ ] (b) XY fits: residual plot option + runs test
+- [ ] (c) nonlinear fit weighting (1/Y, 1/Y²)
+- [ ] (d) Dunnett T3 option for Welch's ANOVA
+- [ ] (e) transforms: transpose, remove baseline (subtract first row/column), fraction of total
+- [ ] (f) .pzfx nested table import
+- [ ] (g) three-way ANOVA multiple comparisons
+- [ ] (h) raster PDF export (Pillow)
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →

@@ -273,8 +273,10 @@
   const CHOICES = {
     "2i": [["welch", "Welch's t test", "Spread may differ between groups. Safe default."],
       ["unpaired", "Unpaired t test", "Assumes both groups have similar spread."],
-      ["mannwhitney", "Mann-Whitney test", "Nonparametric: compares ranks, no normality needed."]],
+      ["mannwhitney", "Mann-Whitney test", "Nonparametric: compares ranks, no normality needed."],
+      ["ks", "Kolmogorov-Smirnov test", "Nonparametric: compares the whole distributions (shape, spread and location)."]],
     "2r": [["paired", "Paired t test", "Each row is one subject measured in both columns."],
+      ["ratio_paired", "Ratio paired t test", "When the change is a multiplication (e.g. fold change); works on logarithms. Values must be > 0."],
       ["wilcoxon", "Wilcoxon signed-rank test", "Nonparametric paired test."]],
     "3i": [["ordinary", "One-way ANOVA", "Compares all means, then each pair (Tukey) or each group vs control (Dunnett). Choose below."],
       ["welch", "Welch's ANOVA + Games-Howell", "When the groups' spreads differ."],
@@ -1697,8 +1699,14 @@
     if (s.type === "summary") s = { ...s, type: "ttest" };
     if (s.type === "ttest" && r.n_groups === 2) {
       const [a, b] = r.groups.map(g => esc(g.name));
-      const test = { welch: "Welch's t test", unpaired: "an unpaired t test", paired: "a paired t test", mannwhitney: "the Mann-Whitney test", wilcoxon: "the Wilcoxon matched-pairs signed-rank test" }[r.kind] || r.test_name;
-      const np = r.kind === "mannwhitney" || r.kind === "wilcoxon";
+      const test = { welch: "Welch's t test", unpaired: "an unpaired t test", paired: "a paired t test", mannwhitney: "the Mann-Whitney test", wilcoxon: "the Wilcoxon matched-pairs signed-rank test",
+        ks: "the Kolmogorov-Smirnov test", ratio_paired: "a ratio paired t test (paired t test on log-transformed values)" }[r.kind] || r.test_name;
+      const np = r.kind === "mannwhitney" || r.kind === "wilcoxon" || r.kind === "ks";
+      if (r.kind === "ratio_paired") {
+        const stat = `t(${r.df}) = ${r2(r.statistic)}`;
+        return { methods: `${a} and ${b} were compared using ${test} (two-tailed). ${ALPHA(r)} Analyses were performed in ${SW}.`,
+          results: `The geometric mean ratio ${b}/${a} was ${r2(r.difference, 3)} (${pct}% CI ${r2(r.ci_low, 3)} to ${r2(r.ci_high, 3)}; ${stat}, ${apaP(r.p)}).` };
+      }
       const methods = `${a} and ${b} were compared using ${test} (two-tailed). Data are presented as ${np ? "median (interquartile range) where appropriate, and " : ""}${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`;
       const stat = r.df != null ? `${r.statistic_name}(${r2(r.df, Number.isInteger(r.df) ? 0 : 1)}) = ${r2(r.statistic)}` : `${r.statistic_name} = ${r2(r.statistic, 1)}`;
       const dir = r.difference > 0 ? "higher than" : "lower than";
@@ -1810,7 +1818,7 @@
   // ---------------------------------------------------------------- groups
   function normalityRows(r) {
     if (!r.normality) return [];
-    const names = r.normality_of === "differences" ? ["Differences"] : r.groups.map(g => g.name);
+    const names = r.normality_of === "differences" ? ["Differences"] : r.normality_of === "log ratios" ? ["Log ratios"] : r.groups.map(g => g.name);
     return [T.sec("Normality (Shapiro-Wilk)"), ...r.normality.map((n, i) => T.row(esc(names[i]),
       n ? `W = ${fmt(n.W, 3)}, P = ${fmt(n.p, 3)} · ${n.normal ? "passed" : "<b>not normal</b>"}` : "needs 3+ values"))];
   }
@@ -1926,15 +1934,18 @@
     const pct = Math.round((1 - r.alpha) * 100);
     let h = "";
     if (r.n_groups === 2) {
-      const [a, b] = r.groups, dir = r.difference > 0 ? "higher" : "lower", what = r.kind === "mannwhitney" ? "median" : "mean";
+      const [a, b] = r.groups, dir = r.difference > 0 ? "higher" : "lower", what = r.kind === "mannwhitney" || r.kind === "ks" ? "median" : "mean";
       h += r.significant
-        ? T.summary("sig", `<b>Significant difference</b> (${fmtP(r.p)}, ${r.stars}). ` + (r.kind === "wilcoxon"
+        ? T.summary("sig", `<b>Significant difference</b> (${fmtP(r.p)}, ${r.stars}). ` + (r.kind === "ratio_paired"
+          ? `On average <b>${esc(b.name)}</b> is <b>${fmt(r.difference, 4)}</b> times <b>${esc(a.name)}</b> (${pct}% CI of the ratio: ${ci(r.ci_low, r.ci_high)}).`
+          : r.kind === "ks" ? `The distributions of <b>${esc(a.name)}</b> and <b>${esc(b.name)}</b> differ (largest gap between their cumulative distributions D = ${fmt(r.statistic, 3)}).`
+          : r.kind === "wilcoxon"
           ? `The median difference (<b>${esc(b.name)}</b> − <b>${esc(a.name)}</b>) is ${fmt(r.difference)}.`
           : `The ${what} of <b>${esc(b.name)}</b> is ${fmt(Math.abs(r.difference))} ${dir} than <b>${esc(a.name)}</b>${r.ci_low != null ? ` (${pct}% CI of the difference: ${ci(r.ci_low, r.ci_high)})` : ""}.`))
         : T.summary("ns", `<b>No significant difference</b> (${fmtP(r.p)}). The data don't show convincing evidence that <b>${esc(a.name)}</b> and <b>${esc(b.name)}</b> differ. That isn't proof they're the same.`);
       h += T.table([T.sec(esc(r.test_name)), T.row("P value", pOnly(r.p)), T.row(`Significant? (α = ${r.alpha})`, `${r.significant ? "Yes" : "No"} ${st(r.stars)}`),
         T.row(`${r.statistic_name}${r.df != null ? ", df" : ""}`, `${r.statistic_name} = ${fmt(r.statistic)}${r.df != null ? `, df = ${fmt(r.df)}` : ""}`),
-        T.row(esc(r.difference_label), fmt(r.difference)), r.ci_low != null ? T.row(`${pct}% CI of difference`, ci(r.ci_low, r.ci_high)) : "",
+        T.row(esc(r.difference_label), fmt(r.difference)), r.ci_low != null ? T.row(`${pct}% CI of ${r.kind === "ratio_paired" ? "ratio" : "difference"}`, ci(r.ci_low, r.ci_high)) : "",
         r.n_pairs ? T.row("Number of pairs", r.n_pairs) : "", ...normalityRows(r)]);
       if (r.variance_check && r.variance_check.p < 0.05) h += `<p class="note warn">⚠︎ The groups' spreads differ (F test ${fmtP(r.variance_check.p)}). Welch's t test is safer.</p>`;
     } else {
@@ -2057,6 +2068,8 @@
       row("Sum", g => fmt(g.sum)),
       row("Shapiro-Wilk P", g => g.shapiro ? `${fmt(g.shapiro.p, 3)} (${g.shapiro.normal ? "passed" : "<b>not normal</b>"})` : null),
       row("D'Agostino-Pearson P", g => g.dagostino ? `${fmt(g.dagostino.p, 3)} (${g.dagostino.normal ? "passed" : "<b>not normal</b>"})` : "needs n ≥ 8"),
+      row("Anderson-Darling P", g => g.anderson ? `${fmt(g.anderson.p, 3)} (${g.anderson.normal ? "passed" : "<b>not normal</b>"})` : "needs n ≥ 8"),
+      row("Kolmogorov-Smirnov P", g => g.ks ? `${g.ks.p_over_010 ? "> 0.10" : fmt(g.ks.p, 3)} (${g.ks.normal ? "passed" : "<b>not normal</b>"})` : "needs n ≥ 5"),
     ];
     let h = "";
     if (r.hypothetical != null) {

@@ -196,6 +196,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] New "Three factors" type (long format: 3 label columns + value; grid supports several text columns via
       isTextCol); Type III SS matching statsmodels (balanced and unbalanced); grouped bar graph; 147 tests
 
+## Phase 0.42: More normality and two-group tests (done 2026-11-07)
+- [x] Column statistics: Anderson-Darling (D'Agostino-Stephens P) and Kolmogorov-Smirnov/Lilliefors (Dallal-Wilkinson P),
+      both matching statsmodels; Kolmogorov-Smirnov two-sample test; ratio paired t test (geometric mean ratio + CI); 150 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

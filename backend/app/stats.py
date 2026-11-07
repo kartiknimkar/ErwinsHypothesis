@@ -64,7 +64,7 @@ def t_test(a, b, kind: str = "unpaired", name_a: str = "A", name_b: str = "B",
     The difference is reported as mean(B) - mean(A).
     """
     raw_a, raw_b = list(a), list(b)
-    if kind in ("paired", "wilcoxon"):
+    if kind in ("paired", "wilcoxon", "ratio_paired"):
         # keep only rows where both values exist
         pairs = []
         for va, vb in zip(raw_a, raw_b):
@@ -128,6 +128,37 @@ def t_test(a, b, kind: str = "unpaired", name_a: str = "A", name_b: str = "B",
             ci_high=float(ci.high),
             n_pairs=len(diffs),
         )
+    elif kind == "ratio_paired":
+        if np.any(xa <= 0) or np.any(xb <= 0):
+            raise ValueError("The ratio paired t test needs all values greater than 0 (it works on logarithms).")
+        la, lb = np.log10(xa), np.log10(xb)
+        r = stats.ttest_rel(lb, la)
+        ci = r.confidence_interval(conf)
+        result.update(
+            test_name="Ratio paired t test",
+            statistic_name="t",
+            statistic=abs(float(r.statistic)),
+            df=float(r.df),
+            p=float(r.pvalue),
+            difference=float(10 ** np.mean(lb - la)),
+            difference_label=f"Geometric mean of ratios ({name_b} / {name_a})",
+            ci_low=float(10 ** ci.low),
+            ci_high=float(10 ** ci.high),
+            n_pairs=len(la),
+        )
+    elif kind == "ks":
+        r = stats.ks_2samp(xb, xa)
+        result.update(
+            test_name="Kolmogorov-Smirnov test",
+            statistic_name="D",
+            statistic=float(r.statistic),
+            df=None,
+            p=float(r.pvalue),
+            difference=float(np.median(xb) - np.median(xa)),
+            difference_label=f"Median of {name_b} − median of {name_a}",
+            ci_low=None,
+            ci_high=None,
+        )
     elif kind == "wilcoxon":
         diffs = xb - xa
         if np.all(diffs == 0):
@@ -166,6 +197,9 @@ def t_test(a, b, kind: str = "unpaired", name_a: str = "A", name_b: str = "B",
     if kind in ("paired", "wilcoxon"):
         result["normality"] = [normality(xb - xa)]
         result["normality_of"] = "differences"
+    elif kind == "ratio_paired":
+        result["normality"] = [normality(np.log10(xb) - np.log10(xa))]
+        result["normality_of"] = "log ratios"
     else:
         result["normality"] = [normality(xa), normality(xb)]
         result["normality_of"] = "groups"
@@ -179,6 +213,46 @@ def normality(values) -> dict | None:
         return None
     r = stats.shapiro(x)
     return {"W": float(r.statistic), "p": float(r.pvalue), "normal": bool(r.pvalue >= 0.05)}
+
+
+def anderson_darling(values) -> dict | None:
+    """Anderson-Darling normality test; P value from D'Agostino & Stephens (1986), modified statistic A²*."""
+    x = np.sort(_clean(values))
+    n = len(x)
+    if n < 8 or np.ptp(x) == 0:
+        return None
+    z = (x - x.mean()) / x.std(ddof=1)
+    lcdf, lsf = stats.norm.logcdf(z), stats.norm.logsf(z)
+    i = np.arange(1, n + 1)
+    a2 = float(-n - np.sum((2 * i - 1) * (lcdf + lsf[::-1])) / n)
+    a = a2 * (1 + 0.75 / n + 2.25 / n ** 2)
+    if a >= 0.6:
+        p = math.exp(1.2937 - 5.709 * a + 0.0186 * a * a)
+    elif a >= 0.34:
+        p = math.exp(0.9177 - 4.279 * a - 1.38 * a * a)
+    elif a >= 0.2:
+        p = 1 - math.exp(-8.318 + 42.796 * a - 59.938 * a * a)
+    else:
+        p = 1 - math.exp(-13.436 + 101.14 * a - 223.73 * a * a)
+    p = min(1.0, max(0.0, p))
+    return {"A2": a2, "p": p, "normal": bool(p >= 0.05)}
+
+
+def ks_normality(values) -> dict | None:
+    """Kolmogorov-Smirnov normality test with mean and SD estimated from the data (Lilliefors), P value by the
+    Dallal-Wilkinson approximation, as Prism reports it ('P > 0.10' when the approximation exceeds 0.1)."""
+    x = np.sort(_clean(values))
+    n = len(x)
+    if n < 5 or np.ptp(x) == 0:
+        return None
+    cdf = stats.norm.cdf((x - x.mean()) / x.std(ddof=1))
+    i = np.arange(1, n + 1)
+    D = float(max(np.max(i / n - cdf), np.max(cdf - (i - 1) / n)))
+    kd, nd = (D, n) if n <= 100 else (D * (n / 100) ** 0.49, 100)
+    p = math.exp(-7.01256 * kd ** 2 * (nd + 2.78019) + 2.99587 * kd * math.sqrt(nd + 2.78019) - 0.122119
+                 + 0.974598 / math.sqrt(nd) + 1.67997 / nd)
+    over = p > 0.1
+    return {"D": D, "p": min(p, 1.0), "p_over_010": bool(over), "normal": bool(over or p >= 0.05)}
 
 
 def _pairs(k: int):
@@ -512,6 +586,8 @@ def column_stats(values, name: str = "", hypothetical: float | None = None, alph
         if n >= 8:
             dp = stats.normaltest(x)
             d["dagostino"] = {"K2": float(dp.statistic), "p": float(dp.pvalue), "normal": bool(dp.pvalue >= 0.05)}
+        d["anderson"] = anderson_darling(x)
+        d["ks"] = ks_normality(x)
     if hypothetical is not None and n >= 2:
         t = stats.ttest_1samp(x, hypothetical)
         d["one_sample_t"] = {"hypothetical": hypothetical, "t": float(t.statistic), "df": n - 1, "p": float(t.pvalue),

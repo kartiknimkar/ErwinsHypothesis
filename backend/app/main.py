@@ -163,7 +163,7 @@ def run_compare(req: CompareRequest):
         names = [n for n, _ in cols]
         groups = [g for _, g in cols]
         if len(cols) == 2:
-            kind = req.kind if req.kind in ("unpaired", "welch", "paired", "wilcoxon", "mannwhitney") else "unpaired"
+            kind = req.kind if req.kind in ("unpaired", "welch", "paired", "wilcoxon", "mannwhitney", "ks", "ratio_paired") else "unpaired"
             res = stats.t_test(groups[0], groups[1], kind=kind, name_a=names[0], name_b=names[1], alpha=req.alpha)
         elif req.kind in ("rm", "friedman"):
             res = anova2.repeated_measures(groups, names, kind=req.kind, alpha=req.alpha)
