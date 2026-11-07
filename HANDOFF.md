@@ -102,6 +102,10 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (ab) multiple linear regression: standardized coefficients, residual plot
 - [x] (ac) undo/redo also covers graph Format and analysis option changes
 - [x] (ad) automatic project backups (last 5 versions in projects/.backups, restore from Projects dialog)
+- [ ] (ae) one-way ANOVA: post test for linear trend (column order)
+- [ ] (af) two-way ANOVA: compare every cell mean with every other (Tukey)
+- [ ] (ag) XY graphs: different point symbol per data set option
+- [ ] (ah) README: full feature list refresh for the user
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →
