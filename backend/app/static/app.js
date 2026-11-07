@@ -610,7 +610,7 @@
         txt("xlabel", "X axis label", s.cols[0]), txt("ylabel", "Y axis label", s.cols[1]),
         ...(s.cols.length > 2 && s.options.yMode !== "datasets" ? [sel("repMode", "Replicates", [["mean", "Mean ± SD"], ["sem", "Mean ± SEM"], ["all", "All points"]])] : []),
         txt("xmin", "X min", "auto"), txt("xmax", "X max", "auto"), txt("xtick", "X tick every", "auto"),
-        chk("logX", "Log X axis"), chk("band", "95% confidence band"), ...(s.options.model === "linear" && s.options.yMode !== "datasets" ? [chk("predBand", "95% prediction band")] : []), chk("showEq", "Show equation"),
+        chk("logX", "Log X axis"), chk("connect", "Connect the points (means)"), chk("hideFit", "Hide the fitted curve"), chk("band", "95% confidence band"), ...(s.options.model === "linear" && s.options.yMode !== "datasets" ? [chk("predBand", "95% prediction band")] : []), chk("showEq", "Show equation"),
         ...(s.options.yMode === "datasets" ? [chk("symbolPerSet", "Different symbol for each data set")] : [sel("xyPlot", "Plot", [["fit", "Data + fitted curve"], ["resid", "Residual plot"]])]),
       ],
       renderResults: (r, s) => r.multi ? renderMultiFit(r, s) : renderXYResults(r, s),
@@ -651,13 +651,14 @@
           [41, 23.3, 90, 6.6, 9.1], [66, 30.5, 121, 13.8, 3.6], [33, 25.8, 95, 8.1, 7.4], [58, 28.2, 108, 11.0, 5.0]],
       }),
       request: s => ["/api/multi", { columns: s.cols.map((_, j) => s.data.map(r => num(r[j]))), names: s.cols.map((c, j) => c || `Variable ${j + 1}`),
-        analysis: s.options.analysis || "correlation", alpha: s.options.alpha,
+        analysis: s.options.analysis || "correlation", alpha: s.options.alpha, adjust: s.options.corrAdjust || "none",
         method: s.options.analysis === "pca" ? (s.options.pcaScale || "standardized") : s.options.method,
         cutoff: isNum(s.options.cutoff) ? Number(s.options.cutoff) : 0.5 }],
       renderOptions: s => `<div class="seg"><button data-set="analysis:correlation" class="${(s.options.analysis || "correlation") === "correlation" ? "on" : ""}">Correlation matrix</button><button data-set="analysis:mlr" class="${s.options.analysis === "mlr" ? "on" : ""}">Multiple linear regression</button><button data-set="analysis:logistic" class="${s.options.analysis === "logistic" ? "on" : ""}">Logistic regression</button><button data-set="analysis:cox" class="${s.options.analysis === "cox" ? "on" : ""}">Cox regression</button><button data-set="analysis:pca" class="${s.options.analysis === "pca" ? "on" : ""}">PCA</button></div>` +
         (s.options.analysis === "pca" ? `<p class="hint">Principal component analysis finds the few directions (components) that capture most of the variation across all variables. Rows missing any value are left out.</p>
           <div class="seg"><button data-set="pcaScale:standardized" class="${(s.options.pcaScale || "standardized") === "standardized" ? "on" : ""}">Standardize variables (recommended)</button><button data-set="pcaScale:covariance" class="${s.options.pcaScale === "covariance" ? "on" : ""}">Use raw units</button></div>` :
-        (s.options.analysis || "correlation") !== "correlation" ? `<p class="hint">${s.options.analysis === "cox" ? "Survival with several predictors: first column = time to event or last follow-up, second column = 1 if the event (e.g. death) happened, 0 if censored, then one column per predictor (numbers; use 1/0 for yes/no). Results are hazard ratios." : s.options.analysis === "logistic" ? "Predicts a yes/no outcome (first column: 1 = yes, 0 = no) from the other columns. Results are odds ratios." : "Predicts the outcome (first column) from all the other columns at once; each coefficient is adjusted for the other predictors."} Rows missing any value are left out.</p>${s.options.analysis === "logistic" ? `<div class="row"><label for="opt-cut">Classification cutoff</label><input type="text" id="opt-cut" data-num="cutoff" value="${esc(s.options.cutoff ?? "0.5")}" style="width:70px" inputmode="decimal"></div>` : ""}${alphaSelect(s)}` : `<div class="seg"><button data-set="method:pearson" class="${s.options.method === "pearson" ? "on" : ""}">Pearson (linear)</button><button data-set="method:spearman" class="${s.options.method === "spearman" ? "on" : ""}">Spearman (ranks, nonparametric)</button></div>${alphaSelect(s)}`),
+        (s.options.analysis || "correlation") !== "correlation" ? `<p class="hint">${s.options.analysis === "cox" ? "Survival with several predictors: first column = time to event or last follow-up, second column = 1 if the event (e.g. death) happened, 0 if censored, then one column per predictor (numbers; use 1/0 for yes/no). Results are hazard ratios." : s.options.analysis === "logistic" ? "Predicts a yes/no outcome (first column: 1 = yes, 0 = no) from the other columns. Results are odds ratios." : "Predicts the outcome (first column) from all the other columns at once; each coefficient is adjusted for the other predictors."} Rows missing any value are left out.</p>${s.options.analysis === "logistic" ? `<div class="row"><label for="opt-cut">Classification cutoff</label><input type="text" id="opt-cut" data-num="cutoff" value="${esc(s.options.cutoff ?? "0.5")}" style="width:70px" inputmode="decimal"></div>` : ""}${alphaSelect(s)}` : `<div class="seg"><button data-set="method:pearson" class="${s.options.method === "pearson" ? "on" : ""}">Pearson (linear)</button><button data-set="method:spearman" class="${s.options.method === "spearman" ? "on" : ""}">Spearman (ranks, nonparametric)</button></div>
+          <div class="opt-label">Many pairs: correct P values?</div><div class="seg">${[["none", "No"], ["holm", "Holm-Šídák"], ["bh", "False discovery rate"]].map(([v, l]) => `<button data-set="corrAdjust:${v}" class="${(s.options.corrAdjust || "none") === v ? "on" : ""}">${l}</button>`).join("")}</div>${alphaSelect(s)}`),
       graphControls: s => (s.options.analysis || "correlation") === "correlation" ? [chk("showValues", "Show r values")]
         : s.options.analysis === "mlr" ? [sel("mlrPlot", "Plot", [["fit", "Actual vs predicted"], ["resid", "Residuals vs predicted"]])]
         : s.options.analysis === "pca" ? [sel("pcaPlot", "Plot", [["biplot", "Biplot (PC1 vs PC2)"], ["scree", "Scree plot"]]), chk("pcaLabels", "Label rows")] : [],
@@ -2579,8 +2580,9 @@
     h += `<div class="opt-label">${esc(r.test_name)}: r</div>` + T.multi(["", ...r.names.map(esc)],
       r.names.map((n, i) => [esc(n), ...r.names.map((_, j) => i === j ? "1" : r.r[i][j] == null ? "—" : `${fmt(r.r[i][j], 3)} ${st(stars(r.p[i][j]))}`)]));
     h += `<div class="opt-label" style="margin-top:10px">All pairs, strongest first</div>` +
-      T.multi(["Pair", "r", r.method === "pearson" ? `${pct}% CI` : "", "P", "n", ""], r.pairs.map(p => ({ cls: p.significant ? "hl" : "",
-        cells: [`${esc(p.a)} vs ${esc(p.b)}`, fmt(p.r, 3), p.ci ? ci(p.ci[0], p.ci[1]) : "", pOnly(p.p), p.n, st(p.stars)] })));
+      T.multi(["Pair", "r", r.method === "pearson" ? `${pct}% CI` : "", "P", ...(r.adjust && r.adjust !== "none" ? ["Adjusted P"] : []), "n", ""], r.pairs.map(p => ({ cls: p.significant ? "hl" : "",
+        cells: [`${esc(p.a)} vs ${esc(p.b)}`, fmt(p.r, 3), p.ci ? ci(p.ci[0], p.ci[1]) : "", pOnly(p.p), ...(p.p_adj != null ? [pOnly(p.p_adj)] : []), p.n, st(p.stars)] })));
+    if (r.adjust && r.adjust !== "none") h += `<p class="note">Significance uses P values adjusted for the ${r.pairs.length} pairs (${r.adjust === "holm" ? "Holm-Šídák" : "Benjamini-Hochberg false discovery rate"}).</p>`;
     h += `<div class="opt-label" style="margin-top:10px">Descriptive statistics</div>` +
       T.multi(["", "n", "Mean", "SD"], r.describe.map(d => [esc(d.name), d.n, fmt(d.mean), fmt(d.sd)]));
     h += `<p class="note">P values are not corrected for the number of pairs tested (${r.pairs.length}).</p>`;
@@ -2904,6 +2906,9 @@
           cells: [`${esc(c.a)} vs ${esc(c.b)}`, fmt(c.chi2), pOnly(c.p_raw), pOnly(c.p), st(c.stars)] })));
     }
     h += `<p class="note">"Undefined" median: survival never fell to 50%.</p>`;
+    h += c.map(cv => `<details class="km"><summary class="opt-label">Kaplan-Meier table: ${esc(cv.name)}</summary>` +
+      T.multi(["Time", "At risk", "Events", "Survival %", "95% CI"], cv.steps.slice(1).map(st => [fmt(st.t), st.at_risk, st.events ?? "", fmt(st.s * 100, 4), `${fmt(st.lo * 100, 4)} – ${fmt(st.hi * 100, 4)}`])) +
+      `</details>`).join("");
     return h;
   }
 
@@ -3088,7 +3093,11 @@
       traces.push({ x: r.line.x, y: r.line.high, mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: c0 + "22", hoverinfo: "skip" });
     }
     const curve = r.model === "linear" ? r.line : r.curve;
-    traces.push({ x: curve.x.map(tx), y: curve.y, mode: "lines", line: { color: c0, width: 2.4 }, hovertemplate: "Fit: %{y:.4g}<extra></extra>" });
+    if (!g.hideFit) traces.push({ x: curve.x.map(tx), y: curve.y, mode: "lines", line: { color: c0, width: 2.4 }, hovertemplate: "Fit: %{y:.4g}<extra></extra>" });
+    if (g.connect) {
+      const pts = rows.map(p => [p.x, p.ys.reduce((a, b) => a + b, 0) / p.ys.length]).sort((a, b) => a[0] - b[0]);
+      traces.push({ x: pts.map(p => p[0]), y: pts.map(p => p[1]), mode: "lines", line: { color: "#1b2130", width: 1.5 }, hoverinfo: "skip" });
+    }
     const cmpFit = r.comparison && r.comparison.fit_b;
     if (cmpFit) traces.push({ x: cmpFit.curve.x.map(tx), y: cmpFit.curve.y, mode: "lines", line: { color: color(g, 1, "Comparison curve"), width: 2, dash: "dash" },
       hovertemplate: `${esc(cmpFit.model_name)}: %{y:.4g}<extra></extra>` });

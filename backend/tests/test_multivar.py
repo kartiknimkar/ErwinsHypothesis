@@ -86,3 +86,13 @@ def test_hosmer_lemeshow_and_classification():
     assert np.isclose(hl["chi2"], chi, rtol=1e-6)
     c = r["classification"]
     assert c["tp"] + c["fp"] + c["tn"] + c["fn"] == 300 and abs(c["accuracy"] - r["accuracy"]) < 1e-12
+
+
+def test_correlation_matrix_adjustment():
+    import numpy as np
+    from app import multivar
+    rng = np.random.default_rng(1)
+    cols = [rng.normal(0, 1, 20).tolist() for _ in range(5)]
+    r = multivar.correlation_matrix(cols, list("ABCDE"), adjust="holm")
+    assert all(d["p_adj"] >= d["p"] for d in r["pairs"]) and len(r["pairs"]) == 10
+    assert "p_adj" not in multivar.correlation_matrix(cols, list("ABCDE"))["pairs"][0]

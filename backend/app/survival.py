@@ -45,7 +45,7 @@ def kaplan_meier(t: np.ndarray, e: np.ndarray, alpha: float = 0.05) -> dict:
             lo, hi = math.exp(-math.exp(ll + z * se_ll)), math.exp(-math.exp(ll - z * se_ll))
         else:
             lo = hi = s
-        steps.append({"t": float(ti), "s": s, "lo": lo, "hi": hi, "at_risk": n})
+        steps.append({"t": float(ti), "s": s, "lo": lo, "hi": hi, "at_risk": n, "events": d})
     median = next((st["t"] for st in steps if st["s"] <= 0.5), None)
     censored = sorted(float(x) for x in t[e == 0])
     cens_s = [next(st["s"] for st in reversed(steps) if st["t"] <= c) for c in censored]

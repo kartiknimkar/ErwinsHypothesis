@@ -17,7 +17,7 @@ def _num(v):
         return None
 
 
-def correlation_matrix(columns, names, method: str = "pearson", alpha: float = 0.05) -> dict:
+def correlation_matrix(columns, names, method: str = "pearson", alpha: float = 0.05, adjust: str = "none") -> dict:
     """Pairwise correlations between variables (columns); each pair uses rows where both have values."""
     cols = [[_num(v) for v in c] for c in columns]
     keep = [i for i, c in enumerate(cols) if sum(v is not None for v in c) >= 3]
@@ -56,8 +56,13 @@ def correlation_matrix(columns, names, method: str = "pearson", alpha: float = 0
             if R[i][j] is not None:
                 pairs_out.append({"a": names[i], "b": names[j], "r": R[i][j], "p": P[i][j], "n": N[i][j],
                                   "ci": CI[i][j], "stars": stars(P[i][j]), "significant": P[i][j] < alpha})
+    if adjust and adjust != "none" and pairs_out:
+        from .anova2 import fdr_adjust
+        adj, disc = fdr_adjust([d["p"] for d in pairs_out], adjust, alpha)
+        for d, a_, s_ in zip(pairs_out, adj, disc):
+            d["p_adj"], d["significant"], d["stars"] = float(a_), bool(s_), stars(float(a_))
     pairs_out.sort(key=lambda d: d["p"])
-    return {"test_name": f"Correlation matrix ({'Pearson' if method == 'pearson' else 'Spearman'})",
+    return {"adjust": adjust, "test_name": f"Correlation matrix ({'Pearson' if method == 'pearson' else 'Spearman'})",
             "method": method, "names": names, "r": R, "p": P, "n": N, "pairs": pairs_out, "alpha": alpha,
             "describe": [{"name": nm, "n": len(_clean(c)), "mean": float(np.mean(_clean(c))),
                           "sd": float(np.std(_clean(c), ddof=1))} for nm, c in zip(names, cols)]}

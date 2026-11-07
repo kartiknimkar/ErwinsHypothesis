@@ -409,6 +409,7 @@ class MultiRequest(BaseModel):
     sd_ratio: float | None = None   # Deming: SD of method B's error / SD of method A's error
     ba_kind: str = "diff"           # Bland-Altman: diff | pct | ratio
     cutoff: float = 0.5             # logistic: probability cutoff for the classification table
+    adjust: str = "none"            # correlation matrix: none | holm | bh
     columns: list
     names: list[str]
     analysis: str = "correlation"   # correlation | roc | bland_altman
@@ -420,7 +421,7 @@ class MultiRequest(BaseModel):
 def run_multi(req: MultiRequest):
     try:
         if req.analysis == "correlation":
-            res = multivar.correlation_matrix(req.columns, req.names, req.method, req.alpha)
+            res = multivar.correlation_matrix(req.columns, req.names, req.method, req.alpha, adjust=req.adjust)
         elif req.analysis == "pca":
             res = multivar.pca(req.columns, req.names, standardize=req.method != "covariance")
         elif req.analysis == "cox":

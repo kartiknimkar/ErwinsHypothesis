@@ -312,6 +312,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] "Show n under labels" for group graphs (subjects for nested); guide reaches Kolmogorov-Smirnov and the ratio
       paired t test (every analysis type is now reachable from "Help me choose"); 194 tests
 
+## Phase 0.72: More polish (done 2026-11-07)
+- [x] XY: connect the points (means), hide the fitted curve; correlation matrix P-value correction (Holm-Šídák / FDR);
+      Kaplan-Meier table per curve (time, at risk, events, survival, CI) in results and Excel; 195 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
