@@ -273,6 +273,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 ## Phase 0.61: Quick help (done 2026-11-07)
 - [x] "?" button / key: quick help with getting-started tips and keyboard/mouse shortcuts; Esc closes menus; 182 tests
 
+## Phase 0.62: Large tables (done 2026-11-07)
+- [x] Grid draws 400 rows at a time and more on scroll (keyboard navigation extends it); all rows always analyzed.
+      20,000 rows × 3: paste 0.05 s, typing ~1 ms per keystroke, sheet switch < 1 s; 183 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

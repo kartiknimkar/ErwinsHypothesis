@@ -298,7 +298,10 @@ def normality(values) -> dict | None:
     x = _clean(values)
     if len(x) < 3 or np.ptp(x) == 0:
         return None
-    r = stats.shapiro(x)
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)  # SciPy warns that P is approximate above n = 5000
+        r = stats.shapiro(x)
     return {"W": float(r.statistic), "p": float(r.pvalue), "normal": bool(r.pvalue >= 0.05)}
 
 

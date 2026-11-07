@@ -1103,23 +1103,44 @@
         <div class="colhead"><input data-head="${j}" value="${esc(c)}" spellcheck="false" aria-label="${esc(t.colKind(j, s))} name"></div></th>`;
     });
     h += "</tr></thead><tbody>";
-    s.data.forEach((r, i) => {
-      h += `<tr><td class="rownum" data-row="${i}" title="Click to select the row; right-click to insert or delete rows">${i + 1}</td>`;
-      r.forEach((v, j) => {
-        const text = isTextCol(t, j);
-        const bad = (!text && String(v).trim() !== "" && !isNum(v) ? " bad" : "") + (isExcluded(s, i, j) ? " excl" : "");
-        h += `<td><input class="cell${text ? " txt" : ""}${bad}" data-r="${i}" data-c="${j}" value="${esc(v)}" ${text ? "" : 'inputmode="decimal"'} spellcheck="false"></td>`;
-      });
-      h += "</tr>";
-    });
-    $("grid").innerHTML = h + "</tbody>";
+    // big tables: draw the first rows now and the rest as the table is scrolled (keeps typing and switching fast)
+    gridShown = Math.min(s.data.length, Math.max(GRID_CHUNK, gridShownFor[s.id] || 0));
+    for (let i = 0; i < gridShown; i++) h += gridRowHTML(s, t, i);
+    $("grid").innerHTML = h + gridMoreHTML(s) + "</tbody>";
     $("data-hint").textContent = t.hint;
     const add = $("btn-addcol");
     add.textContent = t.addLabel;
     add.disabled = s.cols.length >= t.maxCols;
     add.hidden = t.minCols === t.maxCols;
   }
-  const cellAt = (r, c) => $("grid").querySelector(`input[data-r="${r}"][data-c="${c}"]`);
+  const GRID_CHUNK = 400;
+  let gridShown = 0;
+  const gridShownFor = {};
+  function gridRowHTML(s, t, i) {
+    let h = `<tr><td class="rownum" data-row="${i}" title="Click to select the row; right-click to insert or delete rows">${i + 1}</td>`;
+    s.data[i].forEach((v, j) => {
+      const text = isTextCol(t, j);
+      const bad = (!text && String(v).trim() !== "" && !isNum(v) ? " bad" : "") + (isExcluded(s, i, j) ? " excl" : "");
+      h += `<td><input class="cell${text ? " txt" : ""}${bad}" data-r="${i}" data-c="${j}" value="${esc(v)}" ${text ? "" : 'inputmode="decimal"'} spellcheck="false"></td>`;
+    });
+    return h + "</tr>";
+  }
+  const gridMoreHTML = s => gridShown < s.data.length
+    ? `<tr class="grid-more"><td colspan="${s.cols.length + 1}">Showing ${gridShown.toLocaleString()} of ${s.data.length.toLocaleString()} rows. Scroll down for more (all rows are used in the analysis).</td></tr>` : "";
+  // draw more rows (up to row `upTo`, or one more chunk)
+  function extendGrid(upTo) {
+    const s = active(), t = TYPES[s.type];
+    if (t.noData || gridShown >= s.data.length) return;
+    const target = Math.min(s.data.length, Math.max(upTo == null ? 0 : upTo + 1, gridShown + GRID_CHUNK));
+    let h = "";
+    for (let i = gridShown; i < target; i++) h += gridRowHTML(s, t, i);
+    const more = $("grid").querySelector("tr.grid-more");
+    if (more) more.remove();
+    gridShown = target; gridShownFor[s.id] = target;
+    $("grid").querySelector("tbody").insertAdjacentHTML("beforeend", h + gridMoreHTML(s));
+    if (typeof paintSel === "function") paintSel();
+  }
+  const cellAt = (r, c) => { if (r >= gridShown) extendGrid(r); return $("grid").querySelector(`input[data-r="${r}"][data-c="${c}"]`); };
 
   function onGridInput(e) {
     const el = e.target, s = active(), t = TYPES[s.type];
@@ -3318,6 +3339,10 @@
   grid.addEventListener("mousedown", onGridMouseDown);
   grid.addEventListener("mouseover", onGridMouseOver);
   grid.addEventListener("contextmenu", onGridContext);
+  grid.parentElement.addEventListener("scroll", e => {
+    const w = e.currentTarget;
+    if (w.scrollTop + w.clientHeight > w.scrollHeight - 300) extendGrid();
+  });
 
   $("sheet-title").addEventListener("input", e => { active().title = e.target.value; save(); renderSidebar(); });
   $("btn-new").onclick = e => { e.stopPropagation(); $("new-menu").hidden = !$("new-menu").hidden; };

@@ -253,3 +253,30 @@ def test_help_panel(server):  # noqa: F811
         page.keyboard.press("?")
         assert page.is_visible("#help-backdrop")
         browser.close()
+
+
+def test_large_table_renders_in_chunks(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('Example: two groups')")
+        page.wait_for_timeout(300)
+        tsv = "\n".join(f"{i % 7 + 1}\t{i % 5 + 2}" for i in range(2000))
+        page.evaluate("""(tsv) => { const el = document.querySelector('#grid input[data-r="0"][data-c="0"]'); el.focus();
+          const dt = new DataTransfer(); dt.setData('text/plain', tsv); el.dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true})); }""", tsv)
+        page.wait_for_function("document.querySelector('#results').textContent.includes('n')", timeout=20000)
+        page.wait_for_timeout(500)
+        assert "Showing 400 of" in page.inner_text("#grid")
+        page.eval_on_selector(".grid-wrap", "w => { w.scrollTop = w.scrollHeight; w.dispatchEvent(new Event('scroll')); }")
+        page.wait_for_timeout(300)
+        assert page.evaluate("document.querySelectorAll('#grid tbody tr').length") > 790
+        assert "2,000" in page.inner_text("#results") or "2000" in page.inner_text("#results")
+        assert errors == [], errors
+        browser.close()
