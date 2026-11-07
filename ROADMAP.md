@@ -216,6 +216,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Subtract first row (baseline), subtract first data column, percent of column total, Z scores, transpose
       (column / multiple-variable tables); 160 tests
 
+## Phase 0.47: More Prism import (done 2026-11-07)
+- [x] .pzfx nested tables → Nested analysis (subcolumn = subject); column tables entered as mean/SD/N or mean/SEM/N →
+      summary-data analysis (exact tests). Synthetic-file tests only; 161 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

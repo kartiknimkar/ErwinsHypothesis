@@ -122,6 +122,35 @@ def read_pzfx(data_b64: str) -> dict:
             continue
         ytitles = [_text(next(iter(_kids(c, "Title")), None)) or f"Column {i + 1}" for i, c in enumerate(ycols)]
         ysubs = [_subcolumns(c) for c in ycols]
+        # column table entered as mean + SD/SEM + n, one row per group → the summary-data analysis
+        if ttype == "oneway" and yfmt in ("sdn", "semn", "sd_n", "sem_n"):
+            rows = []
+            for yt, subs in zip(ytitles, ysubs):
+                for i in range(max((len(sc) for sc in subs), default=0)):
+                    vals = [subs[k][i][0] if k < len(subs) and i < len(subs[k]) else "" for k in range(3)]
+                    if vals[0]:
+                        rows.append([yt if i == 0 else f"{yt} ({i + 1})"] + vals)
+            tables.append({"title": title, "type": "summary", "cols": ["Group", "Mean", "SEM" if "sem" in yfmt else "SD", "n"],
+                           "rows": rows, "options": {"err": "sem" if "sem" in yfmt else "sd"}})
+            continue
+        # nested table: each main column is a group, each subcolumn one subject, rows = replicates
+        if "nested" in ttype:
+            rows = []
+            for yt, subs in zip(ytitles, ysubs):
+                for sc in subs:
+                    vals = []
+                    for c in sc:
+                        v = c[0]
+                        if c[1] and v:
+                            excluded_total += 1
+                            v = ""
+                        vals.append(v)
+                    if any(vals):
+                        rows.append([yt] + vals)
+            width = max((len(r) for r in rows), default=1)
+            rows = [r + [""] * (width - len(r)) for r in rows]
+            tables.append({"title": title, "type": "nested", "cols": ["Group"] + [f"Rep {k}" for k in range(1, width)], "rows": rows, "options": {}})
+            continue
         if yfmt not in ("replicates", ""):
             notes.append(f"“{title}”: values were entered as {yfmt.upper()} (summary data); only the first value (mean) of each was imported.")
             ysubs = [subs[:1] for subs in ysubs]

@@ -94,3 +94,25 @@ def test_endpoint_routes_pzfx():
     c = TestClient(app)
     r = c.post("/api/import", json={"filename": "Project.pzfx", "data": b64(PZFX)}).json()
     assert len(r["tables"]) == 6
+
+
+def test_nested_and_mean_sd_n_tables():
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<GraphPadPrismFile {NS} PrismXMLVersion="5.00">
+<Table ID="Table0" TableType="Nested" YFormat="replicates">
+ <Title>Cells per mouse</Title>
+ {col("YColumn", "Control", [[10.2, 11.1, 9.6], [12.4, 11.9, ""], [9.1, "!20", 8.7]])}
+ {col("YColumn", "Drug", [[13.8, 14.6, 13.1], [12.2, 12.9, 13.5]])}
+</Table>
+<Table ID="Table1" TableType="OneWay" YFormat="SDN">
+ <Title>From a paper</Title>
+ {col("YColumn", "Control", [[4.6], [0.6], [8]])}
+ {col("YColumn", "Drug", [[6.7], [0.7], [8]])}
+</Table>
+</GraphPadPrismFile>"""
+    res = importer.read_pzfx(base64.b64encode(xml.encode()).decode())
+    nested, summ = res["tables"]
+    assert nested["type"] == "nested" and len(nested["rows"]) == 5
+    assert nested["rows"][0] == ["Control", "10.2", "11.1", "9.6"] and nested["rows"][2][2] == ""  # excluded value dropped
+    assert summ["type"] == "summary" and summ["rows"] == [["Control", "4.6", "0.6", "8"], ["Drug", "6.7", "0.7", "8"]]
+    assert summ["options"]["err"] == "sd"
