@@ -65,3 +65,16 @@ def test_within_row_method_and_control():
     assert np.allclose([c["p"] for c in r["comparisons"]], multipletests(raw, method="holm-sidak")[1])
     b = anova2.two_way(rows, cols, ["A", "B", "C"], method="bonferroni")
     assert len(b["comparisons"]) == 6 and "Bonferroni" in b["posthoc_name"]
+
+
+def test_two_way_from_summary_is_exact():
+    rows, cols = _data(unbalanced=True)
+    raw = anova2.two_way(rows, cols, ["A", "B", "C"])
+    cells = []
+    for r in ("Male", "Female"):
+        for j, c in enumerate("ABC"):
+            v = np.array([x for lab, x in zip(rows, cols[j]) if lab == r and x is not None])
+            cells.append({"row": r, "col": c, "mean": v.mean(), "sd": v.std(ddof=1), "n": len(v)})
+    sm = anova2.two_way_summary(cells)
+    for a, b in zip(raw["table"], sm["table"]):
+        assert np.isclose(a["SS"], b["SS"]) and (a["p"] is None or np.isclose(a["p"], b["p"]))

@@ -51,6 +51,13 @@
   };
   // a color picked by the user for a named series wins over the palette
   const color = (g, i, name) => (name != null && g.colors && g.colors[name]) || (PALETTES[g.palette] || PALETTES.vivid)[i % 8];
+  const STYLE_PRESETS = {
+    classic: { label: "Classic (Prism-like)", set: { fontFamily: "Arial", fontSize: 14, palette: "classic", pointSize: 8, pointOpacity: 1, pointLine: 0, lineScale: 1.2, errWidth: 1.5, capWidth: 10, barOpacity: "1", barLine: 1.5, pattern: "none", axisWidth: 1.5, tickDir: "outside", tickLen: 6, grid: false, bg: "white" } },
+    minimal: { label: "Minimal", set: { fontFamily: "Helvetica", fontSize: 13, palette: "vivid", pointSize: 7, pointOpacity: 0.8, pointLine: 0, lineScale: 1, errWidth: 1, capWidth: 0, barOpacity: "0.3", barLine: 0, pattern: "none", axisWidth: 1, tickDir: "outside", tickLen: 4, grid: true, bg: "white" } },
+    bw: { label: "Journal black & white", set: { fontFamily: "Arial", fontSize: 12, palette: "grayscale", pointSize: 7, pointOpacity: 1, pointLine: 1, pointLineColor: "#ffffff", lineScale: 1, errWidth: 1.2, capWidth: 8, barOpacity: "0", barLine: 1.5, pattern: "vary", axisWidth: 1.2, tickDir: "outside", tickLen: 5, grid: false, bg: "white" } },
+    talk: { label: "Presentation (large text)", set: { fontFamily: "Arial", fontSize: 20, palette: "colorblind", pointSize: 12, pointOpacity: 0.9, pointLine: 1, lineScale: 2, errWidth: 2.5, capWidth: 14, barOpacity: "0.5", barLine: 2.5, pattern: "none", axisWidth: 2.5, tickDir: "outside", tickLen: 8, grid: false, bg: "white" } },
+    figure: { label: "Figure panel (transparent, small)", set: { fontFamily: "Arial", fontSize: 10, pointSize: 5, pointOpacity: 0.85, lineScale: 0.75, errWidth: 1, capWidth: 6, axisWidth: 1, tickLen: 4, bg: "transparent" } },
+  };
   const COMMON_GRAPH = {
     meanWidth: 3, meanColor: "black", tickAngle: "auto", minorTicks: false, breakFrom: "", breakTo: "", breakSize: 35,
     fontFamily: "Arial", textColor: "#1b2130", titleSize: "", tickSize: "",
@@ -396,6 +403,33 @@
       ],
       renderResults: (r, s) => r.kind === "freq" ? renderFreq(r) : r.kind === "describe" ? renderColStats(r) : renderGroupResults(r, s),
       draw: drawGroups,
+    },
+    // ---------------------------------------------------------------- two-way ANOVA from mean, SD, n
+    summary2: {
+      label: "Grouped from mean, SD, n", newTitle: "Grouped summary",
+      minCols: 5, maxCols: 5, fixedCols: 5, textCol: [0, 1], addLabel: "", minRows: 10,
+      colKind: (j, s) => ["Row factor", "Column factor", "Mean", (s && s.options.err === "sem") ? "SEM" : "SD", "n"][j], newColName: () => "",
+      hint: "One row per group: the row-factor level (e.g. sex), the column-factor level (e.g. treatment), then mean, SD (or SEM) and n. Use this when you only have summary numbers.",
+      cols: ["Sex", "Treatment", "Mean", "SD", "n"],
+      options: { err: "sd", alpha: 0.05 },
+      graph: { ylabel: "Response", style: "bars", err: "sd", brackets: "sig", showPoints: false },
+      examples: () => ({ cols: ["Sex", "Treatment", "Mean", "SD", "n"], rows: [["Male", "Vehicle", 5.1, 0.4, 6], ["Male", "Drug", 7.0, 0.5, 6], ["Female", "Vehicle", 6.0, 0.5, 6], ["Female", "Drug", 8.6, 0.6, 5]] }),
+      request: s => {
+        const rows = s.data.filter(r => String(r[0] ?? "").trim() && String(r[1] ?? "").trim() && isNum(r[2]) && isNum(r[3]) && isNum(r[4]));
+        return ["/api/twoway_summary", { cells: rows.map(r => ({ row: String(r[0]).trim(), col: String(r[1]).trim(), mean: Number(r[2]),
+          sd: s.options.err === "sem" ? Number(r[3]) * Math.sqrt(Number(r[4])) : Number(r[3]), n: Number(r[4]) })), alpha: s.options.alpha, compare: s.options.twCompare || "within_rows" }];
+      },
+      renderOptions: s => `<div class="seg"><button data-set="err:sd" class="${s.options.err !== "sem" ? "on" : ""}">4th column is SD</button><button data-set="err:sem" class="${s.options.err === "sem" ? "on" : ""}">4th column is SEM</button></div>
+        <p class="hint">Two-way ANOVA computed exactly from each group's mean, SD and n (every combination of row and column levels needs a row).</p>
+        <div class="row"><label for="opt-twcmp">Multiple comparisons</label><select id="opt-twcmp">${[["within_rows", "Compare columns within each row"], ["within_cols", "Compare rows within each column"], ["col_means", "Compare column means (main effect)"], ["row_means", "Compare row means (main effect)"], ["all_cells", "Compare every cell with every other"]]
+          .map(([v, l]) => `<option value="${v}" ${(s.options.twCompare || "within_rows") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>${alphaSelect(s)}`,
+      graphControls: () => [
+        sel("style", "Style", [["bars", "Bars"], ["dots", "Mean only"], ["lines", "Interaction plot (means)"]]),
+        sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
+        sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]), txt("ylabel", "Y axis label"),
+      ],
+      renderResults: (r, s) => renderTwoWayResults(r, s) + `<p class="note">Computed from summary data (mean, ${s.options.err === "sem" ? "SEM" : "SD"}, n).</p>`,
+      draw: drawTwoWay,
     },
     // ---------------------------------------------------------------- three-way ANOVA (long format)
     threeway: {
@@ -951,6 +985,7 @@
       s.options.mode = "freq"; s.graph.normalCurve = true; s.graph.ylabel = "Cell size (µm)"; });
     add("ttest", "Example: column statistics", s => { s.cols = ["A", "B", "C"]; s.options.mode = "describe"; s.options.hypothetical = "12"; });
     add("nested", "Example: nested (cells within animals)");
+    add("summary2", "Example: grouped from mean, SD, n");
     add("power", "Example: sample size for a t test");
     add("threeway", "Example: three-way ANOVA");
     add("twoway", "Example: two-way ANOVA");
@@ -1112,7 +1147,7 @@
   }
   // a type's text (label) columns: textCol is one index, or a list for long-format tables
   const isTextCol = (t, j) => Array.isArray(t.textCol) ? t.textCol.includes(j) : j === t.textCol;
-  const badgeText = t => ({ power: "n", threeway: "3W", nested: "N", layout: "▦", summary: "Σ", ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#", multivar: "MV", diagnostic: "Dx" }[t]);
+  const badgeText = t => ({ summary2: "Σ2", power: "n", threeway: "3W", nested: "N", layout: "▦", summary: "Σ", ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#", multivar: "MV", diagnostic: "Dx" }[t]);
 
   // ======================================================================
   // data grid
@@ -1451,7 +1486,9 @@
       ["Many separate items (genes, proteins…)", "the same two groups compared for each item", rec("Multiple t tests with FDR", "One test per item with false-discovery-rate correction and a volcano plot.", "twoway", s => { s.options.analysis = "multit"; s.cols = ["Gene", "Control", "Treated"]; })] ] }],
     ["Compare groups with several measurements per subject", "e.g. many cells from each animal (technical replicates)", rec("Nested t test / nested ANOVA", "Uses every replicate but compares groups by subject-to-subject variation, so replicates aren't treated as independent.", "nested", s => {})],
     ["Plan an experiment", "how many subjects do I need?", rec("Power & sample size", "Sample size for a target power (or power for a given sample size) for t tests, ANOVA and proportions.", "power", s => {})],
-    ["Compare groups from published means", "I only have mean, SD (or SEM) and n for each group", rec("Compare groups (mean, SD, n)", "Exact t tests and ANOVA from summary statistics: one row per group.", "summary", s => {})],
+    ["Compare groups from published means", "I only have mean, SD (or SEM) and n for each group", { q: "How many factors?", opts: [
+      ["One (e.g. treatment)", "", rec("Compare groups (mean, SD, n)", "Exact t tests and ANOVA from summary statistics: one row per group.", "summary", s => {})],
+      ["Two (e.g. treatment × sex)", "", rec("Two-way ANOVA from mean, SD, n", "Exact two-way ANOVA from summary statistics: one row per combination of the two factors.", "summary2", s => {})] ] }],
     ["See how my values are distributed", "histogram, Q-Q plot, is it normal?", rec("Frequency distribution + Q-Q plot", "Histogram of each column with a normal curve, a normal Q-Q plot and normality tests. Switch the plot under Format.", "ttest", s => { s.options.mode = "freq"; s.graph.normalCurve = true; })],
     ["Describe my data", "mean, SD, median, normality; or compare to a known value", rec("Column statistics", "Full descriptive statistics for each column; enter a hypothetical value to test against it.", "ttest", s => { s.options.mode = "describe"; })],
     ["Relationship between X and Y", "dose-response, standard curves, correlation, kinetics", { q: "What kind of relationship?", opts: [
@@ -1594,7 +1631,7 @@
     ? s.cols.map((_, j) => j).slice(1) : s.cols.map((_, j) => j);
   function showTransform() {
     const s = active();
-    if (s.type === "survival" || s.type === "contingency") { toast("Transforms aren't meaningful for survival or contingency data."); return; }
+    if (["survival", "contingency", "summary", "summary2"].includes(s.type)) { toast("Transforms aren't meaningful for survival, contingency or summary (mean, SD, n) data."); return; }
     const op = s._tf || "minmax";
     $("tf-body").innerHTML = TRANSFORMS.map(([k, name, d]) => `<label class="choice ${op === k ? "on" : ""}"><input type="radio" name="tf" value="${k}" ${op === k ? "checked" : ""}><span><b>${name}</b><small>${d}</small></span></label>`).join("") +
       `<div class="row" id="tf-params"></div>` + (s.type === "regression" ? `<label class="check"><input type="checkbox" id="tf-x"> Transform X instead of Y (log10 / ln / reciprocal / square root only)</label>` : "");
@@ -1777,7 +1814,7 @@
     if (s.type === "regression") return ["Curve", ...(s.options.compare ? ["Comparison curve"] : []), "Unknowns"];
     if (s.type === "layout") return [];
     if (s.type === "summary") return s.data.filter(r => isNum(r[1])).map((r, i) => String(r[0] || `Group ${i + 1}`));
-    if (s.type === "threeway") return [...new Set(s.data.map(r => String(r[1] ?? "").trim()).filter(Boolean))];
+    if (s.type === "threeway" || s.type === "summary2") return [...new Set(s.data.map(r => String(r[1] ?? "").trim()).filter(Boolean))];
     if (s.type === "nested") return [...new Set(s.data.map(r => String(r[0] ?? "").trim()).filter(Boolean))];
     if (s.type === "multivar") return (s.options.analysis || "correlation") === "correlation" ? [] : s.options.analysis === "logistic" ? ["Curve"] : s.options.analysis === "pca" ? ["Points", "Loadings"] : ["Points"];
     if (s.type === "twoway" && s.options.analysis === "multit") return ["Discoveries"];
@@ -1792,7 +1829,7 @@
     const head = label => ({ kind: "head", label });
     const rng = (k, label, min, max, step = 1) => ({ k, label, kind: "range", min, max, step });
     const typeCtrls = TYPES[s.type].graphControls(s);
-    const ctrls = [head("Graph"), txt("title", "Graph title"), ...typeCtrls,
+    const ctrls = [head("Graph"), { kind: "presets" }, txt("title", "Graph title"), ...typeCtrls,
       txt("ymin", "Y min", "auto"), txt("ymax", "Y max", "auto"), txt("ytick", "Y tick every", "auto"), chk("logY", "Log Y axis"),
       head("Text"), sel("fontFamily", "Font", [["Arial", "Arial"], ["Helvetica", "Helvetica"], ["Times New Roman", "Times New Roman"], ["Calibri", "Calibri"], ["Verdana", "Verdana"], ["Georgia", "Georgia"], ["Courier New", "Courier New"]]),
       rng("fontSize", "Base font size", 8, 24), txt("titleSize", "Axis title size", "auto"), txt("tickSize", "Tick label size", "auto"),
@@ -1811,7 +1848,7 @@
       sel("yFormat", "Y numbers", [["auto", "Automatic"], ["d0", "1,234"], ["d1", "1,234.5"], ["d2", "1,234.56"], ["d3", "1.234 (3 decimals)"], ["sci", "Scientific (1.2e+3)"], ["comma", "Thousands separator"]]),
       sel("xFormat", "X numbers", [["auto", "Automatic"], ["d0", "1,234"], ["d1", "1,234.5"], ["d2", "1,234.56"], ["sci", "Scientific (1.2e+3)"], ["comma", "Thousands separator"]]),
       sel("tickAngle", "X label angle", [["auto", "Automatic"], ["0", "Horizontal"], ["-30", "Slanted 30°"], ["-45", "Slanted 45°"], ["-90", "Vertical"]]),
-      ...(["ttest", "summary", "twoway", "contingency", "nested"].includes(s.type) ? [txt("breakFrom", "Break Y axis from", "none"), txt("breakTo", "… to", "none"),
+      ...(["ttest", "summary", "twoway", "contingency", "nested", "summary2"].includes(s.type) ? [txt("breakFrom", "Break Y axis from", "none"), txt("breakTo", "… to", "none"),
         rng("breakSize", "Lower part height %", 15, 80, 5)] : []), sel("bg", "Background", [["white", "White"], ["transparent", "Transparent (for figures)"], ["light", "Light gray plot area"]]),
       sel("legendPos", "Legend", [["auto", "Automatic"], ["tr", "Top right (inside)"], ["tl", "Top left (inside)"], ["outside", "Right (outside)"], ["top", "Above graph"], ["bottom", "Below graph"], ["hide", "Hide"]]),
       head("Text labels"), { kind: "notes" },
@@ -1823,6 +1860,7 @@
       if (c.kind === "check") return `<label class="check"><input type="checkbox" data-g="${c.k}" ${v ? "checked" : ""}> ${c.label}</label>`;
       if (c.kind === "range") return `<label>${c.label} <span class="rv">${v}</span><input type="range" data-g="${c.k}" min="${c.min}" max="${c.max}" step="${c.step || 1}" value="${v}"></label>`;
       if (c.kind === "head") return `<div class="fhead">${c.label}</div>`;
+      if (c.kind === "presets") return `<label class="wide">Style preset<select id="style-preset"><option value="">Choose a look…</option>${Object.entries(STYLE_PRESETS).map(([k, p]) => `<option value="${k}">${p.label}</option>`).join("")}</select></label>`;
       if (c.kind === "notes") return `<div class="wide notes"><p class="hint">Tip: click any title, axis title, legend entry or label on the graph to edit it; drag the legend or a label to move it.</p>
         ${(g.notes || []).map((n, i) => `<div class="note-row"><input type="text" data-note="${i}" value="${esc(n.text || "")}" placeholder="Label text"><input type="number" data-note-size="${i}" value="${esc(n.size ?? "")}" placeholder="size" min="6" max="48"><button class="icon" data-note-del="${i}" title="Remove this label">✕</button></div>`).join("")}
         <div class="row"><button class="ghost small" id="btn-add-note">+ Add text label</button>${g.axisText || g.legendNames || g.legendXY ? `<button class="ghost small" id="btn-reset-edits" title="Undo text and legend edits made on the graph">Reset graph edits</button>` : ""}</div></div>`;
@@ -1836,6 +1874,13 @@
       el.onchange = () => renderFormat();
     });
     const fmtBox = $("graph-format");
+    const sp = $("style-preset");
+    if (sp) sp.onchange = () => {
+      const p = STYLE_PRESETS[sp.value]; if (!p) return;
+      recordUndo(true);
+      Object.assign(g, p.set);
+      save(); renderFormat(); drawPlot(); toast(`Applied the <b>${esc(p.label)}</b> look. Undo puts the previous one back.`);
+    };
     const an = $("btn-add-note");
     if (an) an.onclick = () => { g.notes = [...(g.notes || []), { text: "Label", x: 0.5, y: 0.95 }]; save(); renderFormat(); drawPlot(); };
     const re = $("btn-reset-edits");
@@ -1987,7 +2032,7 @@
       return { methods: `Each ${esc(s.cols[0] || "row")} was compared between ${esc(r.names[0])} and ${esc(r.names[1])} using ${test}; ${MT_TEXT[r.method || "bh"] ? `P values were adjusted for multiple comparisons with ${MT_TEXT[r.method || "bh"]} (${["holm", "bonferroni"].includes(r.method) ? "α" : "Q"} = ${r.q_level * 100}%).` : "P values were not adjusted for multiple comparisons."} Analyses were performed in ${SW}.`,
         results: `${r.n_discoveries} of ${r.items.length} ${r.n_discoveries === 1 ? "was" : "were"} identified as discoveries${r.n_discoveries ? ` (${r.items.filter(i => i.discovery).sort((x, y) => x.p - y.p).slice(0, 8).map(i => esc(i.name)).join(", ")})` : ""}.` };
     }
-    if (s.type === "twoway") {
+    if (s.type === "twoway" || s.type === "summary2") {
       const t = Object.fromEntries(r.table.map(x => [x.source, x]));
       const rowF = esc(s.cols[0] || "row factor");
       const f = x => `F(${x.df}, ${x.dfd ?? t.Residual.df}) = ${r2(x.F)}, ${apaP(x.p)}`;

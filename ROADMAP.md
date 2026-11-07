@@ -358,6 +358,11 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Survival: paste time / event / group columns and convert to one column per group (undoable)
 - [x] XY: "Mean, SD, n" entry (fit to the means, SD or SEM error bars); 209 tests
 
+## Phase 0.84: Style presets + two-way from summary (done 2026-11-07)
+- [x] Graph style presets (classic, minimal, journal black & white, presentation, figure panel), undoable
+- [x] New "Grouped from mean, SD, n" type: exact two-way ANOVA from summary data (verified equal to raw-data ANOVA,
+      unbalanced); guide branch; example; 211 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

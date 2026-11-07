@@ -534,8 +534,7 @@ def test_analyze_another_way_and_curve_table(server):  # noqa: F811
         page.click("#sheet-list li:has-text('dose-respon')")
         page.wait_for_selector("[data-act=curve-xlsx]")
         page.click("[data-act=curve-xlsx]")
-        page.wait_for_selector("#toast:not([hidden])")
-        assert "points along the curve" in page.inner_text("#toast")
+        page.wait_for_function("document.querySelector('#toast').textContent.includes('points along the curve')", timeout=10000)
         assert errors == [], errors
         browser.close()
 

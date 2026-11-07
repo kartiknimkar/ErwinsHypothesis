@@ -392,6 +392,21 @@ def run_power(req: PowerRequest):
     return JSONResponse(_json_safe(res))
 
 
+class TwoWaySummaryRequest(BaseModel):
+    cells: list[dict]        # [{row, col, mean, sd, n}]
+    alpha: float = 0.05
+    compare: str = "within_rows"
+
+
+@app.post("/api/twoway_summary")
+def run_twoway_summary(req: TwoWaySummaryRequest):
+    try:
+        res = anova2.two_way_summary(req.cells, alpha=req.alpha, compare=req.compare)
+    except (ValueError, TypeError, KeyError) as e:
+        raise HTTPException(status_code=400, detail=str(e) or "Check the table: each row needs a row name, a column name, mean, SD and n.")
+    return JSONResponse(_json_safe(res))
+
+
 class ImportRequest(BaseModel):
     filename: str
     data: str                # base64 file contents

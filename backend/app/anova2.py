@@ -638,3 +638,28 @@ def three_way(factors, values, factor_names, alpha: float = 0.05, compare: str =
     return {"test_name": "Three-way ANOVA", "kind": "threeway", "factors": list(factor_names), "levels": lev, "alpha": alpha,
             "table": table, "cells": cells, "n": N, "balanced": bool(np.all(counts == counts.flat[0])),
             "comparisons": comps, "posthoc_name": method, "compare": compare}
+
+
+def two_way_summary(cells, alpha: float = 0.05, compare: str = "within_rows") -> dict:
+    """Two-way ANOVA from summary data: cells = [{row, col, mean, sd, n}]. Exact: values with exactly each cell's
+    mean and SD are generated, and every two-way ANOVA result depends only on cell means, SDs and sizes."""
+    from .stats import _synthetic
+    rows = list(dict.fromkeys(str(c["row"]) for c in cells))
+    cols = list(dict.fromkeys(str(c["col"]) for c in cells))
+    vals = {}
+    for c in cells:
+        n = int(c["n"])
+        if n < 1 or float(c["sd"]) < 0:
+            raise ValueError("Each cell needs n ≥ 1 and an SD ≥ 0.")
+        vals[(str(c["row"]), str(c["col"]))] = _synthetic(float(c["mean"]), float(c["sd"]), n)
+    labels, columns = [], [[] for _ in cols]
+    for r in rows:
+        k = max((len(vals.get((r, c), [])) for c in cols), default=0)
+        for i in range(k):
+            labels.append(r)
+            for j, c in enumerate(cols):
+                v = vals.get((r, c))
+                columns[j].append(float(v[i]) if v is not None and i < len(v) else None)
+    res = two_way(labels, columns, cols, alpha=alpha, compare=compare)
+    res["from_summary"] = True
+    return res

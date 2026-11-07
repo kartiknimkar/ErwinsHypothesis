@@ -179,3 +179,29 @@ def test_all_to_excel(server):  # noqa: F811
         assert len(wb.sheetnames) == n
         assert errors == [], errors
         browser.close()
+
+
+def test_style_presets(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('three groups')")
+        page.wait_for_timeout(400)
+        if page.is_hidden("#graph-format"):
+            page.click("#btn-format")
+        for k in ("classic", "minimal", "bw", "talk", "figure"):
+            page.select_option("#style-preset", k)
+            page.wait_for_timeout(250)
+        assert page.input_value('#graph-format [data-g="bg"]') == "transparent"
+        page.click("#btn-undo")
+        page.wait_for_timeout(300)
+        assert page.input_value('#graph-format [data-g="fontSize"]') == "20"  # back to the presentation look
+        assert errors == [], errors
+        browser.close()
