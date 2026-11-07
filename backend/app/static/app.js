@@ -292,13 +292,15 @@
       ["friedman", "Friedman test + Dunn's", "Nonparametric repeated measures."]],
   };
   function postHocOptions(s, kind) {
-    const to = s.options.compareTo || "all", ph = s.options.posthoc || "tukey";
+    const to = s.options.compareTo || "all";
+    let ph = s.options.posthoc || "tukey";
+    if (kind === "rm" && ph === "dunnett") ph = "holm";
     const methods = to === "control"
-      ? [["dunnett", "Dunnett (recommended)"], ["holm", "Holm-Šídák"], ["sidak", "Šídák"], ["bonferroni", "Bonferroni"], ["lsd", "Fisher's LSD (no correction)"]]
+      ? [...(kind === "rm" ? [] : [["dunnett", "Dunnett (recommended)"]]), ["holm", kind === "rm" ? "Holm-Šídák (recommended)" : "Holm-Šídák"], ["sidak", "Šídák"], ["bonferroni", "Bonferroni"], ["lsd", "Fisher's LSD (no correction)"]]
       : [["tukey", "Tukey (recommended)"], ["holm", "Holm-Šídák"], ["sidak", "Šídák"], ["bonferroni", "Bonferroni"], ["lsd", "Fisher's LSD (no correction)"]];
     return `<div class="row"><label for="opt-cmpto">Compare</label><select id="opt-cmpto"><option value="all" ${to === "all" ? "selected" : ""}>every pair of groups</option>
       <option value="control" ${to === "control" ? "selected" : ""}>each group with the first column (control)</option></select>
-      ${kind === "ordinary" ? `<label for="opt-posthoc">Correction</label><select id="opt-posthoc">${methods.map(([v, l]) => `<option value="${v}" ${ph === v ? "selected" : ""}>${l}</option>`).join("")}</select>` : `<span class="pd">Dunn's test</span>`}</div>`;
+      ${kind === "ordinary" || kind === "rm" ? `<label for="opt-posthoc">Correction</label><select id="opt-posthoc">${methods.map(([v, l]) => `<option value="${v}" ${ph === v ? "selected" : ""}>${l}</option>`).join("")}</select>` : `<span class="pd">Dunn's test</span>`}</div>`;
   }
   const MT_METHODS = [["bh", "False discovery rate: Benjamini-Hochberg"], ["bky", "False discovery rate: two-stage step-up (Benjamini, Krieger, Yekutieli)"],
     ["holm", "Holm-Šídák (controls family-wise error)"], ["bonferroni", "Bonferroni"], ["none", "None (each test on its own)"]];
@@ -369,7 +371,7 @@
           <div class="opt-label">${n >= 3 ? `${n} groups: compare all` : "2 groups"}</div>` +
           CHOICES[key].map(([k, name, d]) => `<label class="choice ${cur === k ? "on" : ""}"><input type="radio" name="kind${key}" value="${k}" ${cur === k ? "checked" : ""}><span><b>${name}</b><small>${d}</small></span></label>`).join("") +
           (n >= 3 ? "" : `<p class="hint">Have 3 or more groups? Click <b>+ Group</b> to add a column.</p>`) +
-          (n >= 3 && (cur === "ordinary" || cur === "kruskal") ? postHocOptions(s, cur) : "") +
+          (n >= 3 && ["ordinary", "kruskal", "rm", "friedman"].includes(cur) ? postHocOptions(s, cur) : "") +
           (n >= 3 && cur === "welch" ? `<div class="row"><label for="opt-wph">Comparisons</label><select id="opt-wph"><option value="games_howell" ${(s.options.welchPosthoc || "games_howell") === "games_howell" ? "selected" : ""}>Games-Howell (recommended for larger groups)</option>
             <option value="t3" ${s.options.welchPosthoc === "t3" ? "selected" : ""}>Dunnett's T3 (better for small groups, n < 50)</option></select>
             ${s.options.welchPosthoc === "t3" ? `<label for="opt-cmpto">Compare</label><select id="opt-cmpto"><option value="all" ${(s.options.compareTo || "all") === "all" ? "selected" : ""}>every pair</option><option value="control" ${s.options.compareTo === "control" ? "selected" : ""}>each vs first column</option></select>` : ""}</div>` : "") +
@@ -1911,8 +1913,8 @@
         sidak: "Šídák's multiple comparisons test", bonferroni: "Bonferroni's multiple comparisons test", lsd: "uncorrected Fisher's LSD tests" }[r.posthoc || "tukey"]
         + (r.compare_to === "control" && r.posthoc !== "dunnett" ? " comparing each group with the control" : "");
       const test = { ordinary: `one-way ANOVA followed by ${phName}`, welch: `Welch's ANOVA followed by ${r.posthoc === "t3" ? `Dunnett's T3 multiple comparisons test${r.compare_to === "control" ? " (each group vs control)" : ""}` : "the Games-Howell test"}`,
-        kruskal: `the Kruskal-Wallis test followed by Dunn's multiple comparisons test${r.compare_to === "control" ? " (each group vs control)" : ""}`, rm: "repeated-measures one-way ANOVA with the Geisser-Greenhouse correction, followed by Tukey's multiple comparisons test",
-        friedman: "the Friedman test followed by Dunn's multiple comparisons test" }[r.kind];
+        kruskal: `the Kruskal-Wallis test followed by Dunn's multiple comparisons test${r.compare_to === "control" ? " (each group vs control)" : ""}`, rm: `repeated-measures one-way ANOVA with the Geisser-Greenhouse correction, followed by ${r.posthoc && r.posthoc !== "tukey" ? phName : "Tukey's multiple comparisons test"}`,
+        friedman: `the Friedman test followed by Dunn's multiple comparisons test${r.compare_to === "control" ? " (each group vs control)" : ""}` }[r.kind];
       const methods = `Groups were compared using ${test}. Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`;
       const main = r.kind === "kruskal" ? `H(${r.df_between}) = ${r2(r.H)}` : r.kind === "friedman" ? `χ²(${r.df_between}) = ${r2(r.chi2)}`
         : `F(${r2(r.df_between, Number.isInteger(r.df_between) ? 0 : 2)}, ${r2(r.df_within, Number.isInteger(r.df_within) ? 0 : 2)}) = ${r2(r.F)}`;

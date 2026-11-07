@@ -165,7 +165,7 @@ def two_way(row_labels, columns, col_names, alpha: float = 0.05, compare: str = 
             "p": inter["p"], "n": N, "balanced": bool(np.all(counts == counts[0, 0]))}
 
 
-def repeated_measures(columns, names, kind: str = "rm", alpha: float = 0.05) -> dict:
+def repeated_measures(columns, names, kind: str = "rm", alpha: float = 0.05, posthoc: str = "tukey", compare_to: str = "all") -> dict:
     """Same subjects (rows) measured in every column. Only complete rows are used.
     kind: "rm" (RM one-way ANOVA + Tukey, Geisser-Greenhouse corrected) or "friedman" (+ Dunn's)."""
     k = len(columns)
@@ -201,20 +201,43 @@ def repeated_measures(columns, names, kind: str = "rm", alpha: float = 0.05) -> 
         eps = float(np.trace(Sc) ** 2 / ((k - 1) * np.sum(Sc ** 2))) if np.sum(Sc ** 2) > 0 else 1.0
         eps = min(1.0, max(1 / (k - 1), eps))
         p_gg = float(stats.f.sf(F, eps * df_g, eps * df_e))
-        res.update(test_name="Repeated-measures one-way ANOVA", posthoc_name="Tukey's multiple comparisons",
+        if posthoc == "dunnett":
+            posthoc = "holm"  # Dunnett isn't offered for repeated measures; Holm-Šídák vs control instead
+        if posthoc == "tukey":
+            compare_to = "all"
+        from .stats import POSTHOC_NAMES, _adjust
+        res.update(test_name="Repeated-measures one-way ANOVA",
+                   posthoc_name=f"{POSTHOC_NAMES.get(posthoc, posthoc)} multiple comparisons" + (" vs control" if compare_to == "control" else ""),
+                   posthoc=posthoc, compare_to=compare_to,
                    F=F, df_between=df_g, df_within=df_e, p_uncorrected=p, epsilon=eps, p=p_gg,
                    r_squared=ss_g / (ss_g + ss_e) if ss_g + ss_e > 0 else None,
                    table=[{"source": "Treatment (between columns)", "SS": ss_g, "df": df_g, "MS": ss_g / df_g},
                           {"source": "Individual (between rows)", "SS": ss_s, "df": df_s, "MS": ss_s / df_s if df_s else None},
                           {"source": "Residual", "SS": ss_e, "df": df_e, "MS": ms_e},
                           {"source": "Total", "SS": ss_tot, "df": n * k - 1, "MS": None}])
-        qcrit = stats.studentized_range.ppf(1 - alpha, k, df_e)
-        se = math.sqrt(ms_e / n)
-        for i, j in pairs:
-            diff = float(Y[:, i].mean() - Y[:, j].mean())
-            pp = float(min(1.0, stats.studentized_range.sf(abs(diff) / se, k, df_e)))
-            comps.append({"a": names[i], "b": names[j], "i": i, "j": j, "diff": diff,
-                          "ci_low": diff - qcrit * se, "ci_high": diff + qcrit * se, "p": pp})
+        if compare_to == "control":
+            pairs = [(0, j) for j in range(1, k)]
+        if posthoc == "tukey":
+            qcrit = stats.studentized_range.ppf(1 - alpha, k, df_e)
+            se = math.sqrt(ms_e / n)
+            for i, j in pairs:
+                diff = float(Y[:, i].mean() - Y[:, j].mean())
+                pp = float(min(1.0, stats.studentized_range.sf(abs(diff) / se, k, df_e)))
+                comps.append({"a": names[i], "b": names[j], "i": i, "j": j, "diff": diff,
+                              "ci_low": diff - qcrit * se, "ci_high": diff + qcrit * se, "p": pp})
+        else:
+            m_ = len(pairs)
+            se = math.sqrt(2 * ms_e / n)
+            raw = []
+            for i, j in pairs:
+                diff = float(Y[:, i].mean() - Y[:, j].mean())
+                raw.append((i, j, diff, float(2 * stats.t.sf(abs(diff) / se, df_e))))
+            adj = _adjust([r[3] for r in raw], posthoc)
+            a_ci = {"bonferroni": alpha / m_, "sidak": 1 - (1 - alpha) ** (1 / m_), "lsd": alpha}.get(posthoc)
+            tcrit = float(stats.t.ppf(1 - a_ci / 2, df_e)) if a_ci else None
+            for (i, j, diff, pr), pa in zip(raw, adj):
+                comps.append({"a": names[i], "b": names[j], "i": i, "j": j, "diff": diff, "p_raw": pr, "p": float(pa),
+                              "ci_low": diff - tcrit * se if tcrit else None, "ci_high": diff + tcrit * se if tcrit else None})
         res["diff_label"] = "Mean difference"
     elif kind == "friedman":
         fr = stats.friedmanchisquare(*[Y[:, j] for j in range(k)])
@@ -222,6 +245,10 @@ def repeated_measures(columns, names, kind: str = "rm", alpha: float = 0.05) -> 
                    chi2=float(fr.statistic), df_between=k - 1, p=float(fr.pvalue))
         R = np.apply_along_axis(stats.rankdata, 1, Y).sum(axis=0)
         se = math.sqrt(n * k * (k + 1) / 6)
+        if compare_to == "control":
+            pairs = [(0, j) for j in range(1, k)]
+            res["posthoc_name"] = "Dunn's multiple comparisons vs control"
+        res["compare_to"] = compare_to
         m = len(pairs)
         for i, j in pairs:
             z = (R[i] - R[j]) / se

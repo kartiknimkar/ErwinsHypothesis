@@ -86,3 +86,22 @@ def test_endpoints():
     cols = [[r[j] for r in SUBJ] for j in range(3)]
     r = c.post("/api/compare", json={"groups": cols, "names": ["A", "B", "C"], "kind": "rm"})
     assert r.json()["test_name"] == "Repeated-measures one-way ANOVA"
+
+
+def test_rm_comparison_choices():
+    import numpy as np
+    from scipy import stats as ss
+    from app import anova2
+    rng = np.random.default_rng(3)
+    base = rng.normal(10, 2, 8)
+    cols = [(base + d + rng.normal(0, 0.7, 8)).tolist() for d in (0, 1.0, 1.8, 0.4)]
+    t = anova2.repeated_measures(cols, list("ABCD"))
+    assert len(t["comparisons"]) == 6 and t["posthoc_name"].startswith("Tukey")
+    h = anova2.repeated_measures(cols, list("ABCD"), posthoc="holm", compare_to="control")
+    assert len(h["comparisons"]) == 3 and "vs control" in h["posthoc_name"]
+    ms_e = t["table"][2]["MS"]; df_e = t["table"][2]["df"]
+    c = h["comparisons"][0]
+    tval = (np.mean(cols[0]) - np.mean(cols[1])) / np.sqrt(2 * ms_e / 8)
+    assert np.isclose(c["p_raw"], 2 * ss.t.sf(abs(tval), df_e))
+    f = anova2.repeated_measures(cols, list("ABCD"), kind="friedman", compare_to="control")
+    assert len(f["comparisons"]) == 3

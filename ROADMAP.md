@@ -304,6 +304,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] One-way ANOVA test for linear trend (= regression on column number); two-way "every cell vs every other" (Tukey);
       XY multi-curve graphs: different symbol per data set; README feature list rewritten; 193 tests
 
+## Phase 0.70: Repeated-measures comparison choices (done 2026-11-07)
+- [x] RM one-way ANOVA: Tukey, or Holm-Šídák / Šídák / Bonferroni / LSD (pooled error), all pairs or vs control;
+      Friedman: Dunn's all pairs or vs control; 194 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
