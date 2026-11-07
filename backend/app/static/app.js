@@ -1047,8 +1047,8 @@
     if (!res.ok) throw new Error(json.detail || "Something went wrong.");
     return json;
   }
-  async function openProject(name) {
-    await saveNow();
+  async function openProject(name, skipSave = false) {
+    if (skipSave) { clearTimeout(saveTimer); saveTimer = null; await saving; } else await saveNow();
     const data = await api(`/api/projects/${encodeURIComponent(name)}`);
     if (!Array.isArray(data.sheets) || !data.sheets.length) throw new Error("This project has no analyses.");
     project = { sheets: data.sheets.map(normalize), activeId: data.activeId || data.sheets[0].id };
@@ -3322,8 +3322,28 @@
       ul.innerHTML = projects.map(p => {
         const cur = p.name === projectName, when = new Date(p.modified).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
         return `<li class="${cur ? "current" : ""}"><span class="pn">${esc(p.name)}</span><span class="pd">${when}</span>
+          <button class="ghost small" data-versions="${esc(p.name)}" title="Earlier versions saved automatically (last 5, at most one per 10 minutes)">Versions</button>
           ${cur ? `<span class="pd">open</span>` : `<button class="ghost small" data-open="${esc(p.name)}">Open</button><button class="ghost small danger" data-del="${esc(p.name)}">Delete</button>`}</li>`;
       }).join("");
+      ul.querySelectorAll("[data-versions]").forEach(b => b.onclick = async () => {
+        const li = b.closest("li"), name = b.dataset.versions;
+        const old = li.nextElementSibling;
+        if (old && old.classList.contains("versions")) { old.remove(); return; }
+        const { backups } = await api(`/api/projects/${encodeURIComponent(name)}/backups`);
+        const box = document.createElement("li"); box.className = "versions";
+        box.innerHTML = backups.length ? backups.map(v => `<div><span>${new Date(v.time).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
+            <button class="ghost small" data-restore="${esc(v.id)}">Restore</button></div>`).join("") + `<p class="hint">Restoring keeps a copy of the current version, so you can switch back.</p>`
+          : `<p class="hint">No earlier versions yet. A copy is kept automatically as you work (at most one every 10 minutes, last 5).</p>`;
+        li.after(box);
+        box.querySelectorAll("[data-restore]").forEach(rb => rb.onclick = async () => {
+          if (!confirm(`Go back to the version from ${rb.previousElementSibling.textContent}?`)) return;
+          try {
+            if (name === projectName) await saveNow();
+            await api(`/api/projects/${encodeURIComponent(name)}/restore`, { method: "POST", body: JSON.stringify({ id: rb.dataset.restore }) });
+            if (name === projectName) await openProject(name, true); else await openProject(name); hideProjects(); toast(`Restored the earlier version of <b>${esc(name)}</b>.`);
+          } catch (e) { toast(esc(e.message)); }
+        });
+      });
       ul.querySelectorAll("[data-open]").forEach(b => b.onclick = async () => { try { await openProject(b.dataset.open); hideProjects(); } catch (e) { toast(esc(e.message)); } });
       ul.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
         if (!confirm(`Delete the project "${b.dataset.del}"? Its file will be removed from the projects folder.`)) return;

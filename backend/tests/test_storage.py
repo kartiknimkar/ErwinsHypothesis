@@ -118,3 +118,19 @@ def test_workbook_export(client):
     assert len(wb.sheetnames) == 3 and len(set(n.lower() for n in wb.sheetnames)) == 3
     ws = wb[wb.sheetnames[0]]
     assert ws["B3"].value == 0.01 and any(row[0].value == "DATA" for row in ws.iter_rows())
+
+
+def test_backups_rotate_and_restore(client, monkeypatch):
+    from app import storage
+    c, home = client
+    monkeypatch.setattr(storage, "BACKUP_EVERY", 0)
+    for k in range(8):
+        assert c.put("/api/projects/Exp", json={"data": {"sheets": [], "k": k}}).status_code == 200
+    b = c.get("/api/projects/Exp/backups").json()["backups"]
+    assert len(b) == 5  # only the last 5 kept
+    oldest = b[-1]["id"]
+    r = c.post("/api/projects/Exp/restore", json={"id": oldest})
+    assert r.status_code == 200
+    assert c.get("/api/projects/Exp").json()["k"] == 2  # backups held versions 2..6; the oldest kept is k=2
+    assert c.post("/api/projects/Exp/restore", json={"id": "../../Exp.ehp"}).status_code in (400, 404)
+    assert c.get("/api/projects/Nope/backups").json()["backups"] == []

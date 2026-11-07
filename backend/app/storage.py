@@ -12,6 +12,7 @@ import base64
 import json
 import math
 import os
+import time
 import re
 import subprocess
 import sys
@@ -95,9 +96,62 @@ def load_project(name: str) -> dict:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+BACKUP_KEEP = 5
+BACKUP_EVERY = 10 * 60  # seconds: autosave runs constantly, so keep at most one backup per 10 minutes
+
+
+def _backup_dir(name: str) -> Path:
+    root = projects_dir() / ".backups"
+    return _inside(root / safe_name(name), root)
+
+
+def _backup(name: str, p: Path, force: bool = False) -> None:
+    """Copy the current project file into projects/.backups/<name>/ before it's overwritten; keep the last 5."""
+    if not p.exists():
+        return
+    d = _backup_dir(name)
+    d.mkdir(parents=True, exist_ok=True)
+    olds = sorted(d.glob("*" + EXT))
+    if olds and not force and time.time() - olds[-1].stat().st_mtime < BACKUP_EVERY:
+        return
+    stamp = datetime.now().strftime("%Y-%m-%d %H-%M-%S-%f")  # microseconds keep names in time order
+    dst = d / f"{stamp}{EXT}"
+    k = 2
+    while dst.exists():
+        dst = d / f"{stamp} ({k}){EXT}"; k += 1
+    dst.write_bytes(p.read_bytes())
+    for old in sorted(d.glob("*" + EXT))[:-BACKUP_KEEP]:
+        old.unlink()
+
+
+def list_backups(name: str) -> list[dict]:
+    d = _backup_dir(name)
+    if not d.exists():
+        return []
+    out = [{"id": f.name, "time": datetime.fromtimestamp(f.stat().st_mtime).isoformat(timespec="seconds"), "size": f.stat().st_size}
+           for f in d.glob("*" + EXT)]
+    return sorted(out, key=lambda b: b["id"], reverse=True)
+
+
+def restore_backup(name: str, backup_id: str) -> None:
+    """Replace the project with a backup (the current version is backed up first, so restoring can be undone)."""
+    d = _backup_dir(name)
+    src = _inside(d / backup_id, d)  # refuses paths outside the backup folder
+    if not src.exists() or src.suffix != EXT:
+        raise FileNotFoundError(backup_id)
+    raw = src.read_bytes()   # read first: backing up the current version may rotate this backup out
+    json.loads(raw.decode("utf-8"))  # must be a readable project
+    p = project_path(name)
+    _backup(name, p, force=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_bytes(raw)
+    os.replace(tmp, p)
+
+
 def save_project(name: str, data: dict) -> str:
     name = safe_name(name)
     p = project_path(name)
+    _backup(name, p)
     tmp = p.with_suffix(".tmp")
     # write then rename, so a crash mid-save never corrupts the file
     tmp.write_text(json.dumps({"app": "Erwin's Hypothesis", "version": 1, **data}, indent=1), encoding="utf-8")

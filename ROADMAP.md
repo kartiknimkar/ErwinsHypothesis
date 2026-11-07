@@ -296,6 +296,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Undo/redo also restores analysis options and graph Format settings (snapshots taken before any control
       changes; quick successive changes form one step); 189 tests
 
+## Phase 0.68: Automatic backups (done 2026-11-07)
+- [x] Each project keeps its last 5 earlier versions (at most one per 10 minutes) in projects/.backups/<name>/;
+      Projects → Versions → Restore (the current version is backed up first); path-safe; 191 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

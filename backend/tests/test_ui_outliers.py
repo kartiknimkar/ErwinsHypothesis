@@ -315,3 +315,35 @@ def test_undo_covers_format_and_options(server):  # noqa: F811
         assert page.input_value('#graph-format [data-g="style"]') == new
         assert errors == [], errors
         browser.close()
+
+
+def test_restore_earlier_version(server):  # noqa: F811
+    import json
+    import urllib.request
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        name = page.input_value("#project-name")
+        n0 = page.eval_on_selector_all("#sheet-list li", "e => e.length")
+        # force a backup of the current version, then change the project
+        from app import storage
+        storage._backup(name, storage.project_path(name), force=True)
+        page.click("#btn-dup")
+        page.wait_for_timeout(1200)
+        assert page.eval_on_selector_all("#sheet-list li", "e => e.length") == n0 + 1
+        page.click("#btn-projects")
+        page.click(f'[data-versions="{name}"]')
+        page.wait_for_selector("[data-restore]")
+        page.on("dialog", lambda d: d.accept())
+        page.locator("[data-restore]").first.click()  # newest = the copy forced above
+        page.wait_for_timeout(1500)
+        assert page.eval_on_selector_all("#sheet-list li", "e => e.length") == n0
+        assert errors == [], errors
+        browser.close()

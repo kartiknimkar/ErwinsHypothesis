@@ -580,6 +580,29 @@ def project_rename(name: str, body: RenameBody):
         raise HTTPException(400, str(e))
 
 
+class RestoreBody(BaseModel):
+    id: str
+
+
+@app.get("/api/projects/{name}/backups")
+def project_backups(name: str):
+    try:
+        return {"backups": storage.list_backups(name)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/projects/{name}/restore")
+def project_restore(name: str, body: RestoreBody):
+    try:
+        storage.restore_backup(name, body.id)
+    except FileNotFoundError:
+        raise HTTPException(404, "That backup no longer exists.")
+    except ValueError as e:
+        raise HTTPException(400, "That backup can't be used: " + str(e))
+    return {"ok": True}
+
+
 @app.delete("/api/projects/{name}")
 def project_delete(name: str):
     try:
