@@ -347,3 +347,31 @@ def test_restore_earlier_version(server):  # noqa: F811
         assert page.eval_on_selector_all("#sheet-list li", "e => e.length") == n0
         assert errors == [], errors
         browser.close()
+
+
+def test_copy_graph_and_ctrl_s(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        ctx = browser.new_context(viewport={"width": 1400, "height": 900})
+        ctx.grant_permissions(["clipboard-read", "clipboard-write"])
+        page = ctx.new_page()
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('Example: two groups')")
+        page.wait_for_timeout(500)
+        page.click("#btn-copyimg")
+        page.wait_for_selector("#toast:not([hidden])")
+        assert "copied" in page.inner_text("#toast").lower()
+        types = page.evaluate("navigator.clipboard.read().then(items => items.flatMap(i => i.types))")
+        assert "image/png" in types
+        page.evaluate("document.activeElement && document.activeElement.blur()")
+        page.keyboard.press("Control+s")
+        page.wait_for_timeout(300)
+        assert "Saved" in page.inner_text("#toast")
+        assert errors == [], errors
+        browser.close()

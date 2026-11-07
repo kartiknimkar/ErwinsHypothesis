@@ -53,3 +53,15 @@ def test_all_cells_tukey():
     ms, df = r["table"][-1]["MS"], r["table"][-1]["df"]
     q = abs(c["diff"]) / np.sqrt(ms * (1 / 6 + 1 / 6) / 2)
     assert np.isclose(c["p"], ss.studentized_range.sf(q, 6, df))
+
+
+def test_within_row_method_and_control():
+    pytest.importorskip("statsmodels")
+    from statsmodels.stats.multitest import multipletests
+    rows, cols = _data()
+    r = anova2.two_way(rows, cols, ["A", "B", "C"], method="holm", control=True)
+    assert len(r["comparisons"]) == 4 and all(c["a"] == "A" for c in r["comparisons"])
+    raw = [c["p_raw"] for c in r["comparisons"]]
+    assert np.allclose([c["p"] for c in r["comparisons"]], multipletests(raw, method="holm-sidak")[1])
+    b = anova2.two_way(rows, cols, ["A", "B", "C"], method="bonferroni")
+    assert len(b["comparisons"]) == 6 and "Bonferroni" in b["posthoc_name"]

@@ -316,6 +316,11 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] XY: connect the points (means), hide the fitted curve; correlation matrix P-value correction (Holm-Šídák / FDR);
       Kaplan-Meier table per curve (time, at risk, events, survival, CI) in results and Excel; 195 tests
 
+## Phase 0.73: Two-way corrections + copy graph (done 2026-11-07)
+- [x] Two-way within-row comparisons: Tukey/Šídák, Holm-Šídák or Bonferroni (corrected across the family),
+      optionally each column vs the first (control); matches statsmodels Holm-Šídák
+- [x] Graph "Copy" button puts a high-resolution picture on the clipboard; Ctrl+S saves now; 197 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

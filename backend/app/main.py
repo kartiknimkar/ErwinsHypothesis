@@ -334,6 +334,8 @@ class TwoWayRequest(BaseModel):
     rm: bool = False         # repeated measures across rows (same subjects at every row name)
     compare: str = "within_rows"  # within_rows | within_cols | col_means | row_means (ordinary two-way)
     rm_both: bool = False    # with rm: the same subjects in every column too (both factors repeated)
+    method: str = "default"  # within-row comparisons: default (Tukey/Šídák) | holm | bonferroni
+    control: bool = False    # within-row comparisons: each column vs the first
 
 
 @app.post("/api/twoway")
@@ -344,7 +346,7 @@ def run_twoway(req: TwoWayRequest):
         elif req.rm:
             res = anova2.two_way_rm(req.rows, req.columns, req.names, alpha=req.alpha)
         else:
-            res = anova2.two_way(req.rows, req.columns, req.names, alpha=req.alpha, compare=req.compare)
+            res = anova2.two_way(req.rows, req.columns, req.names, alpha=req.alpha, compare=req.compare, method=req.method, control=req.control)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))

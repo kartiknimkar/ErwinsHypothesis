@@ -512,7 +512,8 @@
         const body = { rows: s.data.map(r => String(r[0] || "").trim()), columns: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
           names: s.cols.slice(1).map((c, j) => c || `Group ${letter(j)}`), alpha: s.options.alpha };
         if (s.options.analysis === "multit") return ["/api/multit", { ...body, kind: s.options.mtKind || "welch", q: s.options.q || 0.05, method: s.options.mtMethod || "bh" }];
-        return ["/api/twoway", { ...body, rm: !!s.options.rm, rm_both: !!s.options.rm && !!s.options.rmBoth, compare: s.options.twCompare || "within_rows" }];
+        return ["/api/twoway", { ...body, rm: !!s.options.rm, rm_both: !!s.options.rm && !!s.options.rmBoth, compare: s.options.twCompare || "within_rows",
+          method: s.options.twMethod || "default", control: !!s.options.twControl }];
       },
       renderOptions: s => `<div class="seg"><button data-set="analysis:anova" class="${s.options.analysis !== "multit" ? "on" : ""}">Two-way ANOVA</button><button data-set="analysis:multit" class="${s.options.analysis === "multit" ? "on" : ""}">Multiple t tests (one per row name)</button></div>` +
         (s.options.analysis === "multit" ? `<p class="hint">One t test for each row name (e.g. each gene or protein), comparing the two columns. Rows with the same name are replicates. P values are corrected for the number of tests (choose how below).</p>
@@ -523,7 +524,10 @@
           ${s.options.rm ? `<label class="check"><input type="checkbox" data-opt="rmBoth" ${s.options.rmBoth ? "checked" : ""}> The same subjects in every column too (both factors repeated)</label>
             <p class="hint">${s.options.rmBoth ? "Subject 1 = the 1st value under each row name in <b>every</b> column, subject 2 = the 2nd, and so on." : "Enter each subject in the same position under every row name: the 1st value under each time point in a column is subject 1, the 2nd is subject 2, and so on."} Subjects missing a value are left out.</p>`
             : `<div class="row"><label for="opt-twcmp">Multiple comparisons</label><select id="opt-twcmp">${[["within_rows", `Compare columns within each ${esc(s.cols[0] || "row")}`], ["within_cols", `Compare ${esc(s.cols[0] || "row")} levels within each column`],
-              ["col_means", "Compare column means (main effect)"], ["all_cells", "Compare every cell mean with every other"], ["row_means", `Compare ${esc(s.cols[0] || "row")} means (main effect)`]].map(([v, l]) => `<option value="${v}" ${(s.options.twCompare || "within_rows") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>`}${alphaSelect(s)}`),
+              ["col_means", "Compare column means (main effect)"], ["all_cells", "Compare every cell mean with every other"], ["row_means", `Compare ${esc(s.cols[0] || "row")} means (main effect)`]].map(([v, l]) => `<option value="${v}" ${(s.options.twCompare || "within_rows") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+              ${(s.options.twCompare || "within_rows") === "within_rows" ? `<div class="row"><label for="opt-twmethod">Correction</label><select id="opt-twmethod">${[["default", "Tukey (Šídák for 2 columns)"], ["holm", "Holm-Šídák"], ["bonferroni", "Bonferroni"]]
+                .map(([v, l]) => `<option value="${v}" ${(s.options.twMethod || "default") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+                <label class="check"><input type="checkbox" data-opt="twControl" ${s.options.twControl ? "checked" : ""}> Only compare each column with the first (control)</label></div>` : ""}`}${alphaSelect(s)}`),
       graphControls: () => [
         sel("style", "Style", [["bars", "Bars + dots"], ["stacked", "Stacked bars (means)"], ["dots", "Dots + mean"], ["lines", "Interaction plot (means)"]]),
         sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
@@ -1693,6 +1697,7 @@
       save(); renderOptions(); scheduleRun();
     };
     const mm = $("opt-mtmethod"); if (mm) mm.onchange = e => { s.options.mtMethod = e.target.value; save(); renderOptions(); scheduleRun(); };
+    const twm = $("opt-twmethod"); if (twm) twm.onchange = e => { s.options.twMethod = e.target.value; save(); scheduleRun(); };
     const tw = $("opt-twcmp"); if (tw) tw.onchange = e => { s.options.twCompare = e.target.value; save(); scheduleRun(); };
     const pd = $("pw-design"); if (pd) pd.onchange = e => { s.options.design = e.target.value; save(); renderOptions(); scheduleRun(); };
     const c3 = $("opt-3cmp"); if (c3) c3.onchange = e => { s.options.threeCompare = e.target.value; save(); scheduleRun(); };
@@ -2331,7 +2336,7 @@
     const famHead = { within_cols: "Column", col_means: "", row_means: "", all_cells: "" }[r.compare] ?? rowF;
     if (r.compare === "col_means" || r.compare === "row_means") h += `<p class="note">Main-effect comparisons use the unweighted means of the cell means (as Prism does), so every ${r.compare === "col_means" ? "row" : "column"} counts equally. ${r.table.find(x => x.source === "Interaction").p < r.alpha ? "⚠︎ The interaction is significant, so main effects can be misleading; look at the comparisons within each row or column too." : ""}</p>`;
     h += T.multi([famHead, "Comparison", "Mean diff.", `${pct}% CI`, "Adj. P", ""], r.comparisons.map(c => ({ cls: c.significant ? "hl" : "",
-      cells: [esc(c.row), `${esc(c.a)} vs ${esc(c.b)}`, fmt(c.diff), ci(c.ci_low, c.ci_high), pOnly(c.p), st(c.stars)] })));
+      cells: [esc(c.row), `${esc(c.a)} vs ${esc(c.b)}`, fmt(c.diff), c.ci_low == null ? "—" : ci(c.ci_low, c.ci_high), pOnly(c.p), st(c.stars)] })));
     h += `<div class="opt-label" style="margin-top:10px">Cell means</div>`;
     h += T.multi([rowF, ...r.cols.map(esc)], r.rows.map((rw, i) => [esc(rw), ...r.cols.map((_, j) => {
       const c = r.cells.find(x => x.i === i && x.j === j);
@@ -3269,6 +3274,16 @@
     } catch (e) { toast(esc(e.message || "Export failed.")); }
     finally { btn.disabled = false; btn.textContent = label; }
   }
+  async function copyGraphImage() {
+    if (!lastResult || active().type === "layout") { toast(active().type === "layout" ? "For figures, export PNG and paste that." : "Add some data first."); return; }
+    try {
+      const g = active().graph, [wIn, hIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["15"];
+      const url = await Plotly.toImage($("plot"), { format: "png", width: Math.round(wIn * 96), height: Math.round(hIn * 96), scale: 3 });
+      const blob = await (await fetch(url)).blob();
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      toast("Graph copied. Paste it into PowerPoint, Word or an email (Ctrl+V).");
+    } catch (e) { toast("Couldn't copy the picture here. Use PNG instead (it saves to the exports folder)."); }
+  }
   async function exportPlot(format, convert) {
     if (!lastResult) { toast("Add some data first, then export the graph."); return; }
     if (active().type === "layout") return exportLayout(format === "png" ? (convert || "png") : null);
@@ -3501,6 +3516,7 @@
   $("btn-svg").onclick = () => exportPlot("svg");
   $("btn-tiff").onclick = () => exportPlot("png", "tiff");
   $("btn-pdf").onclick = () => exportPlot("png", "pdf");
+  $("btn-copyimg").onclick = copyGraphImage;
   $("btn-copy").onclick = copyResults;
   $("btn-xlsx").onclick = exportXlsx;
   $("btn-help").onclick = () => { $("help-backdrop").hidden = false; };
@@ -3511,6 +3527,7 @@
     if (e.key === "?" && !e.ctrlKey && !e.metaKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && !e.target.isContentEditable) { e.preventDefault(); $("help-backdrop").hidden = false; }
     const mod = e.ctrlKey || e.metaKey;
     if (!mod) return;
+    if (e.key.toLowerCase() === "s") { e.preventDefault(); saveNow(); toast("Saved."); return; }
     const inGridOrBody = e.target === document.body || e.target.closest("#grid");
     if (!inGridOrBody) return;
     if (e.key.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); undoRedo("undo"); }

@@ -64,7 +64,24 @@ def _family(pairs_by_group, k, ms_res, df_res, alpha):
     return out
 
 
-def _two_way_comparisons(compare, rows, names, mean, counts, ms_res, df_res, alpha):
+def _adjusted_family(fam, method, df_res, alpha):
+    """Pooled-error t tests for every pair in every group of the family, corrected across the whole family."""
+    from .stats import _adjust
+    flat = [(label, pr) for label, prs in fam for pr in prs]
+    m = len(flat)
+    raw = [float(2 * stats.t.sf(abs(d) / se, df_res)) if se > 0 else 0.0 for _, (_, _, d, se, _) in flat]
+    adj = _adjust(raw, method)
+    a_ci = {"bonferroni": alpha / m, "sidak": 1 - (1 - alpha) ** (1 / m)}.get(method)
+    tc = float(stats.t.ppf(1 - a_ci / 2, df_res)) if a_ci else None
+    out = []
+    for (label, (na, nb, d, se, meta)), pr, pa in zip(flat, raw, adj):
+        pa = float(min(1.0, pa))
+        out.append({"row": label, "a": na, "b": nb, "diff": float(d), "ci_low": float(d - tc * se) if tc else None,
+                    "ci_high": float(d + tc * se) if tc else None, "p_raw": pr, "p": pa, "stars": stars(pa), "significant": pa < alpha, **meta})
+    return out
+
+
+def _two_way_comparisons(compare, rows, names, mean, counts, ms_res, df_res, alpha, method="default", control=False):
     """compare: within_rows (columns compared at each row: simple effects), within_cols (rows compared in each
     column), col_means / row_means (main effects, using unweighted marginal means as Prism does)."""
     a, b = len(rows), len(names)
@@ -91,12 +108,18 @@ def _two_way_comparisons(compare, rows, names, mean, counts, ms_res, df_res, alp
                  math.sqrt(ms_res * sum(1 / counts[i1, j] + 1 / counts[i2, j] for j in range(b))) / b, {"kind": "row_means", "i1": i1, "i2": i2})
                  for i1 in range(a) for i2 in range(i1 + 1, a)])]
         return _family(fam, a, ms_res, df_res, alpha), f"{'Tukey' if a > 2 else 'Main effect'} comparisons of row means (averaged over columns)"
+    pairs = [(0, j) for j in range(1, b)] if control else [(j1, j2) for j1 in range(b) for j2 in range(j1 + 1, b)]
     fam = [(rows[i], [(names[j1], names[j2], mean[(i, j1)] - mean[(i, j2)], math.sqrt(ms_res * (1 / counts[i, j1] + 1 / counts[i, j2])),
-                       {"kind": "within_rows", "i": i, "j1": j1, "j2": j2}) for j1 in range(b) for j2 in range(j1 + 1, b)]) for i in range(a)]
-    return _family(fam, b, ms_res, df_res, alpha), f"{tk(b)} multiple comparisons (columns within each row)"
+                       {"kind": "within_rows", "i": i, "j1": j1, "j2": j2}) for j1, j2 in pairs]) for i in range(a)]
+    where = "each column vs the first, within each row" if control else "columns within each row"
+    if method == "default" and not control:
+        return _family(fam, b, ms_res, df_res, alpha), f"{tk(b)} multiple comparisons ({where})"
+    mth = "sidak" if method == "default" else method
+    nice = {"sidak": "Šídák's", "holm": "Holm-Šídák", "bonferroni": "Bonferroni's"}[mth]
+    return _adjusted_family(fam, mth, df_res, alpha), f"{nice} multiple comparisons ({where})"
 
 
-def two_way(row_labels, columns, col_names, alpha: float = 0.05, compare: str = "within_rows") -> dict:
+def two_way(row_labels, columns, col_names, alpha: float = 0.05, compare: str = "within_rows", method: str = "default", control: bool = False) -> dict:
     """row_labels: one label per data row (rows with the same label are replicates).
     columns: one list per column-factor level, aligned with row_labels."""
     obs = []
@@ -158,7 +181,7 @@ def two_way(row_labels, columns, col_names, alpha: float = 0.05, compare: str = 
             cells.append(d)
     mean = {(c["i"], c["j"]): c["mean"] for c in cells}
 
-    comps, method = _two_way_comparisons(compare, rows, names, mean, counts, ms_res, df_res, alpha)
+    comps, method = _two_way_comparisons(compare, rows, names, mean, counts, ms_res, df_res, alpha, method, control)
     inter = table[0]
     return {"test_name": "Two-way ANOVA", "rows": rows, "cols": names, "alpha": alpha,
             "table": table, "cells": cells, "comparisons": comps, "posthoc_name": method, "compare": compare,
