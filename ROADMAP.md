@@ -325,6 +325,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] XY: show the equation with every best-fit parameter value on the graph
 - [x] Empty analyses show quick-start buttons (example data, Help me choose, example project); 198 tests
 
+## Phase 0.75: Dot plot + replicate options (done 2026-11-07)
+- [x] Scatter dot plots: median with interquartile range, mean/median line color (black or group) and thickness
+- [x] XY replicates: mean ± SD with every point shown; 199 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

@@ -52,7 +52,7 @@
   // a color picked by the user for a named series wins over the palette
   const color = (g, i, name) => (name != null && g.colors && g.colors[name]) || (PALETTES[g.palette] || PALETTES.vivid)[i % 8];
   const COMMON_GRAPH = {
-    tickAngle: "auto", minorTicks: false, breakFrom: "", breakTo: "", breakSize: 35,
+    meanWidth: 3, meanColor: "black", tickAngle: "auto", minorTicks: false, breakFrom: "", breakTo: "", breakSize: 35,
     fontFamily: "Arial", textColor: "#1b2130", titleSize: "", tickSize: "",
     pointSymbol: "default", pointOpacity: 0.85, pointLine: 1, pointLineColor: "#ffffff",
     lineScale: 1, errWidth: 1.5, capWidth: 9, barOpacity: "", barLine: 1.6, pattern: "none",
@@ -386,9 +386,10 @@
       ] : [
         sel("style", "Style", [["dots", "Dots + mean"], ["bars", "Bars + dots"], ["box", "Box plot"], ["violin", "Violin plot"],
           ...(s.options.design === "repeated" ? [["lines", "Before-after (connect subjects)"]] : [])]),
-        sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
+        sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["iqr", "Median with interquartile range (dot plots)"], ["none", "None"]]),
         sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]),
         txt("ylabel", "Y axis label"), chk("showPoints", "Show points"), chk("horizontal", "Horizontal (sideways)"), chk("showN", "Show n under labels"),
+        sel("meanColor", "Mean / median line color", [["black", "Black"], ["group", "Same as the group"]]), { k: "meanWidth", label: "Mean line thickness", kind: "range", min: 1, max: 6, step: 0.5 },
       ],
       renderResults: (r, s) => r.kind === "freq" ? renderFreq(r) : r.kind === "describe" ? renderColStats(r) : renderGroupResults(r, s),
       draw: drawGroups,
@@ -612,7 +613,7 @@
       },
       graphControls: s => [
         txt("xlabel", "X axis label", s.cols[0]), txt("ylabel", "Y axis label", s.cols[1]),
-        ...(s.cols.length > 2 && s.options.yMode !== "datasets" ? [sel("repMode", "Replicates", [["mean", "Mean ± SD"], ["sem", "Mean ± SEM"], ["all", "All points"]])] : []),
+        ...(s.cols.length > 2 && s.options.yMode !== "datasets" ? [sel("repMode", "Replicates", [["mean", "Mean ± SD"], ["sem", "Mean ± SEM"], ["meanpts", "Mean ± SD with every point"], ["all", "All points"]])] : []),
         txt("xmin", "X min", "auto"), txt("xmax", "X max", "auto"), txt("xtick", "X tick every", "auto"),
         chk("logX", "Log X axis"), chk("connect", "Connect the points (means)"), chk("hideFit", "Hide the fitted curve"), chk("band", "95% confidence band"), ...(s.options.model === "linear" && s.options.yMode !== "datasets" ? [chk("predBand", "95% prediction band")] : []), chk("showEq", "Show equation"), ...(s.options.model !== "linear" ? [chk("eqParams", "…with every parameter value")] : []),
         ...(s.options.yMode === "datasets" ? [chk("symbolPerSet", "Different symbol for each data set")] : [sel("xyPlot", "Plot", [["fit", "Data + fitted curve"], ["resid", "Residual plot"]])]),
@@ -1870,7 +1871,7 @@
   const SW = "Erwin's Hypothesis";
   function reportText(r, s) {
     const pct = Math.round((1 - (r.alpha ?? 0.05)) * 100);
-    const errName = { sd: "mean ± SD", sem: "mean ± SEM", ci95: "mean ± 95% CI" }[s.graph.err] || "mean ± SD";
+    const errName = { sd: "mean ± SD", sem: "mean ± SEM", ci95: "mean ± 95% CI", iqr: "median (interquartile range)" }[s.graph.err] || "mean ± SD";
     if (s.type === "ttest" && r.kind === "freq") {
       const m = `Frequency distributions were tabulated with a bin width of ${fmt(r.bin_width)} (first bin starting at ${fmt(r.bin_start)}). Normality was assessed with the Shapiro-Wilk test and normal Q-Q plots (${SW}).`;
       const res = r.groups.map(g => `${esc(g.name)}: ${r2(g.mean)} ± ${g.sd == null ? "n/a" : r2(g.sd)} (mean ± SD, n = ${g.n})${g.shapiro ? `, Shapiro-Wilk W = ${r2(g.shapiro.W, 3)}, ${apaP(g.shapiro.p)}` : ""}`).join("; ") + ".";
@@ -3008,6 +3009,11 @@
     return { items: out, height: step * (levels.length + 1) };
   }
 
+  function quartiles(vals) {
+    const x = [...vals].sort((a, b) => a - b), n = x.length;
+    const at = p => { const h = (n + 1) * p; if (h <= 1) return x[0]; if (h >= n) return x[n - 1]; const lo = Math.floor(h); return x[lo - 1] + (h - lo) * (x[lo] - x[lo - 1]); };
+    return [at(0.25), at(0.5), at(0.75)];
+  }
   function drawGroups(el, r, s) {
     if (r.kind === "freq") return drawFreq(el, r, s);
     const g = s.graph, traces = [], shapes = [], annotations = [];
@@ -3053,10 +3059,20 @@
       }
       if (g.showPoints) traces.push({ type: "scatter", mode: "markers", x: xs, y: vals,
         marker: { color: c, size: g.pointSize, opacity: 0.85, line: { color: "#fff", width: 1 } }, hovertemplate: `${esc(stt.name)}: %{y}<extra></extra>` });
-      if (g.style === "dots") traces.push({ type: "scatter", mode: "markers", x: [i], y: [stt.mean],
-        marker: { symbol: "line-ew", size: 40, line: { width: 3, color: "#1b2130" } },
-        error_y: { type: "data", array: [err || 0], visible: g.err !== "none", color: "#1b2130", thickness: 1.5, width: 11 },
-        hovertemplate: `Mean ${fmt(stt.mean)}<extra></extra>` });
+      if (g.style === "dots") {
+        const lc = g.meanColor === "group" ? c : "#1b2130", lw = Number(g.meanWidth) || 3;
+        if (g.err === "iqr" && vals.length) {
+          // median with interquartile range (quartiles by the (n+1)p rule, as in column statistics)
+          const q = quartiles(vals);
+          traces.push({ type: "scatter", mode: "markers", x: [i], y: [q[1]], marker: { symbol: "line-ew", size: 40, line: { width: lw, color: lc } },
+            error_y: { type: "data", symmetric: false, array: [q[2] - q[1]], arrayminus: [q[1] - q[0]], color: lc, thickness: 1.5, width: 11 },
+            hovertemplate: `Median ${fmt(q[1])} (IQR ${fmt(q[0])} – ${fmt(q[2])})<extra></extra>` });
+          ymax = Math.max(ymax, q[2]);
+        } else traces.push({ type: "scatter", mode: "markers", x: [i], y: [stt.mean],
+          marker: { symbol: "line-ew", size: 40, line: { width: lw, color: lc } },
+          error_y: { type: "data", array: [err || 0], visible: g.err !== "none", color: lc, thickness: 1.5, width: 11 },
+          hovertemplate: `Mean ${fmt(stt.mean)}<extra></extra>` });
+      }
     });
     const span = (ymax - Math.min(0, ymin)) || 1;
     let topExtra = span * 0.06;
@@ -3121,6 +3137,11 @@
         const sd = n > 1 ? Math.sqrt(p.ys.reduce((a, b) => a + (b - m) ** 2, 0) / (n - 1)) : 0;
         return { x: p.x, m, e: g.repMode === "sem" ? sd / Math.sqrt(n) : sd };
       });
+      if (g.repMode === "meanpts") {
+        const pts = rows.flatMap(p => p.ys.map(y => [p.x, y]));
+        traces.push({ x: pts.map(p => p[0]), y: pts.map(p => p[1]), mode: "markers", marker: { color: c0, size: Math.max(3, g.pointSize * 0.6), opacity: 0.5 },
+          hovertemplate: "(%{x}, %{y})<extra></extra>" });
+      }
       traces.push({ x: stats.map(p => p.x), y: stats.map(p => p.m), mode: "markers",
         marker: { color: "#1b2130", size: g.pointSize, line: { color: "#fff", width: 1 } },
         error_y: { type: "data", array: stats.map(p => p.e), color: "#1b2130", thickness: 1.4, width: 5 }, hovertemplate: "(%{x}, %{y:.4g})<extra></extra>" });

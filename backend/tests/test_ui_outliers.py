@@ -394,3 +394,33 @@ def test_quick_start_buttons(server):  # noqa: F811
         page.wait_for_selector("#plot .main-svg", timeout=10000)
         assert errors == [], errors
         browser.close()
+
+
+def test_median_iqr_and_rep_points(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('three groups')")
+        page.wait_for_timeout(500)
+        if page.is_hidden("#graph-format"):
+            page.click("#btn-format")
+        page.select_option('#graph-format [data-g="style"]', "dots")
+        page.select_option('#graph-format [data-g="err"]', "iqr")
+        page.wait_for_timeout(400)
+        assert page.evaluate("document.getElementById('plot').data.some(t => t.error_y && t.error_y.symmetric === false && t.error_y.arrayminus)")
+        page.click("#sheet-list li:has-text('dose-respon')")
+        page.wait_for_timeout(600)
+        page.select_option('#graph-format [data-g="xyPlot"]', "fit")  # shared server: an earlier test may have set the residual plot
+        page.uncheck('#graph-format [data-g="hideFit"]')
+        page.select_option('#graph-format [data-g="repMode"]', "meanpts")
+        page.wait_for_timeout(400)
+        assert page.evaluate("document.getElementById('plot').data.filter(t => t.mode === 'markers').length") >= 2
+        assert errors == [], errors
+        browser.close()
