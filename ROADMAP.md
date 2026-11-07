@@ -340,6 +340,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 ## Phase 0.78: Sign test + proportion CIs (done 2026-11-07)
 - [x] Column statistics: sign test vs the hypothetical value; contingency: each row's proportion with a Wilson CI; 203 tests
 
+## Phase 0.79: Number formats + table footer (done 2026-11-07)
+- [x] Format: Y and X axis number formats (decimals, thousands separator, scientific)
+- [x] Data table footer shows n and mean of each number column, updating as you type; 204 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

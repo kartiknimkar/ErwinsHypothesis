@@ -452,3 +452,32 @@ def test_copy_results_as_table_and_twoway_n(server):  # noqa: F811
         assert "n = " in page.inner_text("#plot")
         assert errors == [], errors
         browser.close()
+
+
+def test_grid_footer_and_number_format(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#btn-new"); page.click('#new-menu button[data-type="ttest"]')
+        page.wait_for_selector("#qs-example")
+        page.click("#qs-example")
+        page.wait_for_selector("#grid tfoot")
+        foot = page.inner_text("#grid tfoot")
+        assert "n 8" in foot and "mean" in foot
+        page.fill('#grid input[data-r="8"][data-c="0"]', "10")
+        page.wait_for_timeout(500)
+        assert "n 9" in page.inner_text("#grid tfoot")
+        if page.is_hidden("#graph-format"):
+            page.click("#btn-format")
+        page.select_option('#graph-format [data-g="yFormat"]', "d2")
+        page.wait_for_timeout(400)
+        assert page.evaluate("document.getElementById('plot').layout.yaxis.tickformat") == ",.2f"
+        assert errors == [], errors
+        browser.close()

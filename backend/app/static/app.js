@@ -181,6 +181,9 @@
     if (g.legendPos === "hide" || g.legend === "hide") layout.showlegend = false;
     if (g.legendXY && layout.showlegend) layout.legend = { ...(layout.legend || {}), ...g.legendXY };
     if (layout.xaxis && g.tickAngle !== undefined && g.tickAngle !== "auto") layout.xaxis.tickangle = Number(g.tickAngle);
+    const NUMFMT = { d0: ",.0f", d1: ",.1f", d2: ",.2f", d3: ",.3f", sci: ".2~e", comma: ",~r", pct: ".0%" };
+    ["yaxis", "yaxis2"].forEach(k => { if (layout[k] && NUMFMT[g.yFormat] && layout[k].type !== "log") layout[k].tickformat = NUMFMT[g.yFormat]; });
+    if (layout.xaxis && NUMFMT[g.xFormat] && !layout.xaxis.tickvals && layout.xaxis.type !== "log") layout.xaxis.tickformat = NUMFMT[g.xFormat];
     if (g.minorTicks) Object.keys(layout).filter(k => /^[xy]axis\d*$/.test(k)).forEach(k => {
       const a = layout[k];
       if (a.showline && a.type !== "category" && !a.tickvals) a.minor = { ticks: g.tickDir === "none" ? "" : g.tickDir, ticklen: Math.max(2, Number(g.tickLen) / 2), tickwidth: Number(g.axisWidth) * 0.7, tickcolor: g.textColor };
@@ -1124,7 +1127,7 @@
     // big tables: draw the first rows now and the rest as the table is scrolled (keeps typing and switching fast)
     gridShown = Math.min(s.data.length, Math.max(GRID_CHUNK, gridShownFor[s.id] || 0));
     for (let i = 0; i < gridShown; i++) h += gridRowHTML(s, t, i);
-    $("grid").innerHTML = h + gridMoreHTML(s) + "</tbody>";
+    $("grid").innerHTML = h + gridMoreHTML(s) + "</tbody>" + gridFootHTML(s, t);
     $("data-hint").textContent = t.hint;
     const add = $("btn-addcol");
     add.textContent = t.addLabel;
@@ -1142,6 +1145,26 @@
       h += `<td><input class="cell${text ? " txt" : ""}${bad}" data-r="${i}" data-c="${j}" value="${esc(v)}" ${text ? "" : 'inputmode="decimal"'} spellcheck="false"></td>`;
     });
     return h + "</tr>";
+  }
+  // footer under the table: n and mean of each number column (updates as you type)
+  function gridFootHTML(s, t) {
+    let any = false;
+    const cells = s.cols.map((_, j) => {
+      if (isTextCol(t, j)) return "<td></td>";
+      const v = s.data.map((r, i) => isExcluded(s, i, j) ? null : num(r[j])).filter(x => x !== null);
+      if (!v.length) return "<td></td>";
+      any = true;
+      const m = v.reduce((a, b) => a + b, 0) / v.length;
+      return `<td title="Number of values and mean (excluded values left out)">n ${v.length} · mean ${fmt(m, 4)}</td>`;
+    }).join("");
+    return any ? `<tfoot><tr><td class="rownum">Σ</td>${cells}</tr></tfoot>` : "";
+  }
+  function updateGridFoot() {
+    const s = active(), t = TYPES[s.type], grid = $("grid");
+    if (t.noData) return;
+    const old = grid.querySelector("tfoot");
+    if (old) old.remove();
+    grid.insertAdjacentHTML("beforeend", gridFootHTML(s, t));
   }
   const gridMoreHTML = s => gridShown < s.data.length
     ? `<tr class="grid-more"><td colspan="${s.cols.length + 1}">Showing ${gridShown.toLocaleString()} of ${s.data.length.toLocaleString()} rows. Scroll down for more (all rows are used in the analysis).</td></tr>` : "";
@@ -1177,8 +1200,10 @@
     const before = s.data.length;
     padRows(s);
     if (s.data.length !== before) { renderGrid(); cellAt(+el.dataset.r, c).focus(); }
+    clearTimeout(footTimer); footTimer = setTimeout(updateGridFoot, 250);
     save(); scheduleRun();
   }
+  let footTimer = null;
   function onGridPaste(e) {
     const el = e.target;
     if (el.dataset.r === undefined) return;
@@ -1763,6 +1788,8 @@
       rng("barLine", "Outline width", 0, 4, 0.25), sel("pattern", "Pattern", [["none", "None"], ["/", "Diagonal ////"], ["\\", "Diagonal \\\\"], ["x", "Cross-hatch"], [".", "Dots"], ["-", "Horizontal"], ["|", "Vertical"], ["vary", "Different per series"]]),
       head("Axes & background"), rng("axisWidth", "Axis thickness", 0.5, 4, 0.25), sel("tickDir", "Ticks", [["outside", "Outside"], ["inside", "Inside"], ["none", "None"]]),
       rng("tickLen", "Tick length", 0, 12), chk("minorTicks", "Minor ticks"), chk("grid", "Gridlines"),
+      sel("yFormat", "Y numbers", [["auto", "Automatic"], ["d0", "1,234"], ["d1", "1,234.5"], ["d2", "1,234.56"], ["d3", "1.234 (3 decimals)"], ["sci", "Scientific (1.2e+3)"], ["comma", "Thousands separator"]]),
+      sel("xFormat", "X numbers", [["auto", "Automatic"], ["d0", "1,234"], ["d1", "1,234.5"], ["d2", "1,234.56"], ["sci", "Scientific (1.2e+3)"], ["comma", "Thousands separator"]]),
       sel("tickAngle", "X label angle", [["auto", "Automatic"], ["0", "Horizontal"], ["-30", "Slanted 30°"], ["-45", "Slanted 45°"], ["-90", "Vertical"]]),
       ...(["ttest", "summary", "twoway", "contingency", "nested"].includes(s.type) ? [txt("breakFrom", "Break Y axis from", "none"), txt("breakTo", "… to", "none"),
         rng("breakSize", "Lower part height %", 15, 80, 5)] : []), sel("bg", "Background", [["white", "White"], ["transparent", "Transparent (for figures)"], ["light", "Light gray plot area"]]),
