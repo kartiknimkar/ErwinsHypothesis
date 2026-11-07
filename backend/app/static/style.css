@@ -282,3 +282,6 @@ kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; background: var(--sof
 .notes-box textarea { width: 100%; margin-top: 6px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; background: var(--panel); color: var(--ink); resize: vertical; }
 .reuse-menu { position: absolute; left: auto; right: 120px; width: auto; top: 44px; z-index: 30; min-width: 320px; }
 .sheet-header { position: relative; }
+/* keyboard users: a clear focus ring (mouse clicks don't show it) */
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px; }

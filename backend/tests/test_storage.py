@@ -134,3 +134,9 @@ def test_backups_rotate_and_restore(client, monkeypatch):
     assert c.get("/api/projects/Exp").json()["k"] == 2  # backups held versions 2..6; the oldest kept is k=2
     assert c.post("/api/projects/Exp/restore", json={"id": "../../Exp.ehp"}).status_code in (400, 404)
     assert c.get("/api/projects/Nope/backups").json()["backups"] == []
+
+
+def test_health_reports_writable(client):
+    c, home = client
+    h = c.get("/api/health").json()
+    assert h["status"] == "ok" and h["writable"] is True

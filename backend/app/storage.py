@@ -75,6 +75,18 @@ def _inside(path: Path, folder: Path) -> Path:
 
 # ---- projects ------------------------------------------------------------
 
+def writable() -> tuple[bool, str]:
+    """Can the app save in its folder? (False on read-only drives, or folders without permission.)"""
+    try:
+        d = projects_dir()
+        test = d / ".write-test"
+        test.write_text("ok", encoding="utf-8")
+        test.unlink()
+        return True, str(d)
+    except OSError as e:
+        return False, f"{home()}: {e.strerror or e}"
+
+
 def list_projects() -> list[dict]:
     out = []
     for p in projects_dir().glob("*" + EXT):

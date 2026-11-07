@@ -351,6 +351,9 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] "Analyze another way": copy the numbers into a new Compare-groups, XY, multiple-variables or ROC/method analysis
 - [x] XY results: save the fitted curve as an X, Y table (Excel); 206 tests
 
+## Phase 0.82: Accessibility + folder check (done 2026-11-07)
+- [x] Labels for icon buttons, visible keyboard focus ring; startup warns clearly if the app folder isn't writable; 207 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

@@ -3672,6 +3672,9 @@
 
   // start: reopen the last project, or create one full of examples
   (async () => {
+    api("/api/health").then(h => {
+      if (h && h.writable === false) toast(`⚠︎ The app can't save in its folder (${esc(h.folder)}). Move the app folder somewhere you can write to, e.g. your Documents or Desktop, then start it again.`);
+    }).catch(() => {});
     api("/api/models").then(r => { if (r.models) MODELS = r.models; }).catch(() => {});
     try {
       const { projects, last } = await api("/api/projects");

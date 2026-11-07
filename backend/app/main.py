@@ -139,7 +139,8 @@ class RegressionRequest(BaseModel):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    ok, where = storage.writable()
+    return {"status": "ok", "writable": ok, "folder": where}
 
 
 @app.post("/api/ttest")
