@@ -308,6 +308,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] RM one-way ANOVA: Tukey, or Holm-Šídák / Šídák / Bonferroni / LSD (pooled error), all pairs or vs control;
       Friedman: Dunn's all pairs or vs control; 194 tests
 
+## Phase 0.71: Small polish (done 2026-11-07)
+- [x] "Show n under labels" for group graphs (subjects for nested); guide reaches Kolmogorov-Smirnov and the ratio
+      paired t test (every analysis type is now reachable from "Help me choose"); 194 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

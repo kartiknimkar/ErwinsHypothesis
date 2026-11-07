@@ -388,7 +388,7 @@
           ...(s.options.design === "repeated" ? [["lines", "Before-after (connect subjects)"]] : [])]),
         sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
         sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]),
-        txt("ylabel", "Y axis label"), chk("showPoints", "Show points"), chk("horizontal", "Horizontal (sideways)"),
+        txt("ylabel", "Y axis label"), chk("showPoints", "Show points"), chk("horizontal", "Horizontal (sideways)"), chk("showN", "Show n under labels"),
       ],
       renderResults: (r, s) => r.kind === "freq" ? renderFreq(r) : r.kind === "describe" ? renderColStats(r) : renderGroupResults(r, s),
       draw: drawGroups,
@@ -444,7 +444,7 @@
       graphControls: () => [
         sel("err", "Error bars", [["sd", "Mean ± SD of subject means"], ["sem", "Mean ± SEM (model)"], ["none", "None"]]),
         sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]),
-        txt("ylabel", "Y axis label"), chk("showPoints", "Show every replicate"), chk("horizontal", "Horizontal (sideways)"),
+        txt("ylabel", "Y axis label"), chk("showPoints", "Show every replicate"), chk("horizontal", "Horizontal (sideways)"), chk("showN", "Show n (subjects) under labels"),
       ],
       renderResults: (r, s) => renderNested(r, s),
       draw: drawNested,
@@ -480,7 +480,7 @@
       graphControls: () => [
         sel("style", "Style", [["bars", "Bars"], ["dots", "Mean only"]]),
         sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
-        sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]), txt("ylabel", "Y axis label"), chk("horizontal", "Horizontal (sideways)"),
+        sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]), txt("ylabel", "Y axis label"), chk("horizontal", "Horizontal (sideways)"), chk("showN", "Show n under labels"),
       ],
       renderResults: (r, s) => renderGroupResults(r, s) + `<p class="note">Computed from summary data (mean, ${s.options.err === "sem" ? "SEM" : "SD"}, n).</p>`,
       draw: drawGroups,
@@ -1391,12 +1391,16 @@
     ["Compare groups", "e.g. control vs treated; several doses; before vs after", { q: "How are your groups defined?", opts: [
       ["By one factor", "e.g. treatment only (control, drug A, drug B)", { q: "How many groups?", opts: [
         ["Two groups", "", { q: "Are the same subjects measured in both groups?", opts: [
-          ["No: different subjects", "e.g. separate mice per group", NORMAL_Q(n => n
-            ? rec("Welch's t test", "Compares two independent means without assuming equal spread; a safe default.", "ttest", s => { s.options.design = "independent"; s.options.kind2i = "welch"; })
-            : rec("Mann-Whitney test", "Compares two independent groups by ranks; no normality needed.", "ttest", s => { s.options.design = "independent"; s.options.kind2i = "mannwhitney"; }))],
-          ["Yes: before/after or matched pairs", "each row is one subject or pair", NORMAL_Q(n => n
-            ? rec("Paired t test", "Tests whether the average within-subject difference is zero.", "ttest", s => { s.options.design = "repeated"; s.options.kind2r = "paired"; })
-            : rec("Wilcoxon signed-rank test", "Nonparametric paired test on the within-subject differences.", "ttest", s => { s.options.design = "repeated"; s.options.kind2r = "wilcoxon"; }))] ] }],
+          ["No: different subjects", "e.g. separate mice per group", { q: "What do you want to compare?", opts: [
+            ["Typical values", "means or medians: the usual question", NORMAL_Q(n => n
+              ? rec("Welch's t test", "Compares two independent means without assuming equal spread; a safe default.", "ttest", s => { s.options.design = "independent"; s.options.kind2i = "welch"; })
+              : rec("Mann-Whitney test", "Compares two independent groups by ranks; no normality needed.", "ttest", s => { s.options.design = "independent"; s.options.kind2i = "mannwhitney"; }))],
+            ["The whole distribution", "shape and spread as well as location", rec("Kolmogorov-Smirnov test", "Compares the two groups' entire distributions; no normality needed.", "ttest", s => { s.options.design = "independent"; s.options.kind2i = "ks"; })] ] }],
+          ["Yes: before/after or matched pairs", "each row is one subject or pair", { q: "How does the treatment change the values?", opts: [
+            ["Adds or subtracts", "e.g. blood pressure falls by 10 mmHg", NORMAL_Q(n => n
+              ? rec("Paired t test", "Tests whether the average within-subject difference is zero.", "ttest", s => { s.options.design = "repeated"; s.options.kind2r = "paired"; })
+              : rec("Wilcoxon signed-rank test", "Nonparametric paired test on the within-subject differences.", "ttest", s => { s.options.design = "repeated"; s.options.kind2r = "wilcoxon"; }))],
+            ["Multiplies (fold change)", "e.g. expression doubles; values are all > 0", rec("Ratio paired t test", "A paired t test on logarithms: reports the average fold change with its confidence interval.", "ttest", s => { s.options.design = "repeated"; s.options.kind2r = "ratio_paired"; })] ] }] ] }],
         ["Three or more groups", "", { q: "Are the same subjects measured in every group?", opts: [
           ["No: different subjects", "", NORMAL_Q(n => n
             ? rec("One-way ANOVA + Tukey", "Tests whether any group mean differs, then compares every pair with Tukey's test. If the results warn that spreads differ, switch to Welch's ANOVA.", "ttest", s => { s.options.design = "independent"; s.cols = ["Group A", "Group B", "Group C"]; s.data = s.data.map(r => [...r, ""]); s.options.kind3i = "ordinary"; })
@@ -2136,7 +2140,7 @@
       topExtra = Math.max(topExtra, height + span * 0.04);
     }
     styledReact(el, traces, { ...baseLayout(g), shapes, annotations, meta: "flippable",
-      xaxis: axis(g, { tickvals: r.groups.map((_, i) => i), ticktext: r.groups.map(x => esc(x.name)), range: [-0.6, r.groups.length - 0.4] }),
+      xaxis: axis(g, { tickvals: r.groups.map((_, i) => i), ticktext: r.groups.map(x => esc(x.name) + (g.showN ? `<br><span style="font-size:0.8em">n = ${x.n_subjects}</span>` : "")), range: [-0.6, r.groups.length - 0.4] }),
       yaxis: yAxis(g, g.ylabel, { range: [ymin - span * 0.08, ymax + topExtra] }) }, PLOT_CONFIG);
   }
   function descTable(groups) {
@@ -3054,7 +3058,7 @@
     }
     const lo = g.style === "bars" ? Math.min(0, ymin) : ymin - span * 0.08;
     styledReact(el, traces, { ...baseLayout(g), shapes, annotations, meta: "flippable",
-      xaxis: axis(g, { tickvals: groups.map((_, i) => i), ticktext: r.groups.map(x => esc(x.name)), range: [-0.6, groups.length - 0.4] }),
+      xaxis: axis(g, { tickvals: groups.map((_, i) => i), ticktext: r.groups.map(x => esc(x.name) + (g.showN && x.n != null ? `<br><span style="font-size:0.8em">n = ${x.n}</span>` : "")), range: [-0.6, groups.length - 0.4] }),
       yaxis: yAxis(g, g.ylabel, { range: [lo, ymax + topExtra] }) }, PLOT_CONFIG);
   }
 

@@ -108,8 +108,11 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (ah) README: full feature list refresh for the user
 - [x] (ai) repeated-measures one-way ANOVA: comparison choices (Tukey, Dunnett vs control, Holm-Šídák, Bonferroni)
 - [x] (aj) Friedman: Dunn's vs control option
-- [ ] (ak) column graphs: option to show n under each group label
-- [ ] (al) Help me choose: entries for ratio paired t, Kolmogorov-Smirnov, nested, three-way, Deming (check all types reachable)
+- [x] (ak) column graphs: option to show n under each group label
+- [x] (al) Help me choose: entries for ratio paired t, Kolmogorov-Smirnov, nested, three-way, Deming (check all types reachable)
+- [ ] (am) XY: error bars on X (when X replicates aren't used) — skip unless asked; instead: XY graph option to connect points with lines (no fit)
+- [ ] (an) correlation matrix: optional P-value correction (Holm / FDR) for the many pairs
+- [ ] (ao) survival: export the Kaplan-Meier table (time, at risk, events, survival, CI) to Excel via results
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →
