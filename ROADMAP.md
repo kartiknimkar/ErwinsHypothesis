@@ -321,6 +321,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
       optionally each column vs the first (control); matches statsmodels Holm-Šídák
 - [x] Graph "Copy" button puts a high-resolution picture on the clipboard; Ctrl+S saves now; 197 tests
 
+## Phase 0.74: Equation values + quick start (done 2026-11-07)
+- [x] XY: show the equation with every best-fit parameter value on the graph
+- [x] Empty analyses show quick-start buttons (example data, Help me choose, example project); 198 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

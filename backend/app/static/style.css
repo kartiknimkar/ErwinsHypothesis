@@ -272,3 +272,5 @@ kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; background: var(--sof
 .grid tr.grid-more td { text-align: center; color: var(--muted); font-size: 12px; padding: 10px; background: var(--soft); }
 .project-list li.versions { display: block; background: var(--soft); border-radius: 8px; padding: 6px 10px; }
 .project-list li.versions div { display: flex; align-items: center; justify-content: space-between; padding: 2px 0; font-size: 12.5px; }
+.empty .quick { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 14px 0 10px; }
+.empty small { color: var(--muted); }

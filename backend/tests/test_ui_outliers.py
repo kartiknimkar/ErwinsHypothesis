@@ -375,3 +375,22 @@ def test_copy_graph_and_ctrl_s(server):  # noqa: F811
         assert "Saved" in page.inner_text("#toast")
         assert errors == [], errors
         browser.close()
+
+
+def test_quick_start_buttons(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#btn-new"); page.click('#new-menu button[data-type="ttest"]')
+        page.wait_for_selector("#qs-example")
+        page.click("#qs-example")
+        page.wait_for_selector("#plot .main-svg", timeout=10000)
+        assert errors == [], errors
+        browser.close()

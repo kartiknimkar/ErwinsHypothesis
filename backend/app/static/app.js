@@ -614,7 +614,7 @@
         txt("xlabel", "X axis label", s.cols[0]), txt("ylabel", "Y axis label", s.cols[1]),
         ...(s.cols.length > 2 && s.options.yMode !== "datasets" ? [sel("repMode", "Replicates", [["mean", "Mean ± SD"], ["sem", "Mean ± SEM"], ["all", "All points"]])] : []),
         txt("xmin", "X min", "auto"), txt("xmax", "X max", "auto"), txt("xtick", "X tick every", "auto"),
-        chk("logX", "Log X axis"), chk("connect", "Connect the points (means)"), chk("hideFit", "Hide the fitted curve"), chk("band", "95% confidence band"), ...(s.options.model === "linear" && s.options.yMode !== "datasets" ? [chk("predBand", "95% prediction band")] : []), chk("showEq", "Show equation"),
+        chk("logX", "Log X axis"), chk("connect", "Connect the points (means)"), chk("hideFit", "Hide the fitted curve"), chk("band", "95% confidence band"), ...(s.options.model === "linear" && s.options.yMode !== "datasets" ? [chk("predBand", "95% prediction band")] : []), chk("showEq", "Show equation"), ...(s.options.model !== "linear" ? [chk("eqParams", "…with every parameter value")] : []),
         ...(s.options.yMode === "datasets" ? [chk("symbolPerSet", "Different symbol for each data set")] : [sel("xyPlot", "Plot", [["fit", "Data + fitted curve"], ["resid", "Residual plot"]])]),
       ],
       renderResults: (r, s) => r.multi ? renderMultiFit(r, s) : renderXYResults(r, s),
@@ -2979,7 +2979,13 @@
     el.style.height = s.type === "layout" && lastResult ? "auto" : "";
     if (!lastResult) {
       Plotly.purge(el);
-      el.innerHTML = `<div class="empty"><div>Your graph appears here once there is enough data.<br>Click <b>Example</b> to see how it works.</div></div>`;
+      el.innerHTML = `<div class="empty"><div>Your graph appears here once there is enough data.
+        <div class="quick"><button class="primary small" id="qs-example">Fill in example data</button><button class="ghost small" id="qs-guide">Help me choose an analysis</button>
+        <button class="ghost small" id="qs-project">Open a project with every example</button></div>
+        <small>Or paste your numbers from Excel into the table. Press <kbd>?</kbd> for quick help.</small></div></div>`;
+      $("qs-example").onclick = () => $("btn-example").click();
+      $("qs-guide").onclick = () => showGuide();
+      $("qs-project").onclick = () => $("btn-examples").click();
       return;
     }
     if (el.querySelector(".empty")) el.innerHTML = "";
@@ -3136,6 +3142,7 @@
     const annotations = [];
     if (g.showEq) {
       let text = r.model === "linear" ? `${r.equation}<br>R² = ${fmt(r.r_squared, 4)}` : `${r.derived[0] ? `${r.derived[0].name} = ${fmt(r.derived[0].value)}<br>` : ""}R² = ${fmt(r.r_squared, 4)}`;
+      if (g.eqParams && r.params) text = `${esc(r.equation || "")}<br>` + r.params.map(p => `${esc(p.name)} = ${fmt(p.value, 4)}${p.fixed ? " (fixed)" : ""}`).join("<br>") + `<br>R² = ${fmt(r.r_squared, 4)}`;
       // put the label in the empty corner: top-left for rising curves, top-right for falling ones
       const falling = curve.y[curve.y.length - 1] < curve.y[0];
       annotations.push({ xref: "paper", yref: "paper", x: falling ? 0.98 : 0.02, y: 0.98, xanchor: falling ? "right" : "left", yanchor: "top",
