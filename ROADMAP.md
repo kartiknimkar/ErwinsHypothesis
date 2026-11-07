@@ -61,6 +61,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Bland-Altman (bias, limits of agreement with CIs, proportional-bias check)
 - [x] 79 tests
 
+## Phase 0.14: Transform & normalize (done 2026-11-06)
+- [x] Transform dialog → new analysis: normalize 0–100% (min/max or chosen values), % of first row,
+      log10, ln, reciprocal, square root, Y×K+C; X transforms for XY tables
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

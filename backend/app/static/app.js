@@ -660,6 +660,77 @@
   }
 
   // ======================================================================
+  // transform / normalize into a new analysis
+  // ======================================================================
+  const TRANSFORMS = [
+    ["minmax", "Normalize each column to 0–100%", "Smallest value → 0%, largest → 100%."],
+    ["ref", "Normalize to chosen 0% and 100% values", "e.g. 0% = background, 100% = untreated control."],
+    ["baseline", "Percent of the first row", "Each column divided by its first value × 100 (e.g. % of time 0)."],
+    ["log10", "Log10", "Values ≤ 0 become blank."],
+    ["ln", "Natural log (ln)", "Values ≤ 0 become blank."],
+    ["recip", "Reciprocal (1/Y)", "Zero becomes blank."],
+    ["sqrt", "Square root", "Negative values become blank."],
+    ["linear", "Y × K + C", "Multiply and/or add a constant (e.g. unit conversion)."],
+  ];
+  // which columns hold Y values (numbers to transform) for each analysis type
+  const yCols = s => s.type === "regression" || s.type === "survival" || s.type === "twoway" || s.type === "contingency"
+    ? s.cols.map((_, j) => j).slice(1) : s.cols.map((_, j) => j);
+  function showTransform() {
+    const s = active();
+    if (s.type === "survival" || s.type === "contingency") { toast("Transforms aren't meaningful for survival or contingency data."); return; }
+    const op = s._tf || "minmax";
+    $("tf-body").innerHTML = TRANSFORMS.map(([k, name, d]) => `<label class="choice ${op === k ? "on" : ""}"><input type="radio" name="tf" value="${k}" ${op === k ? "checked" : ""}><span><b>${name}</b><small>${d}</small></span></label>`).join("") +
+      `<div class="row" id="tf-params"></div>` + (s.type === "regression" ? `<label class="check"><input type="checkbox" id="tf-x"> Transform X instead of Y (log10 / ln / reciprocal / square root only)</label>` : "");
+    const params = () => {
+      const k = $("tf-body").querySelector("input[name=tf]:checked").value;
+      $("tf-params").innerHTML = k === "ref" ? `<label>0% =</label><input type="text" id="tf-a" value="0" style="width:80px"><label>100% =</label><input type="text" id="tf-b" value="100" style="width:80px">`
+        : k === "linear" ? `<label>K =</label><input type="text" id="tf-a" value="1" style="width:80px"><label>C =</label><input type="text" id="tf-b" value="0" style="width:80px">` : "";
+      $("tf-body").querySelectorAll(".choice").forEach(c => c.classList.toggle("on", c.querySelector("input").checked));
+    };
+    $("tf-body").querySelectorAll("input[name=tf]").forEach(r => r.onchange = params);
+    params();
+    $("transform-backdrop").hidden = false;
+  }
+  function applyTransform() {
+    const s = active(), k = $("tf-body").querySelector("input[name=tf]:checked").value;
+    const a = num($("tf-a") && $("tf-a").value), b = num($("tf-b") && $("tf-b").value);
+    const onX = $("tf-x") && $("tf-x").checked;
+    if (onX && !["log10", "ln", "recip", "sqrt"].includes(k)) { toast("For X, choose log10, ln, reciprocal or square root."); return; }
+    if (k === "ref" && (a === null || b === null || a === b)) { toast("Enter two different numbers for 0% and 100%."); return; }
+    if (k === "linear" && (a === null || b === null)) { toast("Enter numbers for K and C."); return; }
+    const cols = onX ? [0] : yCols(s);
+    const copy = JSON.parse(JSON.stringify(s));
+    copy.id = uid();
+    const name = TRANSFORMS.find(t => t[0] === k)[1];
+    copy.title = `${s.title} (${onX ? "X: " : ""}${name.toLowerCase().replace("normalize each column to ", "normalized ").replace("normalize to chosen 0% and 100% values", "normalized")})`;
+    const f = { log10: v => v > 0 ? Math.log10(v) : null, ln: v => v > 0 ? Math.log(v) : null, recip: v => v !== 0 ? 1 / v : null,
+      sqrt: v => v >= 0 ? Math.sqrt(v) : null, linear: v => v * a + b, ref: v => (v - a) / (b - a) * 100 };
+    cols.forEach(j => {
+      const vals = copy.data.map(r => num(r[j]));
+      const present = vals.filter(v => v !== null);
+      if (!present.length) return;
+      let fn = f[k];
+      if (k === "minmax") { const lo = Math.min(...present), hi = Math.max(...present); fn = v => hi === lo ? null : (v - lo) / (hi - lo) * 100; }
+      if (k === "baseline") { const first = present[0]; fn = v => first ? v / first * 100 : null; }
+      copy.data.forEach((r, i) => { if (vals[i] !== null) { const out = fn(vals[i]); r[j] = out === null || !isFinite(out) ? "" : String(Number(out.toPrecision(10))); } });
+    });
+    let dropped = 0;
+    if (onX && copy.type === "regression") {
+      copy.options.xIsLog = k === "log10"; copy.graph.logX = false;
+      // a blank X means "unknown sample" in XY tables, so rows whose X has no transform are left out
+      copy.data = copy.data.filter((r, i) => { const bad = num(s.data[i][0]) !== null && r[0] === ""; if (bad) dropped++; return !bad; });
+      padRows(copy);
+    }
+    if (["minmax", "ref", "baseline"].includes(k) && copy.graph.ylabel !== undefined) copy.graph.ylabel = (copy.graph.ylabel || copy.cols[1] || "Response").replace(/ ?\(%\)$/, "") + " (%)";
+    const idx = project.sheets.findIndex(x => x.id === s.id);
+    project.sheets.splice(idx + 1, 0, copy);
+    project.activeId = copy.id; s._tf = k;
+    $("transform-backdrop").hidden = true;
+    save(); renderAll();
+    toast(`Created <b>${esc(copy.title)}</b>${dropped ? `. ${dropped} row(s) left out (X couldn't be transformed, e.g. log of 0)` : ""}`);
+  }
+
+  // ======================================================================
   // options & graph format panel
   // ======================================================================
   function renderOptions() {
@@ -1412,6 +1483,10 @@
   };
   $("btn-addcol").onclick = addColumn;
   $("btn-import-data").onclick = () => $("file-data").click();
+  $("btn-transform").onclick = showTransform;
+  $("tf-close").onclick = () => { $("transform-backdrop").hidden = true; };
+  $("transform-backdrop").onclick = e => { if (e.target.id === "transform-backdrop") $("transform-backdrop").hidden = true; };
+  $("tf-apply").onclick = applyTransform;
   $("file-data").onchange = e => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ""; };
   $("btn-example").onclick = () => { recordUndo(true); applyExample(active()); save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun(); };
   $("btn-clear").onclick = () => {
@@ -1431,7 +1506,7 @@
   $("btn-copy").onclick = copyResults;
   $("btn-xlsx").onclick = exportXlsx;
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") hideProjects();
+    if (e.key === "Escape") { hideProjects(); $("transform-backdrop").hidden = true; }
     const mod = e.ctrlKey || e.metaKey;
     if (!mod) return;
     const inGridOrBody = e.target === document.body || e.target.closest("#grid");

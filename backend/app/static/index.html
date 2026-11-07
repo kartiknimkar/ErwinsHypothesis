@@ -40,6 +40,15 @@
     </div>
   </div>
 
+  <div id="transform-backdrop" class="backdrop" hidden>
+    <div class="dialog" role="dialog" aria-labelledby="tf-title">
+      <div class="dialog-head"><h3 id="tf-title">Transform data</h3><button id="tf-close" class="icon" aria-label="Close">✕</button></div>
+      <p class="hint">Creates a <b>new analysis</b> with the transformed values. Your original data stay unchanged.</p>
+      <div id="tf-body" class="options"></div>
+      <div class="dialog-foot"><span></span><button id="tf-apply" class="primary small">Create transformed copy</button></div>
+    </div>
+  </div>
+
   <div id="toast" class="toast" hidden></div>
 
   <div class="layout">
@@ -79,6 +88,7 @@
               <button id="btn-addcol" class="ghost small"></button>
               <button id="btn-import-data" class="ghost small" title="Load data from an Excel (.xlsx) or CSV file">Import</button>
               <input type="file" id="file-data" accept=".xlsx,.xlsm,.csv,.tsv,.txt" hidden>
+              <button id="btn-transform" class="ghost small" title="Normalize or transform the data into a new analysis">Transform</button>
               <button id="btn-example" class="ghost small">Example</button>
               <button id="btn-clear" class="ghost small">Clear</button>
             </div>

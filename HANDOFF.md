@@ -58,7 +58,7 @@ Every session starts by reading it and ends by updating it (then committing).
 - Sizes measured: ~266 MB (system Python), ~410 MB (private Python).
 
 ## Current state
-- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.13); 79 tests pass. 7 analysis types: ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
+- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 79 tests pass. 7 analysis types: ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
 - [x] User confirmed the app runs on their Windows PC (C: drive, private Python fallback)
 - [x] Interface rewritten around a TYPES registry in `static/app.js` (each type: data layout,
       options, request, results renderer, graph drawer, format controls). Add new modules there.
@@ -68,7 +68,7 @@ Every session starts by reading it and ends by updating it (then committing).
    Possible follow-ups: two-way with repeated measures, comparisons across rows / main-effect comparisons
 2. (done) More curve models + model comparison. Constraints done (fit(fixed=...)); user-defined equations done (equation.py, model "custom"). Follow-ups: global fits sharing parameters across datasets
 3. Graph polish: per-group colors done (graph.colors by series name). Still: legend editing, axis tick control, export size/DPI
-   Other Prism features worth adding: ROUT outliers, multiple t tests (with FDR), normalize/transform data,
+   Other Prism features worth adding: ROUT outliers, multiple t tests (with FDR),
    column statistics sheet, multiple linear/logistic regression, PCA
 4. (done) Excel/CSV import (`backend/app/importer.py`, /api/import). Excel export done (storage.save_results_xlsx, /api/exports/xlsx)
 5. (done, needs first CI run) Packaged desktop app: `backend/app/desktop.py` (pywebview window,
