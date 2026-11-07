@@ -341,12 +341,13 @@ class ThreeWayRequest(BaseModel):
     values: list
     names: list[str]
     alpha: float = 0.05
+    compare: str = "none"    # none | A | B | C: compare that factor's levels within each combination of the others
 
 
 @app.post("/api/threeway")
 def run_threeway(req: ThreeWayRequest):
     try:
-        res = anova2.three_way(req.factors, req.values, req.names, alpha=req.alpha)
+        res = anova2.three_way(req.factors, req.values, req.names, alpha=req.alpha, compare=req.compare)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))

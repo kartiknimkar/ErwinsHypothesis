@@ -388,7 +388,7 @@ def two_way_rm(row_labels, columns, col_names, alpha: float = 0.05) -> dict:
             "subjects_per_group": [int(np.sum(G == g)) for g in range(b)], "balanced": len(set(np.bincount(G))) == 1}
 
 
-def three_way(factors, values, factor_names, alpha: float = 0.05) -> dict:
+def three_way(factors, values, factor_names, alpha: float = 0.05, compare: str = "none") -> dict:
     """Three-way ANOVA (Type III sums of squares, effect coding) from long-format data:
     factors = [levels of A per row, levels of B per row, levels of C per row]; values = one number per row."""
     obs = []
@@ -445,5 +445,24 @@ def three_way(factors, values, factor_names, alpha: float = 0.05) -> dict:
                 d = describe(v, f"{lev[0][a]} · {lev[1][b]} · {lev[2][c]}")
                 d.update(a=a, b=b, c=c)
                 cells.append(d)
+    comps, method = [], None
+    if compare in ("A", "B", "C"):
+        f = "ABC".index(compare)
+        others = [k for k in range(3) if k != f]
+        mean = {(c["a"], c["b"], c["c"]): c["mean"] for c in cells}
+        fam = []
+        for o1 in range(shape[others[0]]):
+            for o2 in range(shape[others[1]]):
+                def key(level):
+                    k = [0, 0, 0]; k[f] = level; k[others[0]] = o1; k[others[1]] = o2
+                    return tuple(k)
+                label = f"{lev[others[0]][o1]} · {lev[others[1]][o2]}"
+                pairs = [(lev[f][l1], lev[f][l2], mean[key(l1)] - mean[key(l2)],
+                          math.sqrt(ms_res * (1 / counts[key(l1)] + 1 / counts[key(l2)])), {"kind": compare, "l1": l1, "l2": l2, "o1": o1, "o2": o2})
+                         for l1 in range(shape[f]) for l2 in range(l1 + 1, shape[f])]
+                fam.append((label, pairs))
+        comps = _family(fam, shape[f], ms_res, df_res, alpha)
+        method = f"{'Šídák' if shape[f] == 2 else 'Tukey'}'s multiple comparisons: levels of {factor_names[f]} within each combination of {factor_names[others[0]]} and {factor_names[others[1]]}"
     return {"test_name": "Three-way ANOVA", "kind": "threeway", "factors": list(factor_names), "levels": lev, "alpha": alpha,
-            "table": table, "cells": cells, "n": N, "balanced": bool(np.all(counts == counts.flat[0]))}
+            "table": table, "cells": cells, "n": N, "balanced": bool(np.all(counts == counts.flat[0])),
+            "comparisons": comps, "posthoc_name": method, "compare": compare}

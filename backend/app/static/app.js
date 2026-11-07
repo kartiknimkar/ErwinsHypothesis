@@ -398,9 +398,11 @@
       request: s => {
         const rows = s.data.filter(r => isNum(r[3]) && [0, 1, 2].every(j => String(r[j] ?? "").trim() !== ""));
         return ["/api/threeway", { factors: [0, 1, 2].map(j => rows.map(r => String(r[j]).trim())), values: rows.map(r => num(r[3])),
-          names: s.cols.slice(0, 3).map((c, j) => c || `Factor ${"ABC"[j]}`), alpha: s.options.alpha }];
+          names: s.cols.slice(0, 3).map((c, j) => c || `Factor ${"ABC"[j]}`), alpha: s.options.alpha, compare: s.options.threeCompare || "none" }];
       },
-      renderOptions: s => `<p class="hint">Tests each factor, every pair of factors, and all three together for interactions (Type III sums of squares, so unequal group sizes are fine). Every combination of levels needs at least one value.</p>${alphaSelect(s)}`,
+      renderOptions: s => `<p class="hint">Tests each factor, every pair of factors, and all three together for interactions (Type III sums of squares, so unequal group sizes are fine). Every combination of levels needs at least one value.</p>
+        <div class="row"><label for="opt-3cmp">Multiple comparisons</label><select id="opt-3cmp">${[["none", "None"], ...[0, 1, 2].map(j => ["ABC"[j], `Compare ${esc(s.cols[j] || "Factor " + "ABC"[j])} levels within each combination of the others`])]
+          .map(([v, l]) => `<option value="${v}" ${(s.options.threeCompare || "none") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>${alphaSelect(s)}`,
       graphControls: () => [sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
         txt("ylabel", "Y axis label"), chk("showPoints", "Show points")],
       renderResults: (r, s) => renderThreeWay(r, s),
@@ -1537,6 +1539,7 @@
       save(); renderOptions(); scheduleRun();
     };
     const tw = $("opt-twcmp"); if (tw) tw.onchange = e => { s.options.twCompare = e.target.value; save(); scheduleRun(); };
+    const c3 = $("opt-3cmp"); if (c3) c3.onchange = e => { s.options.threeCompare = e.target.value; save(); scheduleRun(); };
     const wph = $("opt-wph"); if (wph) wph.onchange = e => { s.options.welchPosthoc = e.target.value; save(); renderOptions(); scheduleRun(); };
     const ph = $("opt-posthoc"); if (ph) ph.onchange = e => { s.options.posthoc = e.target.value; save(); scheduleRun(); };
     const om = $("opt-outmethod"); if (om) om.onchange = e => { s.options.outlierMethod = e.target.value; save(); renderOptions(); scheduleRun(); };
@@ -1718,7 +1721,7 @@
     }
     if (s.type === "threeway") {
       const sig = r.table.filter(x => x.F !== null && x.p < r.alpha), dfr = r.table[r.table.length - 1].df;
-      return { methods: `Data were analyzed by three-way ANOVA (${r.factors.map(esc).join(" × ")}; Type III sums of squares). Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+      return { methods: `Data were analyzed by three-way ANOVA (${r.factors.map(esc).join(" × ")}; Type III sums of squares)${r.posthoc_name ? `, followed by ${esc(r.posthoc_name.split(":")[0])}` : ""}. Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
         results: r.table.filter(x => x.F !== null).map(x => `${esc(x.source)}: F(${x.df}, ${dfr}) = ${r2(x.F)}, ${apaP(x.p)}`).join("; ") + "." };
     }
     if (s.type === "nested") {
@@ -1860,6 +1863,11 @@
     h += T.multi(["Source of variation", "% of total", "F (DFn, DFd)", "P value", ""], r.table.filter(x => x.F !== null).map(x => ({ cls: x.p < r.alpha ? "hl" : "",
       cells: [esc(x.source), fmt(x.pct, 3) + "%", `F (${x.df}, ${r.table[r.table.length - 1].df}) = ${fmt(x.F)}`, pOnly(x.p), st(x.stars)] })));
     h += T.multi(["ANOVA table", "SS", "DF", "MS"], r.table.map(x => [esc(x.source), fmt(x.SS), x.df, fmt(x.MS)]));
+    if (r.comparisons && r.comparisons.length) {
+      const pct = Math.round((1 - r.alpha) * 100);
+      h += `<div class="opt-label" style="margin-top:10px">${esc(r.posthoc_name)}</div>` + T.multi(["Within", "Comparison", "Mean diff.", `${pct}% CI`, "Adj. P", ""],
+        r.comparisons.map(c => ({ cls: c.significant ? "hl" : "", cells: [esc(c.row), `${esc(c.a)} vs ${esc(c.b)}`, fmt(c.diff), ci(c.ci_low, c.ci_high), pOnly(c.p), st(c.stars)] })));
+    }
     h += `<div class="opt-label" style="margin-top:10px">Cell means</div>` + T.multi([esc(r.factors[0]), esc(r.factors[1]), esc(r.factors[2]), "Mean", "SD", "n"],
       r.cells.map(c => [esc(r.levels[0][c.a]), esc(r.levels[1][c.b]), esc(r.levels[2][c.c]), fmt(c.mean), fmt(c.sd, 3), c.n]));
     h += `<p class="note">${r.balanced ? "" : "Unequal group sizes: "}Type III sums of squares (effect coding), as in Prism and SPSS. ${r.n} values.</p>`;

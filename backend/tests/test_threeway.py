@@ -40,3 +40,19 @@ def test_three_way_checks():
     A, B, C, Y = _data()
     with pytest.raises(ValueError):
         anova2.three_way([A, ["x"] * len(A), C], Y, ["a", "b", "c"])
+
+
+def test_simple_effect_comparisons():
+    from scipy import stats as ss
+    fa, fb, fc, Y = _data()
+    r = anova2.three_way([fa, fb, fc], Y, ["Sex", "Treatment", "Time"], compare="B")
+    assert len(r["comparisons"]) == 2 * 3 and "Šídák" in r["posthoc_name"]
+    c = r["comparisons"][0]
+    ms, dfr = r["table"][-1]["MS"], r["table"][-1]["df"]
+    y = np.array(Y); a, b, cc = map(np.array, (fa, fb, fc))
+    g1 = y[(a == "Male") & (b == "Vehicle") & (cc == "Day 1")]; g2 = y[(a == "Male") & (b == "Drug") & (cc == "Day 1")]
+    t = (g1.mean() - g2.mean()) / np.sqrt(ms * (1 / len(g1) + 1 / len(g2)))
+    p_raw = 2 * ss.t.sf(abs(t), dfr)
+    assert np.isclose(c["diff"], g1.mean() - g2.mean()) and np.isclose(c["p"], 1 - (1 - p_raw) ** 6)
+    r3 = anova2.three_way([fa, fb, fc], Y, ["Sex", "Treatment", "Time"], compare="C")
+    assert len(r3["comparisons"]) == 4 * 3 and "Tukey" in r3["posthoc_name"]

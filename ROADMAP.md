@@ -220,6 +220,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] .pzfx nested tables → Nested analysis (subcolumn = subject); column tables entered as mean/SD/N or mean/SEM/N →
       summary-data analysis (exact tests). Synthetic-file tests only; 161 tests
 
+## Phase 0.48: Three-way comparisons (done 2026-11-07)
+- [x] Compare one factor's levels within each combination of the other two (Šídák for 2 levels, Tukey for 3+),
+      pooled error; table and paper text; 162 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
