@@ -210,7 +210,11 @@
       cols: ["X", "Y"],
       options: { model: "linear", xIsLog: false, alpha: 0.05 },
       graph: { xlabel: "", ylabel: "", band: true, showEq: true, repMode: "mean", logX: false, xmin: "", xmax: "" },
-      examples: s => (modelInfo(s.options.model)?.log_x) ? {
+      examples: s => s.options.yMode === "datasets" ? {
+        cols: ["Concentration (µM)", "Compound A", "Compound B"],
+        rows: [[0.01, 99.2, 100.4], [0.03, 97.1, 99.0], [0.1, 91.5, 97.6], [0.3, 77.4, 93.1], [1, 53.8, 82.2],
+          [3, 27.6, 58.9], [10, 13.9, 30.4], [30, 7.2, 14.1], [100, 5.8, 7.3]],
+      } : (modelInfo(s.options.model)?.log_x) ? {
         cols: ["Concentration (µM)", "Response %", "Rep 2", "Rep 3"],
         rows: [[0.01, 98.1, 101.2, 97.4], [0.03, 96.0, 99.5, 95.8], [0.1, 92.7, 88.9, 93.4], [0.3, 80.3, 75.6, 77.9],
           [1, 50.1, 55.8, 52.0], [3, 30.2, 26.9, 29.4], [10, 12.8, 15.1, 13.0], [30, 7.5, 9.2, 6.9], [100, 6.4, 4.8, 6.1]],
@@ -219,6 +223,13 @@
         rows: [[0, 0.02], [5, 0.11], [10, 0.21], [20, 0.39], [40, 0.83], [60, 1.18], [80, 1.62], ["", 0.55], ["", 1.31]],
       },
       request(s) {
+        if (s.options.yMode === "datasets") {
+          const fixed = Object.fromEntries(Object.entries((s.options.fixed || {})[s.options.model] || {}).filter(([, v]) => isNum(v)).map(([k, v]) => [k, Number(v)]));
+          return ["/api/fitmulti", { x: s.data.map(r => num(r[0])), ys: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
+            names: s.cols.slice(1).map((c, j) => c || `Y${j + 1}`), model: s.options.model, x_is_log: !!s.options.xIsLog, alpha: s.options.alpha, fixed,
+            compare: s.options.cmpParam || null, equation: s.options.model === "custom" ? (s.options.equation || "") : null,
+            initial: s.options.model === "custom" ? Object.fromEntries(Object.entries(s.options.initial || {}).filter(([, v]) => isNum(v)).map(([k, v]) => [k, Number(v)])) : null }];
+        }
         return ["/api/fit", { x: s.data.map(r => num(r[0])), ys: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
           model: s.options.model, compare: s.options.model !== "linear" ? (s.options.compare || null) : null,
           fixed: Object.fromEntries(Object.entries((s.options.fixed || {})[s.options.model] || {}).filter(([, v]) => isNum(v)).map(([k, v]) => [k, Number(v)])),
@@ -230,14 +241,20 @@
       renderOptions(s) {
         const custom = s.options.model === "custom";
         const m = custom ? null : modelInfo(s.options.model);
-        return `<div class="opt-label">Fit</div>
+        const multi = s.options.yMode === "datasets";
+        const pnames = s.options.model === "linear" ? ["Slope", "Intercept"] : custom ? (s.options.eqParams || []) : (m && m.params) || [];
+        const ySeg = `<div class="seg"><button data-set="yMode:replicates" class="${multi ? "" : "on"}">Y columns = replicates of one curve</button><button data-set="yMode:datasets" class="${multi ? "on" : ""}">Each Y column = its own curve</button></div>`;
+        const cmpSel = multi ? `<div class="row"><label for="opt-cmpparam">Compare curves</label><select id="opt-cmpparam"><option value="">No comparison</option>${pnames
+          .map(pn => `<option value="${esc(pn)}" ${s.options.cmpParam === pn ? "selected" : ""}>Is ${esc(pn)} different between curves?</option>`).join("")}<option value="all" ${s.options.cmpParam === "all" ? "selected" : ""}>Do the curves differ at all?</option></select></div>` : "";
+        return ySeg + `<div class="opt-label">Fit</div>
           <select id="opt-model">${[["linear", "Straight line (linear regression + correlation)"], ...MODELS.map(m => [m.id, m.name]), ["custom", "User-defined equation…"]]
             .map(([v, l]) => `<option value="${v}" ${s.options.model === v ? "selected" : ""}>${l}</option>`).join("")}</select>
           ${custom ? `<textarea id="opt-equation" class="eq-input" rows="2" spellcheck="false" placeholder="Y = A*exp(-K*X) + C">${esc(s.options.equation || "")}</textarea>
             <p class="hint">Use X, any parameter names, + − * / ^ and exp, ln, log10, sqrt, sin, cos, abs. Example: <code>Y = Top/(1+(X/EC50)^Hill)</code></p>
             <div id="custom-params">${customParamsHTML(s)}</div>`
           : `<div class="eqn">${m ? esc(m.equation) : "Y = Slope·X + Intercept"}</div>`}
-          ${m ? `<div class="row"><label for="opt-compare">Compare with</label><select id="opt-compare"><option value="">No comparison</option>${MODELS
+          ${cmpSel}
+          ${m && !multi ? `<div class="row"><label for="opt-compare">Compare with</label><select id="opt-compare"><option value="">No comparison</option>${MODELS
             .filter(o => o.id !== m.id && o.log_x === m.log_x).map(o => `<option value="${o.id}" ${s.options.compare === o.id ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select></div>` : ""}
           ${m && m.params ? `<details class="constrain" ${Object.values((s.options.fixed || {})[m.id] || {}).some(isNum) ? "open" : ""}>
             <summary>Constrain parameters <span class="pd">(optional)</span></summary>
@@ -246,18 +263,18 @@
           </details>` : ""}
           ${m && m.log_x ? `<label class="check"><input type="checkbox" id="opt-xislog" ${s.options.xIsLog ? "checked" : ""}> X values are already log10(concentration)</label>
             <p class="hint">Otherwise X is concentration and the app takes the log for you (X = 0 is left out, as it has no log).</p>` : ""}
-          <div class="row"><label class="check"><input type="checkbox" data-opt="auc" ${s.options.auc ? "checked" : ""}> Area under the curve</label>
-            ${s.options.auc ? `<label>baseline Y =</label><input type="text" id="opt-baseline" value="${esc(s.options.baseline ?? "0")}" style="width:70px" inputmode="decimal">` : ""}</div>
+          ${multi ? "" : `<div class="row"><label class="check"><input type="checkbox" data-opt="auc" ${s.options.auc ? "checked" : ""}> Area under the curve</label>
+            ${s.options.auc ? `<label>baseline Y =</label><input type="text" id="opt-baseline" value="${esc(s.options.baseline ?? "0")}" style="width:70px" inputmode="decimal">` : ""}</div>`}
           ${alphaSelect(s)}`;
       },
       graphControls: s => [
         txt("xlabel", "X axis label", s.cols[0]), txt("ylabel", "Y axis label", s.cols[1]),
-        ...(s.cols.length > 2 ? [sel("repMode", "Replicates", [["mean", "Mean ± SD"], ["sem", "Mean ± SEM"], ["all", "All points"]])] : []),
+        ...(s.cols.length > 2 && s.options.yMode !== "datasets" ? [sel("repMode", "Replicates", [["mean", "Mean ± SD"], ["sem", "Mean ± SEM"], ["all", "All points"]])] : []),
         txt("xmin", "X min", "auto"), txt("xmax", "X max", "auto"),
         chk("logX", "Log X axis"), chk("band", "95% confidence band"), chk("showEq", "Show equation"),
       ],
-      renderResults: renderXYResults,
-      draw: drawXY,
+      renderResults: (r, s) => r.multi ? renderMultiFit(r, s) : renderXYResults(r, s),
+      draw: (el, r, s) => r.multi ? drawMultiFit(el, r, s) : drawXY(el, r, s),
     },
     // ---------------------------------------------------------------- multiple variables
     multivar: {
@@ -501,6 +518,7 @@
     add("twoway", "Example: time course (repeated measures)", s => { s.options.rm = true; s.graph.style = "lines"; s.graph.err = "sem"; });
     add("regression", "Example: dose-response (IC50)", s => { s.options.model = "dr_inhibit"; s.graph.logX = true; });
     add("regression", "Example: standard curve");
+    add("regression", "Example: compare two IC50s", s => { s.options.model = "dr_inhibit"; s.options.yMode = "datasets"; s.options.cmpParam = "LogIC50"; s.graph.logX = true; });
     add("survival", "Example: survival");
     const figPanels = project.sheets.filter(x => ["Example: two groups", "Example: three groups (ANOVA)", "Example: dose-response (IC50)", "Example: survival"].includes(x.title)).map(x => x.id);
     add("contingency", "Example: contingency");
@@ -1063,6 +1081,7 @@
       eq.oninput = () => { s.options.equation = eq.value; save(); clearTimeout(t); t = setTimeout(() => { checkEquation(s); scheduleRun(); }, 400); };
       if (!s.options.eqParams) checkEquation(s);
     }
+    const cp = $("opt-cmpparam"); if (cp) cp.onchange = e => { s.options.cmpParam = e.target.value; save(); scheduleRun(); };
     const cmp = $("opt-compare");
     if (cmp) cmp.onchange = e => { s.options.compare = e.target.value; save(); scheduleRun(); };
     const mk = $("opt-mtkind"); if (mk) mk.onchange = e => { s.options.mtKind = e.target.value; save(); scheduleRun(); };
@@ -1073,6 +1092,7 @@
 
   function seriesNames(s) {
     if (s.type === "ttest") return filledCols(s).map(j => s.cols[j] || `Group ${letter(j)}`);
+    if (s.type === "regression" && s.options.yMode === "datasets") return s.cols.slice(1).map((c, j) => c || `Y${j + 1}`);
     if (s.type === "regression") return ["Curve", ...(s.options.compare ? ["Comparison curve"] : []), "Unknowns"];
     if (s.type === "layout") return [];
     if (s.type === "multivar") return (s.options.analysis || "correlation") === "correlation" ? [] : s.options.analysis === "logistic" ? ["Curve"] : s.options.analysis === "pca" ? ["Points", "Loadings"] : ["Points"];
@@ -1215,6 +1235,13 @@
       const f = x => `F(${x.df}, ${x.dfd ?? t.Residual.df}) = ${r2(x.F)}, ${apaP(x.p)}`;
       return { methods: `Data were analyzed by ${r.rm ? `two-way repeated-measures (mixed) ANOVA with ${rowF} as the within-subject factor and the Geisser-Greenhouse correction` : "two-way ANOVA"}, followed by ${esc(r.posthoc_name.split(" (")[0])} comparing groups at each level of ${rowF}. Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
         results: `There was ${t.Interaction.p < r.alpha ? "a significant" : "no significant"} interaction between group and ${rowF} (${f(t.Interaction)}). The main effect of group was ${t["Column factor"].p < r.alpha ? "" : "not "}significant (${f(t["Column factor"])}), and the main effect of ${rowF} was ${t["Row factor"].p < r.alpha ? "" : "not "}significant (${f(t["Row factor"])}).` };
+    }
+    if (s.type === "regression" && r.multi) {
+      const ok = r.fits.filter(f => !f.error), c = r.comparison;
+      const key = ok[0] && ok[0].derived && ok[0].derived[0] ? ok[0].derived[0].name : null;
+      const vals = ok.map(f => key ? `${esc(f.name)} ${r2((f.derived.find(d => d.name === key) || {}).value, 3)}` : `${esc(f.name)}: ${f.params.map(p => `${esc(p.name)} ${r2(p.value, 3)}`).join(", ")}`).join("; ");
+      return { methods: `Each dataset was fitted separately by ${r.model === "linear" ? "linear regression" : `nonlinear regression using the model “${esc(r.model_name)}”`}${c && !c.error ? `; ${c.param === "all" ? "whether one curve fits all datasets" : `whether ${esc(c.param)} differs between datasets`} was tested with the extra sum-of-squares F test` : ""}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+        results: `${key ? `${key}: ` : ""}${vals}.${c && !c.error ? ` ${c.param === "all" ? "The curves" : esc(c.param)} ${c.different ? "differed significantly" : "did not differ significantly"} between datasets (F(${c.dfn}, ${c.dfd}) = ${r2(c.F)}, ${apaP(c.p)}).` : ""}` };
     }
     if (s.type === "regression" && r.model === "linear") {
       const c = r.correlation;
@@ -1467,6 +1494,49 @@
       T.row("Area above baseline", fmt(a.positive)), T.row("Area below baseline", fmt(a.negative)),
       T.row(`${esc(s.cols[0] || "X")} range`, `${fmt(a.x_range[0])} to ${fmt(a.x_range[1])}`), T.row("Peak (X, Y)", `${fmt(a.peak_x)}, ${fmt(a.peak_y)}`)]) +
       `<p class="note">Trapezoid rule on the mean Y at each X, using the actual X units.</p>`;
+  }
+  function renderMultiFit(r, s) {
+    const pct = Math.round((1 - r.alpha) * 100), ok = r.fits.filter(f => !f.error), c = r.comparison;
+    let h = "";
+    if (c && !c.error) {
+      const what = c.param === "all" ? "The curves" : `${esc(c.param)}`;
+      h += T.summary(c.different ? "sig" : "ns", c.param === "all"
+        ? (c.different ? `<b>The curves differ</b>: separate curves fit significantly better than one shared curve (F (${c.dfn}, ${c.dfd}) = ${fmt(c.F)}, ${fmtP(c.p)}).`
+          : `<b>No evidence the curves differ</b>: one shared curve fits the data as well as separate curves (${fmtP(c.p)}).`)
+        : (c.different ? `<b>${what} differs between curves</b> (extra sum-of-squares F test, F (${c.dfn}, ${c.dfd}) = ${fmt(c.F)}, ${fmtP(c.p)}).`
+          : `<b>No significant difference in ${what}</b> between curves (${fmtP(c.p)}). A shared value of ${fmt(c.shared_value)} fits all curves.`));
+    } else if (c && c.error) h += `<p class="note warn">${esc(c.error)}</p>`;
+    else h += T.summary("ns", `${ok.length} curve${ok.length === 1 ? "" : "s"} fitted separately. Choose <b>Compare curves</b> to test whether a parameter differs.`);
+    const pn = r.param_names;
+    const derivedNames = [...new Set(ok.flatMap(f => (f.derived || []).map(d => d.name)))];
+    const rows = [...pn.map(n => [esc(n), ...ok.map(f => { const q = f.params.find(p => p.name === n); return q ? (q.fixed ? `${fmt(q.value)} <span class="pd">(fixed)</span>` : `${fmt(q.value)} <span class="pd">± ${fmt(q.se, 3)}</span>`) : "—"; })]),
+      ...derivedNames.map(n => ({ cls: "hl", cells: [`<b>${esc(n)}</b>`, ...ok.map(f => { const d = (f.derived || []).find(x => x.name === n); return d && d.value != null ? `<b>${fmt(d.value)}</b>` : "—"; })] })),
+      ...derivedNames.map(n => [`${esc(n)} ${pct}% CI`, ...ok.map(f => { const d = (f.derived || []).find(x => x.name === n); return d && d.ci && d.ci[0] != null ? ci(d.ci[0], d.ci[1]) : "—"; })]),
+      ["R²", ...ok.map(f => fmt(f.r_squared, 4))], ["Number of points", ...ok.map(f => f.n)]];
+    h += T.multi(["", ...ok.map(f => esc(f.name))], rows);
+    if (c && !c.error) h += T.table([T.sec(c.param === "all" ? "One curve for all datasets?" : `Is ${esc(c.param)} the same for all curves?`),
+      T.row("Sum of squares: separate / shared", `${fmt(c.ss_separate)} / ${fmt(c.ss_shared)}`), T.row(`F (${c.dfn}, ${c.dfd})`, fmt(c.F)), T.row("P value", `${pOnly(c.p)} ${st(stars(c.p))}`)]);
+    r.fits.filter(f => f.error).forEach(f => { h += `<p class="note warn">${esc(f.name)}: ${esc(f.error)}</p>`; });
+    h += `<p class="note">${esc(r.model_name)}: ${esc(r.equation)}. "±" values are standard errors.</p>`;
+    return h;
+  }
+  function drawMultiFit(el, r, s) {
+    const g = s.graph, traces = [];
+    const logFit = r.x_is_log && !s.options.xIsLog && r.model !== "linear";
+    const tx = x => (logFit ? Math.pow(10, x) : x);
+    r.fits.forEach((f, i) => {
+      if (f.error) return;
+      const col = color(g, i, f.name), j = s.cols.indexOf(f.name, 1);
+      const pts = s.data.map(row => [num(row[0]), num(row[j])]).filter(p => p[0] !== null && p[1] !== null && (!logFit || p[0] > 0));
+      traces.push({ x: pts.map(p => p[0]), y: pts.map(p => p[1]), mode: "markers", name: esc(f.name), showlegend: false,
+        marker: { color: col, size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: `${esc(f.name)}: (%{x}, %{y})<extra></extra>` });
+      traces.push({ x: f.curve.x.map(tx), y: f.curve.y, mode: "lines", name: esc(f.name), line: { color: col, width: 2.4 }, showlegend: true,
+        hovertemplate: `${esc(f.name)} fit: %{y:.4g}<extra></extra>` });
+    });
+    const xa = axis(g, { title: { text: esc(g.xlabel || s.cols[0] || "X") } });
+    if (g.logX) xa.type = "log";
+    Plotly.react(el, traces, { ...baseLayout(g), showlegend: true, legend: { x: 1, xanchor: "right", y: 1, bgcolor: "rgba(255,255,255,0.7)" },
+      xaxis: xa, yaxis: yAxis(g, g.ylabel || "Response") }, PLOT_CONFIG);
   }
   function renderUnknowns(r, s) {
     const xName = esc(s.cols[0] || "X");

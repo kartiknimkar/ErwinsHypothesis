@@ -111,6 +111,11 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 ## Phase 0.25: Polish pack (done 2026-11-06)
 - [x] Dark mode (saved in projects/.prefs.json via /api/prefs), duplicate analysis, drag-to-reorder sidebar
 
+## Phase 0.26: Compare curves (done 2026-11-06)
+- [x] XY "each Y column = its own curve": separate fits for every model (incl. linear, custom)
+- [x] Compare a parameter (e.g. LogIC50, slope) or whole curves via shared-parameter global fit + extra-SS F test
+- [x] Linear slope comparison verified = ANCOVA interaction (statsmodels); 100 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

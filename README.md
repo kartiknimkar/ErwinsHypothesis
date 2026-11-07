@@ -12,7 +12,8 @@ clean, modern interface. Everything runs on your own computer.
 - **Grouped (two factors):** two-way ANOVA (also repeated measures / time courses) with multiple comparisons; multiple t tests with FDR + volcano plot
 - **XY:** linear regression & correlation; curve fitting: dose-response (IC50/EC50),
   standard-slope dose-response, Michaelis-Menten, exponential growth/decay (one & two phase),
-  one-phase association, Gaussian, Boltzmann; compare two models (F test / AICc)
+  one-phase association, Gaussian, Boltzmann; compare two models (F test / AICc); fit several curves
+  and test whether e.g. the IC50 or slope differs between them
 - **Survival:** Kaplan-Meier curves, log-rank test, hazard ratio, median survival
 - **Contingency tables:** Fisher's exact, chi-square, odds ratio, relative risk
 - **Multiple variables:** correlation matrix with heatmap, multiple linear regression, logistic regression, PCA

@@ -59,7 +59,7 @@ Every session starts by reading it and ends by updating it (then committing).
 - Sizes measured: ~266 MB (system Python), ~410 MB (private Python).
 
 ## Current state
-- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 97 tests pass (incl. tests/test_ui_smoke.py: Playwright opens all 17 examples and walks every branch of the 'Help me choose' guide (GUIDE tree in app.js) and checks 'Text for your paper' (reportText in app.js); run it after UI changes). Multiple variables type also does multiple linear + logistic regression (multivar.py). 7 analysis types: ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
+- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 100 tests pass (incl. tests/test_ui_smoke.py: Playwright opens all 18 examples and walks every branch of the 'Help me choose' guide (GUIDE tree in app.js) and checks 'Text for your paper' (reportText in app.js); run it after UI changes). Multiple variables type also does multiple linear + logistic regression (multivar.py). 7 analysis types: ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
 - [x] User confirmed the app runs on their Windows PC (C: drive, private Python fallback)
 - [x] Interface rewritten around a TYPES registry in `static/app.js` (each type: data layout,
       options, request, results renderer, graph drawer, format controls). Add new modules there.
@@ -69,7 +69,8 @@ Every session starts by reading it and ends by updating it (then committing).
    Two-way RM (mixed) done: anova2.two_way_rm, /api/twoway rm=true. Note: within effects use Type III (SPSS-style);
    pingouin weights unequal groups differently for the row main effect (documented in tests).
    Possible follow-ups: RM on both factors, comparisons across rows / main-effect comparisons
-2. (done) More curve models + model comparison. Constraints done (fit(fixed=...)); user-defined equations done (equation.py, model "custom"). Follow-ups: global fits sharing parameters across datasets
+2. Curve comparison done (curvefit.fit_multi/_global_fit, /api/fitmulti, XY yMode='datasets').
+   (done) More curve models + model comparison. Constraints done (fit(fixed=...)); user-defined equations done (equation.py, model "custom"). Follow-ups: global fits sharing parameters across datasets
 3. Figure layouts done (TYPES.layout: runCustom + drawLayout + exportLayout; noData hides the grid).
    Graph polish: per-group colors done (graph.colors by series name). Export size/DPI done (EXPORT_SIZES in app.js). TIFF done (Pillow); Y tick interval + hide legend done. Still: legend text editing, X tick control
    Other Prism features worth adding: ROUT outliers, (multiple t tests done: anova2.multiple_t, /api/multit),
