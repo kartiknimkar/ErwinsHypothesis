@@ -90,8 +90,9 @@ touched by updates. With a ZIP download, download the new ZIP and copy your
 ## Making a new release (for maintainers)
 
 Downloads are built automatically by GitHub Actions (`.github/workflows/build.yml`):
-create and push a version tag, e.g. `git tag v0.2.0 && git push origin v0.2.0`, and the
-Windows and Mac zips appear on the Releases page ~15 minutes later. To build without a
+on GitHub, go to **Releases → Draft a new release**, choose a new tag such as `v0.2.0`,
+and click **Publish release**. The Windows and Mac zips are attached to the release
+about 15 minutes later. To build without a
 release, use **Actions → Build app → Run workflow**. Local build:
 `pip install -r packaging/requirements-build.txt && pyinstaller packaging/ErwinsHypothesis.spec --noconfirm`.
 

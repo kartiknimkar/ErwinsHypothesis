@@ -1,11 +1,12 @@
 # Builds ready-to-run downloads of Erwin's Hypothesis (no Python or libraries needed).
-#  - Every push of a version tag (e.g. v0.1.0) creates a GitHub Release with the downloads.
+#  - Publishing a Release on GitHub (Releases > Draft a new release) builds the downloads
+#    and attaches them to that release.
 #  - "Run workflow" on the Actions tab builds them without a release (download from the run page).
 name: Build app
 
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -40,7 +41,7 @@ jobs:
         run: pip install -r packaging/requirements-build.txt
       - name: Build
         env:
-          EH_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '0.0.0-dev' }}
+          EH_VERSION: ${{ github.event_name == 'release' && github.event.release.tag_name || '0.0.0-dev' }}
         run: pyinstaller packaging/ErwinsHypothesis.spec --noconfirm
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -60,7 +61,7 @@ jobs:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
       - name: Attach to release
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.asset }}
