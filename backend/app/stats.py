@@ -415,3 +415,39 @@ def area_under_curve(x, y, baseline: float = 0.0) -> dict:
     return {"total": float(seg.sum()), "positive": float(pos), "negative": float(neg), "baseline": baseline,
             "x_range": [float(xs[0]), float(xs[-1])], "peak_x": float(xs[peak]), "peak_y": float(ys[peak] + baseline),
             "n_x": int(len(xs))}
+
+
+def column_stats(values, name: str = "", hypothetical: float | None = None, alpha: float = 0.05) -> dict:
+    """Prism-style column statistics for one column, plus optional one-sample tests."""
+    x = _clean(values)
+    n = len(x)
+    if n < 1:
+        raise ValueError("No values.")
+    d = describe(x, name)
+    q1, q3 = (np.percentile(x, [25, 75], method="weibull") if n >= 2 else (x[0], x[0]))
+    d.update(q1=float(q1), q3=float(q3), iqr=float(q3 - q1), range=float(np.ptp(x)), sum=float(x.sum()),
+             cv=float(100 * d["sd"] / d["mean"]) if n > 1 and d["mean"] != 0 else None)
+    if n > 1:
+        tq = stats.t.ppf(1 - alpha / 2, n - 1)
+        d["ci_low"], d["ci_high"] = d["mean"] - tq * d["sem"], d["mean"] + tq * d["sem"]
+    if np.all(x > 0):
+        lx = np.log(x)
+        d["geo_mean"] = float(np.exp(lx.mean()))
+        d["geo_sd_factor"] = float(np.exp(lx.std(ddof=1))) if n > 1 else None
+    if n >= 3 and np.ptp(x) > 0:
+        d["skewness"] = float(stats.skew(x, bias=False))
+        d["kurtosis"] = float(stats.kurtosis(x, bias=False)) if n >= 4 else None
+        d["shapiro"] = normality(x)
+        if n >= 8:
+            dp = stats.normaltest(x)
+            d["dagostino"] = {"K2": float(dp.statistic), "p": float(dp.pvalue), "normal": bool(dp.pvalue >= 0.05)}
+    if hypothetical is not None and n >= 2:
+        t = stats.ttest_1samp(x, hypothetical)
+        d["one_sample_t"] = {"hypothetical": hypothetical, "t": float(t.statistic), "df": n - 1, "p": float(t.pvalue),
+                             "stars": stars(float(t.pvalue)), "diff": d["mean"] - hypothetical}
+        diffs = x - hypothetical
+        if np.any(diffs != 0):
+            w = stats.wilcoxon(diffs)
+            d["wilcoxon"] = {"hypothetical": hypothetical, "W": float(w.statistic), "p": float(w.pvalue),
+                             "stars": stars(float(w.pvalue)), "diff": float(np.median(x) - hypothetical)}
+    return d

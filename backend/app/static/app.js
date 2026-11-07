@@ -63,6 +63,7 @@
   function yAxis(g, titleText, extra = {}) {
     const a = axis(g, { title: { text: esc(titleText || "") }, ...extra });
     const cur = extra.range || [null, null];
+    if (!g.logY && num(g.ytick) > 0) { a.dtick = num(g.ytick); a.tick0 = 0; }
     if (g.logY) { a.type = "log"; delete a.range; }
     const lo = num(g.ymin), hi = num(g.ymax);
     if (lo !== null || hi !== null) {
@@ -129,13 +130,18 @@
         rows: [[4.2, 6.1], [5.1, 7.3], [3.8, 6.8], [4.9, 5.9], [5.5, 7.9], [4.4, 6.5], [4.0, 7.0], [5.2, 6.2]],
       },
       request(s) {
-        return ["/api/compare", { groups: s.cols.map((_, j) => s.data.map(r => num(r[j]))), names: s.cols.map((c, j) => c || `Group ${letter(j)}`),
-          kind: kindFor(s, filledCols(s).length), alpha: s.options.alpha, outliers: !!s.options.outliers }];
+        const groups = s.cols.map((_, j) => s.data.map(r => num(r[j]))), names = s.cols.map((c, j) => c || `Group ${letter(j)}`);
+        if (s.options.mode === "describe") return ["/api/colstats", { groups, names, alpha: s.options.alpha,
+          hypothetical: isNum(s.options.hypothetical) ? Number(s.options.hypothetical) : null }];
+        return ["/api/compare", { groups, names, kind: kindFor(s, filledCols(s).length), alpha: s.options.alpha, outliers: !!s.options.outliers }];
       },
       renderOptions(s) {
         const n = filledCols(s).length, key = choiceKey(s, n), cur = kindFor(s, n);
         const rep = s.options.design === "repeated";
-        return `<div class="seg"><button data-design="independent" class="${rep ? "" : "on"}">Different subjects in each group</button><button data-design="repeated" class="${rep ? "on" : ""}">Same subjects (each row = one subject)</button></div>
+        const modeSeg = `<div class="seg"><button data-set="mode:compare" class="${s.options.mode !== "describe" ? "on" : ""}">Compare the groups</button><button data-set="mode:describe" class="${s.options.mode === "describe" ? "on" : ""}">Describe each column</button></div>`;
+        if (s.options.mode === "describe") return modeSeg + `<p class="hint">Full descriptive statistics and normality tests for each column. Optionally test whether each column's mean (and median) differs from a hypothetical value.</p>
+          <div class="row"><label for="opt-hyp">Compare with hypothetical value</label><input type="text" id="opt-hyp" value="${esc(s.options.hypothetical ?? "")}" placeholder="none" style="width:80px" inputmode="decimal"></div>${alphaSelect(s)}`;
+        return modeSeg + `<div class="seg"><button data-design="independent" class="${rep ? "" : "on"}">Different subjects in each group</button><button data-design="repeated" class="${rep ? "on" : ""}">Same subjects (each row = one subject)</button></div>
           <div class="opt-label">${n >= 3 ? `${n} groups: compare all` : "2 groups"}</div>` +
           CHOICES[key].map(([k, name, d]) => `<label class="choice ${cur === k ? "on" : ""}"><input type="radio" name="kind${key}" value="${k}" ${cur === k ? "checked" : ""}><span><b>${name}</b><small>${d}</small></span></label>`).join("") +
           (n >= 3 ? "" : `<p class="hint">Have 3 or more groups? Click <b>+ Group</b> to add a column.</p>`) +
@@ -148,7 +154,7 @@
         sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]),
         txt("ylabel", "Y axis label"), chk("showPoints", "Show points"),
       ],
-      renderResults: renderGroupResults,
+      renderResults: (r, s) => r.kind === "describe" ? renderColStats(r) : renderGroupResults(r, s),
       draw: drawGroups,
     },
     // ---------------------------------------------------------------- two-way
@@ -441,6 +447,7 @@
     const add = (type, title, tweak) => { const s = newSheet(type); if (tweak) tweak(s); applyExample(s); s.title = title; project.sheets.push(s); return s; };
     const first = add("ttest", "Example: two groups");
     add("ttest", "Example: three groups (ANOVA)", s => { s.cols = ["A", "B", "C"]; });
+    add("ttest", "Example: column statistics", s => { s.cols = ["A", "B", "C"]; s.options.mode = "describe"; s.options.hypothetical = "12"; });
     add("twoway", "Example: two-way ANOVA");
     add("twoway", "Example: multiple t tests", s => { s.options.analysis = "multit"; });
     add("regression", "Example: dose-response (IC50)", s => { s.options.model = "dr_inhibit"; s.graph.logX = true; });
@@ -793,6 +800,8 @@
     };
     wireParamInputs(s);
     box.querySelectorAll("[data-opt]").forEach(cb => cb.onchange = () => { s.options[cb.dataset.opt] = cb.checked; save(); renderOptions(); scheduleRun(); });
+    const hy = $("opt-hyp");
+    if (hy) hy.oninput = () => { s.options.hypothetical = hy.value.trim(); hy.classList.toggle("bad", hy.value.trim() !== "" && !isNum(hy.value)); save(); scheduleRun(); };
     const bl = $("opt-baseline");
     if (bl) bl.oninput = () => { s.options.baseline = bl.value.trim(); bl.classList.toggle("bad", bl.value.trim() !== "" && !isNum(bl.value)); save(); scheduleRun(); };
     const eq = $("opt-equation");
@@ -822,7 +831,8 @@
   function renderFormat() {
     const s = active(), g = s.graph;
     const ctrls = [txt("title", "Graph title"), ...TYPES[s.type].graphControls(s),
-      txt("ymin", "Y min", "auto"), txt("ymax", "Y max", "auto"), chk("logY", "Log Y axis"),
+      txt("ymin", "Y min", "auto"), txt("ymax", "Y max", "auto"), txt("ytick", "Y tick every", "auto"), chk("logY", "Log Y axis"),
+      sel("legend", "Legend", [["auto", "Automatic"], ["hide", "Hide"]]),
       sel("palette", "Colors", [["vivid", "Vivid"], ["colorblind", "Colorblind-safe"], ["classic", "Classic"], ["pastel", "Pastel"], ["grayscale", "Grayscale"]]),
       { k: "pointSize", label: "Point size", kind: "range", min: 3, max: 16 },
       { k: "fontSize", label: "Font size", kind: "range", min: 9, max: 22 },
@@ -934,6 +944,35 @@
         : `<p class="note">No outliers found in any group.</p>`);
     }
     h += `<div class="opt-label" style="margin-top:10px">Descriptive statistics</div>` + descTable(r.groups);
+    return h;
+  }
+
+  function renderColStats(r) {
+    const G = r.groups, pct = Math.round((1 - r.alpha) * 100);
+    const row = (label, f) => [label, ...G.map(g => { const v = f(g); return v == null ? "—" : v; })];
+    const rows = [
+      row("Number of values", g => g.n), row("Mean", g => fmt(g.mean)), row("Std. deviation", g => fmt(g.sd)), row("Std. error of mean", g => fmt(g.sem)),
+      row(`Lower ${pct}% CI of mean`, g => fmt(g.ci_low)), row(`Upper ${pct}% CI of mean`, g => fmt(g.ci_high)),
+      row("Minimum", g => fmt(g.min)), row("25% percentile", g => fmt(g.q1)), row("Median", g => fmt(g.median)), row("75% percentile", g => fmt(g.q3)),
+      row("Maximum", g => fmt(g.max)), row("Range", g => fmt(g.range)), row("Interquartile range", g => fmt(g.iqr)),
+      row("Coefficient of variation", g => g.cv == null ? null : fmt(g.cv, 4) + "%"),
+      row("Geometric mean", g => g.geo_mean == null ? null : fmt(g.geo_mean)), row("Geometric SD factor", g => g.geo_sd_factor == null ? null : fmt(g.geo_sd_factor)),
+      row("Skewness", g => g.skewness == null ? null : fmt(g.skewness, 3)), row("Kurtosis", g => g.kurtosis == null ? null : fmt(g.kurtosis, 3)),
+      row("Sum", g => fmt(g.sum)),
+      row("Shapiro-Wilk P", g => g.shapiro ? `${fmt(g.shapiro.p, 3)} (${g.shapiro.normal ? "passed" : "<b>not normal</b>"})` : null),
+      row("D'Agostino-Pearson P", g => g.dagostino ? `${fmt(g.dagostino.p, 3)} (${g.dagostino.normal ? "passed" : "<b>not normal</b>"})` : "needs n ≥ 8"),
+    ];
+    let h = "";
+    if (r.hypothetical != null) {
+      const sig = G.filter(g => g.one_sample_t && g.one_sample_t.p < r.alpha);
+      h += T.summary(sig.length ? "sig" : "ns", sig.length ? `Mean differs significantly from ${fmt(r.hypothetical)} in: ${sig.map(g => `<b>${esc(g.name)}</b> (${fmtP(g.one_sample_t.p)})`).join(", ")}.`
+        : `No column's mean differs significantly from ${fmt(r.hypothetical)}.`);
+      rows.push(row(`One-sample t test vs ${fmt(r.hypothetical)}: P`, g => g.one_sample_t ? `${pOnly(g.one_sample_t.p)} ${st(g.one_sample_t.stars)}` : null),
+        row("Mean − hypothetical", g => g.one_sample_t ? fmt(g.one_sample_t.diff) : null),
+        row(`Wilcoxon signed-rank vs ${fmt(r.hypothetical)}: P`, g => g.wilcoxon ? `${pOnly(g.wilcoxon.p)} ${st(g.wilcoxon.stars)}` : null));
+    } else h += T.summary("ns", `Descriptive statistics for ${G.length} column${G.length > 1 ? "s" : ""}. Enter a hypothetical value to test each column's mean against it.`);
+    h += T.multi(["", ...G.map(g => esc(g.name))], rows);
+    h += `<p class="note">Percentiles use the (n+1)p rank method, as Prism does. Geometric values need all values > 0.</p>`;
     return h;
   }
 
@@ -1332,6 +1371,7 @@
     }
     if (el.querySelector(".empty")) el.innerHTML = "";
     TYPES[s.type].draw(el, lastResult, s);
+    if (s.graph.legend === "hide" && el.layout && el.layout.showlegend) Plotly.relayout(el, { showlegend: false });
   }
 
   function bracketLayout(pairs, top, span) {
@@ -1391,7 +1431,7 @@
     });
     const span = (ymax - Math.min(0, ymin)) || 1;
     let topExtra = span * 0.06;
-    if (g.brackets !== "none") {
+    if (g.brackets !== "none" && r.kind !== "describe") {
       const pairs = r.n_groups === 2 ? [{ i: 0, j: 1, stars: r.stars, significant: r.significant }]
         : r.comparisons.map(c => ({ i: c.i, j: c.j, stars: c.stars, significant: c.significant }));
       const show = pairs.filter(p => g.brackets === "all" || p.significant);

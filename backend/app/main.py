@@ -46,6 +46,27 @@ class CompareRequest(BaseModel):
     outliers: bool = False  # also run Grubbs' outlier test on each group
 
 
+class ColStatsRequest(BaseModel):
+    groups: list
+    names: list[str]
+    hypothetical: float | None = None
+    alpha: float = 0.05
+
+
+@app.post("/api/colstats")
+def run_colstats(req: ColStatsRequest):
+    try:
+        cols = [(n, g) for n, g in zip(req.names, req.groups) if any(v is not None and str(v).strip() != "" for v in g)]
+        if not cols:
+            raise ValueError("Enter values in at least one column.")
+        res = {"kind": "describe", "test_name": "Column statistics", "alpha": req.alpha, "hypothetical": req.hypothetical,
+               "groups": [stats.column_stats(g, n, req.hypothetical, req.alpha) for n, g in cols]}
+        res["n_groups"] = len(cols)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(_json_safe(res))
+
+
 class RegressionRequest(BaseModel):
     x: list
     y: list

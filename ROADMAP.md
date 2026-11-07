@@ -82,6 +82,11 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Automatic UI smoke test: every example renders without JS errors (skips without Playwright)
 - [x] 89 tests
 
+## Phase 0.19: Column statistics + axis/legend (done 2026-11-06)
+- [x] "Describe each column": quartiles ((n+1)p), CV, geometric mean/SD factor, skewness, kurtosis,
+      Shapiro-Wilk + D'Agostino-Pearson, one-sample t and Wilcoxon vs a hypothetical value
+- [x] Format: Y tick interval, hide legend; 91 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
