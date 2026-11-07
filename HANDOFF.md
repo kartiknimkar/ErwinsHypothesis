@@ -86,6 +86,12 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (m) linear regression: force through origin, prediction bands
 - [x] (n) power / sample size calculator (t test, ANOVA, proportions)
 - [x] (o) two-way ANOVA with both factors repeated
+- [ ] (p) Hodges-Lehmann median difference + CI for Mann-Whitney and Wilcoxon
+- [ ] (q) project report: one HTML file in exports with every analysis (graph as inline SVG, results, paper text)
+- [ ] (r) export every analysis of the project into one Excel workbook (one sheet per analysis)
+- [ ] (s) graph options: error bars above only (bars), survival: percent death and median survival lines
+- [ ] (t) keyboard shortcuts / quick help panel ("?" button)
+- [ ] (u) performance check with large tables (e.g. 5,000 rows) and fix any slowness
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →
