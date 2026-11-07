@@ -261,3 +261,11 @@ table.res .pd { color: var(--muted); font-size: 11.5px; font-weight: 400; }
 .row-menu .fill-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 8px 0; font-size: 12px; max-width: 320px; }
 .row-menu .fill-row input, .row-menu .fill-row select { border: 1px solid var(--line); border-radius: 5px; padding: 2px 4px; font-size: 12px; background: var(--panel); color: var(--ink); }
 .row-menu .fill-row button { width: auto; }
+
+.help-body { overflow-y: auto; font-size: 13px; }
+.help-body h4 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+.help-body ul { margin: 0; padding-left: 18px; } .help-body li { margin: 3px 0; }
+.help-body table.keys { width: 100%; border-collapse: collapse; }
+.help-body table.keys td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.help-body table.keys td:first-child { white-space: nowrap; width: 45%; }
+kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; background: var(--soft); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 1px 5px; }

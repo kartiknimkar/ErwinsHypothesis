@@ -15,6 +15,7 @@
       <span id="save-status" class="save-status"></span>
     </div>
     <div class="topbar-actions">
+      <button id="btn-help" class="icon" title="Quick help and keyboard shortcuts (?)" aria-label="Quick help">?</button>
       <button id="btn-theme" class="icon" title="Switch light / dark mode" aria-label="Switch light or dark mode">☾</button>
       <button id="btn-report" class="ghost small" title="Save one HTML report with every analysis (graphs, results, text for your paper) to the exports folder">Report</button>
       <button id="btn-workbook" class="ghost small" title="Save every analysis (results and data) to one Excel file in the exports folder">All to Excel</button>
@@ -56,6 +57,41 @@
     <div class="dialog" role="dialog" aria-labelledby="guide-title">
       <div class="dialog-head"><h3 id="guide-title">Help me choose an analysis</h3><button id="guide-close" class="icon" aria-label="Close">✕</button></div>
       <div id="guide-body"></div>
+    </div>
+  </div>
+
+  <div id="help-backdrop" class="backdrop" hidden>
+    <div class="dialog" role="dialog" aria-labelledby="help-title">
+      <div class="dialog-head"><h3 id="help-title">Quick help</h3><button id="help-close" class="icon" aria-label="Close">✕</button></div>
+      <div class="help-body">
+        <h4>Getting started</h4>
+        <ul><li><b>+ New analysis</b> picks the kind of data; <b>Help me choose</b> asks plain questions and sets it up for you.</li>
+          <li>Paste straight from Excel into the table. <b>Example</b> fills in sample data so you can see how it works.</li>
+          <li>Everything saves automatically in the app's <b>projects</b> folder; exports go to <b>exports</b>.</li></ul>
+        <h4>Table</h4>
+        <table class="keys">
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Undo / redo</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd>, <kbd>X</kbd>, <kbd>V</kbd></td><td>Copy, cut, paste cells (works with Excel)</td></tr>
+          <tr><td>Drag, or <kbd>Shift</kbd>+click / arrows</td><td>Select a block of cells</td></tr>
+          <tr><td><kbd>Delete</kbd></td><td>Clear the selected cells</td></tr>
+          <tr><td>Right-click a cell</td><td>Exclude a value, sort rows, fill a series (e.g. a dilution series)</td></tr>
+          <tr><td>Right-click a row number</td><td>Insert or delete rows</td></tr>
+          <tr><td>Click a column name</td><td>Rename it</td></tr>
+        </table>
+        <h4>Graph</h4>
+        <table class="keys">
+          <tr><td>Click a title, axis title or legend entry</td><td>Type new text right on the graph</td></tr>
+          <tr><td>Drag the legend or a text label</td><td>Move it</td></tr>
+          <tr><td><b>Format ▾</b></td><td>Fonts, colors, points, lines, bars, patterns, axes, legend, export size</td></tr>
+          <tr><td><b>SVG</b></td><td>Editable vector file for Illustrator, Inkscape or PowerPoint</td></tr>
+        </table>
+        <h4>Everywhere</h4>
+        <table class="keys">
+          <tr><td><kbd>?</kbd></td><td>Open this help</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Close a dialog or menu</td></tr>
+          <tr><td><b>Report</b> / <b>All to Excel</b></td><td>Every analysis in one HTML report or one Excel file</td></tr>
+        </table>
+      </div>
     </div>
   </div>
 

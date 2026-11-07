@@ -270,6 +270,9 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Error bars "above only" (bars and mean lines, all graph types via the style pass); survival graphs: percent death,
       median survival lines; 181 tests
 
+## Phase 0.61: Quick help (done 2026-11-07)
+- [x] "?" button / key: quick help with getting-started tips and keyboard/mouse shortcuts; Esc closes menus; 182 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

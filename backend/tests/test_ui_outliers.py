@@ -234,3 +234,22 @@ def test_error_direction_and_survival_modes(server):  # noqa: F811
         assert page.evaluate("document.getElementById('plot').layout.shapes.length") >= 2
         assert errors == [], errors
         browser.close()
+
+
+def test_help_panel(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#btn-help")
+        assert page.is_visible("#help-backdrop") and "Undo / redo" in page.inner_text("#help-backdrop")
+        page.keyboard.press("Escape")
+        assert not page.is_visible("#help-backdrop")
+        page.evaluate("document.activeElement && document.activeElement.blur()")
+        page.keyboard.press("?")
+        assert page.is_visible("#help-backdrop")
+        browser.close()

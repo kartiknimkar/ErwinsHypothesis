@@ -3379,8 +3379,12 @@
   $("btn-pdf").onclick = () => exportPlot("png", "pdf");
   $("btn-copy").onclick = copyResults;
   $("btn-xlsx").onclick = exportXlsx;
+  $("btn-help").onclick = () => { $("help-backdrop").hidden = false; };
+  $("help-close").onclick = () => { $("help-backdrop").hidden = true; };
+  $("help-backdrop").onclick = e => { if (e.target.id === "help-backdrop") $("help-backdrop").hidden = true; };
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") { hideProjects(); $("transform-backdrop").hidden = true; $("guide-backdrop").hidden = true; }
+    if (e.key === "Escape") { hideProjects(); $("transform-backdrop").hidden = true; $("guide-backdrop").hidden = true; $("help-backdrop").hidden = true; $("row-menu").hidden = true; }
+    if (e.key === "?" && !e.ctrlKey && !e.metaKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && !e.target.isContentEditable) { e.preventDefault(); $("help-backdrop").hidden = false; }
     const mod = e.ctrlKey || e.metaKey;
     if (!mod) return;
     const inGridOrBody = e.target === document.body || e.target.closest("#grid");
