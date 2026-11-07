@@ -73,6 +73,9 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Logistic regression (IRLS, odds ratios, LR test, McFadden/Tjur R², AUC, separation check, ROC plot)
 - [x] Cross-checked vs statsmodels; 85 tests
 
+## Phase 0.17: Export sizes (done 2026-11-06)
+- [x] Journal export presets (single/1.5/double column, slide, square) and 150/300/600 DPI PNG
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

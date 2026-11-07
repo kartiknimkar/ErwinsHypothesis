@@ -67,7 +67,7 @@ Every session starts by reading it and ends by updating it (then committing).
 1. (done) Two-way ANOVA + RM one-way / Friedman / Wilcoxon (`backend/app/anova2.py`, no new dependencies)
    Possible follow-ups: two-way with repeated measures, comparisons across rows / main-effect comparisons
 2. (done) More curve models + model comparison. Constraints done (fit(fixed=...)); user-defined equations done (equation.py, model "custom"). Follow-ups: global fits sharing parameters across datasets
-3. Graph polish: per-group colors done (graph.colors by series name). Still: legend editing, axis tick control, export size/DPI
+3. Graph polish: per-group colors done (graph.colors by series name). Export size/DPI done (EXPORT_SIZES in app.js). Still: legend editing, axis tick control, TIFF export
    Other Prism features worth adding: ROUT outliers, (multiple t tests done: anova2.multiple_t, /api/multit),
    column statistics sheet, PCA
 4. (done) Excel/CSV import (`backend/app/importer.py`, /api/import). Excel export done (storage.save_results_xlsx, /api/exports/xlsx)

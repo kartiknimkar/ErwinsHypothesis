@@ -51,7 +51,10 @@
   };
   // a color picked by the user for a named series wins over the palette
   const color = (g, i, name) => (name != null && g.colors && g.colors[name]) || (PALETTES[g.palette] || PALETTES.vivid)[i % 8];
-  const COMMON_GRAPH = { title: "", palette: "vivid", pointSize: 8, fontSize: 13, ymin: "", ymax: "", logY: false };
+  const COMMON_GRAPH = { title: "", palette: "vivid", pointSize: 8, fontSize: 13, ymin: "", ymax: "", logY: false, exportSize: "15", exportDpi: "300" };
+  // export sizes in inches (width x height); journals usually ask for 300-600 DPI
+  const EXPORT_SIZES = { "1": [3.5, 2.8, "Single column (3.5 × 2.8 in)"], "15": [5.5, 4.2, "1.5 column (5.5 × 4.2 in)"],
+    "2": [7.2, 5, "Double column (7.2 × 5 in)"], "slide": [10, 6.5, "Slide (10 × 6.5 in)"], "sq": [4, 4, "Square (4 × 4 in)"] };
 
   function axis(g, extra = {}) {
     return { showline: true, linewidth: 1.5, linecolor: "#1b2130", ticks: "outside", tickwidth: 1.5, ticklen: 5,
@@ -817,7 +820,9 @@
       txt("ymin", "Y min", "auto"), txt("ymax", "Y max", "auto"), chk("logY", "Log Y axis"),
       sel("palette", "Colors", [["vivid", "Vivid"], ["colorblind", "Colorblind-safe"], ["classic", "Classic"], ["pastel", "Pastel"], ["grayscale", "Grayscale"]]),
       { k: "pointSize", label: "Point size", kind: "range", min: 3, max: 16 },
-      { k: "fontSize", label: "Font size", kind: "range", min: 9, max: 22 }];
+      { k: "fontSize", label: "Font size", kind: "range", min: 9, max: 22 },
+      sel("exportSize", "Export size", Object.entries(EXPORT_SIZES).map(([k, v]) => [k, v[2]])),
+      sel("exportDpi", "Export resolution (PNG)", [["150", "150 DPI (screen)"], ["300", "300 DPI (print)"], ["600", "600 DPI (high)"]])];
     $("graph-format").innerHTML = ctrls.map(c => {
       const v = g[c.k];
       if (c.kind === "select") return `<label>${c.label}<select data-g="${c.k}">${c.opts.map(([o, l]) => `<option value="${o}" ${v === o ? "selected" : ""}>${l}</option>`).join("")}</select></label>`;
@@ -1438,7 +1443,10 @@
   async function exportPlot(format) {
     if (!lastResult) { toast("Add some data first, then export the graph."); return; }
     try {
-      const url = await Plotly.toImage($("plot"), { format, width: 900, height: 650, scale: format === "png" ? 3 : 1 });
+      const g = active().graph, [wIn, hIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["15"];
+      // 96 CSS pixels per inch; PNG resolution comes from the scale factor
+      const url = await Plotly.toImage($("plot"), { format, width: Math.round(wIn * 96), height: Math.round(hIn * 96),
+        scale: format === "png" ? Number(g.exportDpi || 300) / 96 : 1 });
       const res = await api("/api/exports", { method: "POST", body: JSON.stringify({ filename: `${projectName} - ${active().title}`, data_url: url }) });
       toast(`Saved <b>${esc(res.file)}</b> to the exports folder`, "exports");
     } catch (e) { toast(esc(e.message || "Export failed.")); }
