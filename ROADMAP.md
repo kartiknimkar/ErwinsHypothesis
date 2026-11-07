@@ -266,6 +266,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 ## Phase 0.59: All analyses to Excel (done 2026-11-07)
 - [x] "All to Excel": one workbook, one sheet per analysis (results, then the data); unique, valid sheet names; 180 tests
 
+## Phase 0.60: Graph options (done 2026-11-07)
+- [x] Error bars "above only" (bars and mean lines, all graph types via the style pass); survival graphs: percent death,
+      median survival lines; 181 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

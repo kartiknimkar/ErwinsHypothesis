@@ -204,3 +204,33 @@ def test_two_way_both_repeated(server):  # noqa: F811
         assert "both factors within subjects" in page.eval_on_selector("#results details.report", "e => e.textContent")
         assert errors == [], errors
         browser.close()
+
+
+def test_error_direction_and_survival_modes(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('Example: two groups')")
+        page.wait_for_timeout(500)
+        page.click("#btn-format")
+        page.select_option('#graph-format [data-g="style"]', "bars")
+        page.select_option('#graph-format [data-g="errDir"]', "up")
+        page.wait_for_timeout(400)
+        sym = page.evaluate("document.getElementById('plot').data.filter(t => t.type === 'bar').map(t => t.error_y && t.error_y.symmetric)")
+        assert sym and all(v is False for v in sym)
+        page.click("#sheet-list li:has-text('Example: survival')")
+        page.wait_for_timeout(600)
+        page.select_option('#graph-format [data-g="survMode"]', "death")
+        page.check('#graph-format [data-g="medianLines"]')
+        page.wait_for_timeout(400)
+        assert "Percent death" in page.inner_text("#plot")
+        assert page.evaluate("document.getElementById('plot').layout.shapes.length") >= 2
+        assert errors == [], errors
+        browser.close()

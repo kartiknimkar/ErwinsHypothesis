@@ -202,6 +202,13 @@
       const mk = t.marker;
       if (t.line && t.line.width) t.line = { ...t.line, width: t.line.width * ls };
       if (t.error_y) t.error_y = { ...t.error_y, thickness: Number(g.errWidth), width: Number(g.capWidth) };
+      if (g.errDir === "up") ["error_y", "error_x"].forEach(k => {
+        const e = t[k];
+        if (e && e.array && (t.type === "bar" || (t.marker && /^line-/.test(t.marker.symbol || "")))) {
+          // bars: whisker only away from zero; mean markers: only the upper (or right) half
+          t[k] = { ...e, symmetric: false, arrayminus: e.array.map(() => 0) };
+        }
+      });
       if (mk && (t.type === "scatter" || !t.type) && /markers/.test(t.mode || "")) {
         const special = mk.symbol && mk.symbol !== "circle";
         if (!special) {
@@ -791,7 +798,8 @@
       },
       renderOptions: s => `<p class="hint">Kaplan-Meier survival curves for each group. With 2 or more groups, the log-rank (Mantel-Cox) test compares them; with 2 groups you also get the hazard ratio.</p>${alphaSelect(s)}`,
       graphControls: s => [txt("xlabel", "X axis label", s.cols[0]), txt("ylabel", "Y axis label"),
-        chk("showCensor", "Mark censored"), chk("showCI", "95% confidence bands"), chk("riskTable", "Number at risk table")],
+        chk("showCensor", "Mark censored"), chk("showCI", "95% confidence bands"), chk("riskTable", "Number at risk table"),
+        sel("survMode", "Show", [["survival", "Percent survival"], ["death", "Percent death (100 − survival)"]]), chk("medianLines", "Median survival lines")],
       renderResults: renderSurvivalResults,
       draw: drawSurvival,
     },
@@ -1705,6 +1713,7 @@
       rng("pointSize", "Size", 2, 20), rng("pointOpacity", "Opacity", 0.1, 1, 0.05), rng("pointLine", "Outline width", 0, 3, 0.25),
       { k: "pointLineColor", label: "Outline color", kind: "color" },
       head("Lines & error bars"), rng("lineScale", "Line thickness", 0.25, 4, 0.25), rng("errWidth", "Error bar thickness", 0.5, 4, 0.25), rng("capWidth", "Error bar cap width", 0, 20),
+      sel("errDir", "Error bar direction", [["both", "Both directions"], ["up", "Above only (away from zero)"]]),
       head("Bars & fills"), sel("barOpacity", "Fill opacity", [["", "Automatic"], ["0", "0% (outline only)"], ["0.15", "15%"], ["0.3", "30%"], ["0.5", "50%"], ["0.75", "75%"], ["1", "100% (solid)"]]),
       rng("barLine", "Outline width", 0, 4, 0.25), sel("pattern", "Pattern", [["none", "None"], ["/", "Diagonal ////"], ["\\", "Diagonal \\\\"], ["x", "Cross-hatch"], [".", "Dots"], ["-", "Horizontal"], ["|", "Vertical"], ["vary", "Different per series"]]),
       head("Axes & background"), rng("axisWidth", "Axis thickness", 0.5, 4, 0.25), sel("tickDir", "Ticks", [["outside", "Outside"], ["inside", "Inside"], ["none", "None"]]),
@@ -3046,21 +3055,27 @@
   function drawSurvival(el, r, s) {
     const g = s.graph, traces = [];
     const tmax = Math.max(...s.data.map(row => num(row[0]) ?? 0));
+    const death = g.survMode === "death", tr = v => death ? 100 - v * 100 : v * 100;
+    const shapes = [];
     r.curves.forEach((c, i) => {
       const col = color(g, i, c.name);
-      const xs = [...c.steps.map(p => p.t), tmax], ys = [...c.steps.map(p => p.s * 100), c.steps[c.steps.length - 1].s * 100];
+      const last = c.steps[c.steps.length - 1];
+      const xs = [...c.steps.map(p => p.t), tmax], ys = [...c.steps.map(p => tr(p.s)), tr(last.s)];
       if (g.showCI) {
-        traces.push({ x: xs, y: [...c.steps.map(p => p.lo * 100), c.steps[c.steps.length - 1].lo * 100], mode: "lines", line: { width: 0, shape: "hv" }, hoverinfo: "skip" });
-        traces.push({ x: xs, y: [...c.steps.map(p => p.hi * 100), c.steps[c.steps.length - 1].hi * 100], mode: "lines", line: { width: 0, shape: "hv" }, fill: "tonexty", fillcolor: col + "20", hoverinfo: "skip" });
+        traces.push({ x: xs, y: [...c.steps.map(p => tr(p.lo)), tr(last.lo)], mode: "lines", line: { width: 0, shape: "hv" }, hoverinfo: "skip" });
+        traces.push({ x: xs, y: [...c.steps.map(p => tr(p.hi)), tr(last.hi)], mode: "lines", line: { width: 0, shape: "hv" }, fill: "tonexty", fillcolor: col + "20", hoverinfo: "skip" });
       }
+      if (g.medianLines && c.median != null) shapes.push(
+        { type: "line", x0: 0, x1: c.median, y0: 50, y1: 50, line: { color: col, width: 1.2, dash: "dash" } },
+        { type: "line", x0: c.median, x1: c.median, y0: 0, y1: 50, line: { color: col, width: 1.2, dash: "dash" } });
       traces.push({ x: xs, y: ys, mode: "lines", line: { color: col, width: 2.4, shape: "hv" }, name: esc(c.name), showlegend: true,
         hovertemplate: `${esc(c.name)}: %{y:.1f}% at %{x}<extra></extra>` });
-      if (g.showCensor && c.censored.t.length) traces.push({ x: c.censored.t, y: c.censored.s.map(v => v * 100), mode: "markers", showlegend: false,
+      if (g.showCensor && c.censored.t.length) traces.push({ x: c.censored.t, y: c.censored.s.map(tr), mode: "markers", showlegend: false,
         marker: { symbol: "line-ns", size: g.pointSize + 4, line: { color: col, width: 2 } }, hovertemplate: "Censored at %{x}<extra></extra>" });
     });
-    const L = { ...baseLayout(g), showlegend: true, legend: { x: 1, xanchor: "right", y: 1, bgcolor: "rgba(255,255,255,0.7)" },
+    const L = { ...baseLayout(g), showlegend: true, shapes, legend: death ? { x: 0.02, xanchor: "left", y: 1, bgcolor: "rgba(255,255,255,0.7)" } : { x: 1, xanchor: "right", y: 1, bgcolor: "rgba(255,255,255,0.7)" },
       xaxis: axis(g, { title: { text: esc(g.xlabel || s.cols[0] || "Time") }, rangemode: "tozero" }),
-      yaxis: yAxis(g, g.ylabel, { range: [0, 105] }) };
+      yaxis: yAxis(g, death && (!g.ylabel || g.ylabel === "Percent survival") ? "Percent death" : g.ylabel, { range: [0, 105] }) };
     const rt = r.risk_table;
     if (g.riskTable && rt) {
       // number-at-risk table under the graph, one row per group, aligned with the X ticks
