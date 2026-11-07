@@ -179,6 +179,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
       unweighted marginal means); Šídák for 2 levels, Tukey for 3+; brackets for within-row/column families
 - [x] 2-level main-effect comparison reproduces the Type III F test (balanced and unbalanced); 136 tests
 
+## Phase 0.38: Survival extras (done 2026-11-06)
+- [x] Gehan-Breslow-Wilcoxon test (matches lifelines weightings="wilcoxon"), log-rank test for trend (3+ groups),
+      number-at-risk table under the Kaplan-Meier graph; 138 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

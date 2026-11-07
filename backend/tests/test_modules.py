@@ -138,3 +138,21 @@ def test_endpoints():
     assert r.status_code == 200 and "logrank" in r.json()
     r = c.post("/api/contingency", json={"table": [[1, 2], [3, 4]], "rows": ["A", "B"], "cols": ["x", "y"]})
     assert r.status_code == 200
+
+
+def test_gehan_wilcoxon_and_trend():
+    lf = pytest.importorskip("lifelines.statistics")
+    g = [(np.array(T1, float), np.array(E1)), (np.array(T2, float), np.array(E2))]
+    w = survival.logrank(g, "wilcoxon")
+    ref = lf.logrank_test(T1, T2, E1, E2, weightings="wilcoxon")
+    assert np.isclose(w["chi2"], ref.test_statistic, rtol=1e-6) and np.isclose(w["p"], ref.p_value, rtol=1e-6)
+    T3 = [3, 5, 7, 9, 11]; E3 = [1, 1, 0, 1, 1]
+    g3 = g + [(np.array(T3, float), np.array(E3))]
+    w3 = survival.logrank(g3, "wilcoxon")
+    ref3 = lf.multivariate_logrank_test(T1 + T2 + T3, [0] * len(T1) + [1] * len(T2) + [2] * len(T3), E1 + E2 + E3, weightings="wilcoxon")
+    assert np.isclose(w3["chi2"], ref3.test_statistic, rtol=1e-6)
+    # with 2 groups the trend test is the log-rank test
+    lr = survival.logrank(g)
+    assert np.isclose(survival.trend_test(lr)["chi2"], lr["chi2"], rtol=1e-10)
+    rt = survival.risk_table(g, ["a", "b"])
+    assert rt["counts"]["a"][0] == len(T1) and rt["times"][0] == 0 and all(np.diff(rt["counts"]["b"]) <= 0)

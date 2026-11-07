@@ -83,3 +83,23 @@ def test_twoway_comparison_choices(server):  # noqa: F811
             assert page.query_selector("#plot .main-svg") is not None
         assert errors == [], errors
         browser.close()
+
+
+def test_survival_risk_table_and_tests(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('survival')")
+        page.wait_for_function("document.querySelector('#results').textContent.includes('Gehan-Breslow-Wilcoxon')", timeout=10000)
+        page.click("#btn-format"); page.check('#graph-format [data-g="riskTable"]')
+        page.wait_for_timeout(500)
+        assert "Number at risk" in page.inner_text("#plot")
+        assert errors == [], errors
+        browser.close()

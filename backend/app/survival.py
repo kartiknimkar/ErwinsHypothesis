@@ -53,8 +53,10 @@ def kaplan_meier(t: np.ndarray, e: np.ndarray, alpha: float = 0.05) -> dict:
             "censored": {"t": censored, "s": cens_s}}
 
 
-def logrank(groups: list[tuple[np.ndarray, np.ndarray]]) -> dict:
-    """k-group log-rank (Mantel-Cox) test. Returns chi2, df, p, observed/expected per group."""
+def logrank(groups: list[tuple[np.ndarray, np.ndarray]], weight: str = "logrank") -> dict:
+    """k-group log-rank (Mantel-Cox) test. Returns chi2, df, p, observed/expected per group.
+    weight="wilcoxon": Gehan-Breslow-Wilcoxon test (each event time weighted by the number at risk,
+    so early differences count more). Also returns the k×k covariance (for the trend test)."""
     k = len(groups)
     all_t = np.concatenate([g[0] for g in groups])
     all_e = np.concatenate([g[1] for g in groups])
@@ -63,16 +65,37 @@ def logrank(groups: list[tuple[np.ndarray, np.ndarray]]) -> dict:
         n = np.array([np.sum(g[0] >= ti) for g in groups], float)
         d = np.array([np.sum((g[0] == ti) & (g[1] == 1)) for g in groups], float)
         N, D = n.sum(), d.sum()
-        O += d
-        E += n * D / N
+        w = N if weight == "wilcoxon" else 1.0
+        O += w * d
+        E += w * n * D / N
         if N > 1:
             f = D * (N - D) / (N - 1)
-            V += f * (np.diag(n / N) - np.outer(n, n) / N ** 2)
+            V += w * w * f * (np.diag(n / N) - np.outer(n, n) / N ** 2)
     diff = (O - E)[:-1]
     chi2 = float(diff @ np.linalg.pinv(V[:-1, :-1]) @ diff)
     df = k - 1
     return {"chi2": chi2, "df": df, "p": float(stats.chi2.sf(chi2, df)),
-            "observed": O.tolist(), "expected": E.tolist(), "variance": V.diagonal().tolist()}
+            "observed": O.tolist(), "expected": E.tolist(), "variance": V.diagonal().tolist(), "cov": V.tolist()}
+
+
+def trend_test(lr: dict) -> dict:
+    """Log-rank test for trend: groups in column order get scores 1, 2, 3…; df = 1."""
+    O, E, V = np.array(lr["observed"]), np.array(lr["expected"]), np.array(lr["cov"])
+    sc = np.arange(1, len(O) + 1, dtype=float)
+    u = float(sc @ (O - E))
+    var = float(sc @ V @ sc)
+    chi2 = u * u / var if var > 0 else float("nan")
+    return {"chi2": chi2, "df": 1, "p": float(stats.chi2.sf(chi2, 1))}
+
+
+def risk_table(data, names, n_ticks: int = 6) -> dict:
+    """Number still at risk (not yet had the event or been censored) at evenly spaced times."""
+    tmax = max(float(t.max()) for t, _ in data)
+    raw = tmax / (n_ticks - 1) if tmax > 0 else 1.0
+    e = 10 ** math.floor(math.log10(raw))
+    step = next(m * e for m in (1, 2, 2.5, 5, 10) if raw <= m * e * 1.0000001)
+    times = [i * step for i in range(int(tmax // step) + 1)]
+    return {"times": times, "counts": {nm: [int(np.sum(t >= x)) for x in times] for nm, (t, _) in zip(names, data)}}
 
 
 def analyze(times: list, groups: dict[str, list], alpha: float = 0.05) -> dict:
@@ -89,13 +112,17 @@ def analyze(times: list, groups: dict[str, list], alpha: float = 0.05) -> dict:
         curves.append(km)
     if not curves:
         raise ValueError("Enter times in the first column and 1 (event) or 0 (censored) in a group column.")
-    res = {"test_name": "Survival analysis (Kaplan-Meier)", "curves": curves, "alpha": alpha}
+    res = {"test_name": "Survival analysis (Kaplan-Meier)", "curves": curves, "alpha": alpha,
+           "risk_table": risk_table(data, [c["name"] for c in curves])}
     if len(curves) >= 2:
         if sum(c["events"] for c in curves) == 0:
             raise ValueError("No events (1s) yet, so survival can't be compared.")
         lr = logrank(data)
         res["logrank"] = lr
         res["p"] = lr["p"]
+        res["wilcoxon"] = logrank(data, "wilcoxon")
+        if len(curves) >= 3:
+            res["trend"] = trend_test(lr)
         if len(curves) == 2:
             # Mantel-Haenszel hazard ratio, second group relative to the first
             O2, E2, V2 = lr["observed"][1], lr["expected"][1], lr["variance"][1]

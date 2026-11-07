@@ -695,7 +695,7 @@
       },
       renderOptions: s => `<p class="hint">Kaplan-Meier survival curves for each group. With 2 or more groups, the log-rank (Mantel-Cox) test compares them; with 2 groups you also get the hazard ratio.</p>${alphaSelect(s)}`,
       graphControls: s => [txt("xlabel", "X axis label", s.cols[0]), txt("ylabel", "Y axis label"),
-        chk("showCensor", "Mark censored"), chk("showCI", "95% confidence bands")],
+        chk("showCensor", "Mark censored"), chk("showCI", "95% confidence bands"), chk("riskTable", "Number at risk table")],
       renderResults: renderSurvivalResults,
       draw: drawSurvival,
     },
@@ -2472,6 +2472,10 @@
     if (r.logrank) {
       const rows = [T.sec("Log-rank (Mantel-Cox) test"), T.row("Chi-square, df", `${fmt(r.logrank.chi2)}, ${r.logrank.df}`),
         T.row("P value", `${pOnly(r.p)} ${st(stars(r.p))}`)];
+      if (r.wilcoxon) rows.push(T.sec("Gehan-Breslow-Wilcoxon test (weights early deaths more)"), T.row("Chi-square, df", `${fmt(r.wilcoxon.chi2)}, ${r.wilcoxon.df}`),
+        T.row("P value", `${pOnly(r.wilcoxon.p)} ${st(stars(r.wilcoxon.p))}`));
+      if (r.trend) rows.push(T.sec("Log-rank test for trend (groups in column order)"), T.row("Chi-square, df", `${fmt(r.trend.chi2)}, 1`),
+        T.row("P value", `${pOnly(r.trend.p)} ${st(stars(r.trend.p))}`));
       if (r.hazard_ratio) rows.push(T.sec("Hazard ratio (Mantel-Haenszel)"), T.row(esc(r.hazard_ratio.label), fmt(r.hazard_ratio.value)),
         T.row("95% CI", ci(...r.hazard_ratio.ci)));
       if (r.median_ratio) rows.push(T.row("Ratio of medians", fmt(r.median_ratio)));
@@ -2676,9 +2680,23 @@
       if (g.showCensor && c.censored.t.length) traces.push({ x: c.censored.t, y: c.censored.s.map(v => v * 100), mode: "markers", showlegend: false,
         marker: { symbol: "line-ns", size: g.pointSize + 4, line: { color: col, width: 2 } }, hovertemplate: "Censored at %{x}<extra></extra>" });
     });
-    styledReact(el, traces, { ...baseLayout(g), showlegend: true, legend: { x: 1, xanchor: "right", y: 1, bgcolor: "rgba(255,255,255,0.7)" },
+    const L = { ...baseLayout(g), showlegend: true, legend: { x: 1, xanchor: "right", y: 1, bgcolor: "rgba(255,255,255,0.7)" },
       xaxis: axis(g, { title: { text: esc(g.xlabel || s.cols[0] || "Time") }, rangemode: "tozero" }),
-      yaxis: yAxis(g, g.ylabel, { range: [0, 105] }) }, PLOT_CONFIG);
+      yaxis: yAxis(g, g.ylabel, { range: [0, 105] }) };
+    const rt = r.risk_table;
+    if (g.riskTable && rt) {
+      // number-at-risk table under the graph, one row per group, aligned with the X ticks
+      const fs = Math.max(9, (Number(g.fontSize) || 13) - 2), rowH = fs + 6, top = 64;
+      L.xaxis.tickvals = rt.times;
+      L.xaxis.range = [-(rt.times[rt.times.length - 1] || 1) * 0.02, Math.max(tmax, rt.times[rt.times.length - 1])];
+      const names = r.curves.map(c => c.name);
+      L.margin = { ...L.margin, b: top + rowH * (names.length + 1) + 6, l: Math.max(L.margin.l, 16 + 0.62 * fs * Math.max(15, ...names.map(n => n.length))) };
+      L.annotations = [{ text: "<b>Number at risk</b>", xref: "paper", yref: "paper", x: 0, y: 0, yanchor: "top", xanchor: "right", xshift: -6, yshift: -top, showarrow: false, font: { size: fs } },
+        ...names.flatMap((nm, k) => [
+          { text: esc(nm), xref: "paper", yref: "paper", x: 0, y: 0, xanchor: "right", yanchor: "top", xshift: -6, yshift: -top - rowH * (k + 1), showarrow: false, font: { size: fs, color: color(g, k, nm) } },
+          ...rt.times.map((t, q) => ({ text: String(rt.counts[nm][q]), xref: "x", yref: "paper", x: t, y: 0, yanchor: "top", yshift: -top - rowH * (k + 1), showarrow: false, font: { size: fs } }))])];
+    }
+    styledReact(el, traces, L, PLOT_CONFIG);
   }
 
   function drawContingency(el, r, s) {
