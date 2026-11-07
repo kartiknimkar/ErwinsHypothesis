@@ -150,31 +150,41 @@
     },
     // ---------------------------------------------------------------- two-way
     twoway: {
-      label: "Grouped: two-way ANOVA", newTitle: "Two-way ANOVA",
+      label: "Grouped (two factors)", newTitle: "Grouped",
       minCols: 3, maxCols: 12, fixedCols: 1, textCol: 0, addLabel: "+ Group", minRows: 15,
       colKind: j => j === 0 ? "Row factor" : `Group ${letter(j - 1)}`, newColName: j => `Group ${letter(j - 1)}`,
       hint: "Two factors, e.g. treatment (columns) × sex or time (rows). Type the row name in the first column. For replicates, add more rows with the same name.",
       cols: ["Sex", "Vehicle", "Drug"],
       options: { alpha: 0.05 },
       graph: { ylabel: "Response", style: "bars", err: "sd", brackets: "sig", showPoints: true },
-      examples: () => ({
+      examples: s => s.options.analysis === "multit" ? {
+        cols: ["Gene", "Wild type", "Knockout"],
+        rows: [["Il6", 1.0, 3.9], ["Il6", 1.2, 4.4], ["Il6", 0.9, 3.6], ["Tnf", 2.1, 2.3], ["Tnf", 1.9, 2.0], ["Tnf", 2.2, 2.6],
+          ["Ccl2", 0.8, 2.4], ["Ccl2", 1.1, 2.9], ["Ccl2", 0.9, 2.1], ["Actb", 10.2, 10.0], ["Actb", 9.8, 10.4], ["Actb", 10.1, 9.9],
+          ["Il10", 0.5, 0.4], ["Il10", 0.6, 0.7], ["Il10", 0.4, 0.5], ["Cxcl1", 1.4, 2.6], ["Cxcl1", 1.6, 3.1], ["Cxcl1", 1.3, 2.8]],
+      } : ({
         cols: ["Sex", "Vehicle", "Low dose", "High dose"],
         rows: [["Male", 5.1, 6.9, 8.2], ["Male", 4.8, 7.4, 8.8], ["Male", 5.5, 7.1, 8.5], ["Male", 5.0, 6.6, 8.9],
           ["Female", 6.0, 7.0, 7.1], ["Female", 6.3, 7.7, 7.6], ["Female", 5.8, 7.2, 7.9], ["Female", 6.1, 7.5, 7.4]],
       }),
       request(s) {
-        return ["/api/twoway", { rows: s.data.map(r => String(r[0] || "").trim()), columns: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
-          names: s.cols.slice(1).map((c, j) => c || `Group ${letter(j)}`), alpha: s.options.alpha }];
+        const body = { rows: s.data.map(r => String(r[0] || "").trim()), columns: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
+          names: s.cols.slice(1).map((c, j) => c || `Group ${letter(j)}`), alpha: s.options.alpha };
+        if (s.options.analysis === "multit") return ["/api/multit", { ...body, kind: s.options.mtKind || "welch", q: s.options.q || 0.05 }];
+        return ["/api/twoway", body];
       },
-      renderOptions: s => `<p class="hint">Tests whether the <b>column factor</b> (${esc(s.cols.slice(1).join(", "))}) matters, whether the <b>row factor</b> (${esc(s.cols[0])}) matters, and whether they <b>interact</b> (the treatment effect differs between rows). Then compares the columns within each row.</p>${alphaSelect(s)}`,
+      renderOptions: s => `<div class="seg"><button data-set="analysis:anova" class="${s.options.analysis !== "multit" ? "on" : ""}">Two-way ANOVA</button><button data-set="analysis:multit" class="${s.options.analysis === "multit" ? "on" : ""}">Multiple t tests (one per row name)</button></div>` +
+        (s.options.analysis === "multit" ? `<p class="hint">One t test for each row name (e.g. each gene or protein), comparing the two columns. Rows with the same name are replicates. P values are corrected for the number of tests with the false discovery rate (Benjamini-Hochberg).</p>
+          <div class="row"><label>Test</label><select id="opt-mtkind">${[["welch", "Welch's t test"], ["unpaired", "Unpaired t test"], ["mannwhitney", "Mann-Whitney"]].map(([v, l]) => `<option value="${v}" ${(s.options.mtKind || "welch") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+          <label>FDR (Q)</label><select id="opt-q">${[0.01, 0.05, 0.1].map(v => `<option ${(s.options.q || 0.05) === v ? "selected" : ""}>${v}</option>`).join("")}</select></div>` : `<p class="hint">Tests whether the <b>column factor</b> (${esc(s.cols.slice(1).join(", "))}) matters, whether the <b>row factor</b> (${esc(s.cols[0])}) matters, and whether they <b>interact</b> (the treatment effect differs between rows). Then compares the columns within each row.</p>${alphaSelect(s)}`),
       graphControls: () => [
         sel("style", "Style", [["bars", "Bars + dots"], ["dots", "Dots + mean"], ["lines", "Interaction plot (means)"]]),
         sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
         sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]),
         txt("ylabel", "Y axis label"), chk("showPoints", "Show points"),
       ],
-      renderResults: renderTwoWayResults,
-      draw: drawTwoWay,
+      renderResults: (r, s) => r.test_name === "Multiple t tests" ? renderMultiT(r) : renderTwoWayResults(r, s),
+      draw: (el, r, s) => r.test_name === "Multiple t tests" ? drawVolcano(el, r, s) : drawTwoWay(el, r, s),
     },
     // ---------------------------------------------------------------- XY
     regression: {
@@ -412,6 +422,7 @@
     const first = add("ttest", "Example: two groups");
     add("ttest", "Example: three groups (ANOVA)", s => { s.cols = ["A", "B", "C"]; });
     add("twoway", "Example: two-way ANOVA");
+    add("twoway", "Example: multiple t tests", s => { s.options.analysis = "multit"; });
     add("regression", "Example: dose-response (IC50)", s => { s.options.model = "dr_inhibit"; s.graph.logX = true; });
     add("regression", "Example: standard curve");
     add("survival", "Example: survival");
@@ -769,6 +780,8 @@
     }
     const cmp = $("opt-compare");
     if (cmp) cmp.onchange = e => { s.options.compare = e.target.value; save(); scheduleRun(); };
+    const mk = $("opt-mtkind"); if (mk) mk.onchange = e => { s.options.mtKind = e.target.value; save(); scheduleRun(); };
+    const oq = $("opt-q"); if (oq) oq.onchange = e => { s.options.q = Number(e.target.value); save(); scheduleRun(); };
     const lg = $("opt-xislog");
     if (lg) lg.onchange = e => { s.options.xIsLog = e.target.checked; s.graph.logX = !e.target.checked; save(); renderFormat(); scheduleRun(); };
   }
@@ -777,6 +790,7 @@
     if (s.type === "ttest") return filledCols(s).map(j => s.cols[j] || `Group ${letter(j)}`);
     if (s.type === "regression") return ["Curve", ...(s.options.compare ? ["Comparison curve"] : []), "Unknowns"];
     if (s.type === "multivar") return [];
+    if (s.type === "twoway" && s.options.analysis === "multit") return ["Discoveries"];
     if (s.type === "diagnostic") return s.options.analysis === "roc" ? ["Curve", "Best cutoff"] : ["Points"];
     return s.cols.slice(1).map((c, j) => c || (s.type === "contingency" ? `Outcome ${j + 1}` : `Group ${letter(j)}`));
   }
@@ -923,6 +937,30 @@
     })]));
     h += `<p class="note">Mean ± SD. ${r.balanced ? "" : "Unequal group sizes: Type III sums of squares are used. "}Comparisons use the pooled ANOVA error.</p>`;
     return h;
+  }
+
+  function renderMultiT(r) {
+    const [a, b] = r.names.map(esc);
+    const items = [...r.items].sort((x, y) => x.p - y.p);
+    let h = T.summary(r.n_discoveries ? "sig" : "ns", r.n_discoveries
+      ? `<b>${r.n_discoveries} of ${r.items.length}</b> rows differ between <b>${a}</b> and <b>${b}</b> at a false discovery rate of ${r.q_level * 100}%: ${items.filter(i => i.discovery).slice(0, 6).map(i => `<b>${esc(i.name)}</b>`).join(", ")}${r.n_discoveries > 6 ? "…" : ""}.`
+      : `<b>No discoveries</b> among ${r.items.length} rows at a false discovery rate of ${r.q_level * 100}%.`);
+    h += T.multi(["Row", `Mean ${a}`, `Mean ${b}`, "Difference", "log2 fold change", "P", "q (FDR)", ""], items.map(i => ({ cls: i.discovery ? "hl" : "",
+      cells: [esc(i.name), fmt(i.mean_a), fmt(i.mean_b), fmt(i.diff), i.log2fc == null ? "—" : fmt(i.log2fc, 3), pOnly(i.p), pOnly(i.q), i.discovery ? "<b>discovery</b>" : ""] })));
+    if (r.skipped.length) h += `<p class="note warn">Skipped (fewer than 2 values in a column): ${r.skipped.map(esc).join(", ")}</p>`;
+    h += `<p class="note">Difference = ${b} − ${a}. q = Benjamini-Hochberg adjusted P value. Sorted by P.</p>`;
+    return h;
+  }
+  function drawVolcano(el, r, s) {
+    const g = s.graph, hit = r.items.filter(i => i.discovery), rest = r.items.filter(i => !i.discovery);
+    const tr = (pts, col, name) => ({ x: pts.map(i => i.diff), y: pts.map(i => -Math.log10(Math.max(i.p, 1e-300))), mode: "markers", name, showlegend: true,
+      text: pts.map(i => esc(i.name)), marker: { color: col, size: g.pointSize + 1, line: { color: "#fff", width: 1 } },
+      hovertemplate: "%{text}: difference %{x:.3g}, P %{customdata}<extra></extra>", customdata: pts.map(i => fmt(i.p, 3)) });
+    const annotations = hit.length <= 15 ? hit.map(i => ({ x: i.diff, y: -Math.log10(Math.max(i.p, 1e-300)), text: esc(i.name), showarrow: false, yanchor: "bottom", yshift: 6, font: { size: (g.fontSize || 13) - 2 } })) : [];
+    Plotly.react(el, [tr(rest, "#9aa3b2", "Not significant"), tr(hit, color(g, 1, "Discoveries"), `Discoveries (q < ${r.q_level})`)],
+      { ...baseLayout(g), showlegend: true, legend: { orientation: "h", y: 1.08, x: 0 }, annotations,
+        xaxis: axis(g, { title: { text: `Difference (${esc(r.names[1])} − ${esc(r.names[0])})` }, zeroline: true, zerolinecolor: "#d0d4db" }),
+        yaxis: yAxis(g, g.ylabel && g.ylabel !== "Response" ? g.ylabel : "−log10(P)") }, PLOT_CONFIG);
   }
 
   function drawTwoWay(el, r, s) {

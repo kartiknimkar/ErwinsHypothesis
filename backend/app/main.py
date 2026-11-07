@@ -245,6 +245,28 @@ def run_multi(req: MultiRequest):
     return JSONResponse(_json_safe(res))
 
 
+class MultiTRequest(BaseModel):
+    rows: list
+    columns: list            # two lists (group A, group B)
+    names: list[str]
+    kind: str = "welch"
+    q: float = 0.05
+
+
+@app.post("/api/multit")
+def run_multit(req: MultiTRequest):
+    try:
+        cols = [c for c in req.columns if any(v is not None and str(v).strip() != "" for v in c)]
+        names = [n for n, c in zip(req.names, req.columns) if c in cols]
+        if len(cols) != 2:
+            raise ValueError("Multiple t tests compare exactly 2 columns. Remove the extra columns or use two-way ANOVA.")
+        kind = req.kind if req.kind in ("welch", "unpaired", "mannwhitney") else "welch"
+        res = anova2.multiple_t(req.rows, cols[0], cols[1], names=tuple(names), kind=kind, q=req.q)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(_json_safe(res))
+
+
 class SurvivalRequest(BaseModel):
     times: list
     groups: list

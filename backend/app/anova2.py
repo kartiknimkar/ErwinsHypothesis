@@ -208,3 +208,46 @@ def repeated_measures(columns, names, kind: str = "rm", alpha: float = 0.05) -> 
     res["stars"] = stars(res["p"])
     res["significant"] = res["p"] < alpha
     return res
+
+
+def multiple_t(row_labels, col_a, col_b, names=("A", "B"), kind: str = "welch", q: float = 0.05) -> dict:
+    """One t test per row name (rows sharing a name are replicates), with Benjamini-Hochberg FDR."""
+    from .stats import t_test
+    items = {}
+    for lab, a, b in zip(row_labels, col_a, col_b):
+        lab = str(lab or "").strip()
+        if not lab:
+            continue
+        d = items.setdefault(lab, ([], []))
+        if _num(a) is not None:
+            d[0].append(_num(a))
+        if _num(b) is not None:
+            d[1].append(_num(b))
+    results, skipped = [], []
+    for lab, (va, vb) in items.items():
+        try:
+            r = t_test(va, vb, kind=kind, name_a=names[0], name_b=names[1])
+        except ValueError:
+            skipped.append(lab)
+            continue
+        ma, mb = r["groups"][0]["mean"], r["groups"][1]["mean"]
+        results.append({"name": lab, "mean_a": ma, "mean_b": mb, "diff": mb - ma, "t": r["statistic"], "df": r["df"],
+                        "p": r["p"], "n_a": len(va), "n_b": len(vb),
+                        "log2fc": math.log2(mb / ma) if ma > 0 and mb > 0 else None})
+    if not results:
+        raise ValueError("Each row name needs at least 2 values in each of the two columns.")
+    # Benjamini-Hochberg adjusted P (q values)
+    m = len(results)
+    order = sorted(range(m), key=lambda i: results[i]["p"])
+    adj = [0.0] * m
+    prev = 1.0
+    for rank in range(m, 0, -1):
+        i = order[rank - 1]
+        prev = min(prev, results[i]["p"] * m / rank)
+        adj[i] = prev
+    for r, a in zip(results, adj):
+        r["q"] = a
+        r["discovery"] = a < q
+        r["stars"] = stars(r["p"])
+    return {"test_name": "Multiple t tests", "kind": kind, "names": list(names), "q_level": q, "items": results,
+            "skipped": skipped, "n_discoveries": sum(r["discovery"] for r in results), "p": min(r["q"] for r in results)}

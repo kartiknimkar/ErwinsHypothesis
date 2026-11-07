@@ -65,6 +65,9 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Transform dialog → new analysis: normalize 0–100% (min/max or chosen values), % of first row,
       log10, ln, reciprocal, square root, Y×K+C; X transforms for XY tables
 
+## Phase 0.15: Multiple t tests (done 2026-11-06)
+- [x] One t test per row name (Welch/unpaired/Mann-Whitney), Benjamini-Hochberg FDR, volcano plot; 81 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

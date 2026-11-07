@@ -9,7 +9,7 @@ clean, modern interface. Everything runs on your own computer.
 - **Compare groups:** t tests (unpaired, Welch, paired), Mann-Whitney, one-way ANOVA + Tukey,
   Welch's ANOVA + Games-Howell, Kruskal-Wallis + Dunn's, normality tests; for the same subjects
   measured repeatedly: paired t, Wilcoxon, repeated-measures ANOVA, Friedman
-- **Grouped (two factors):** two-way ANOVA with multiple comparisons
+- **Grouped (two factors):** two-way ANOVA with multiple comparisons; multiple t tests with FDR + volcano plot
 - **XY:** linear regression & correlation; curve fitting: dose-response (IC50/EC50),
   standard-slope dose-response, Michaelis-Menten, exponential growth/decay (one & two phase),
   one-phase association, Gaussian, Boltzmann; compare two models (F test / AICc)
@@ -17,7 +17,7 @@ clean, modern interface. Everything runs on your own computer.
 - **Contingency tables:** Fisher's exact, chi-square, odds ratio, relative risk
 - **Multiple variables:** correlation matrix with heatmap
 - **Diagnostics:** ROC curves (AUC, best cutoff), Bland-Altman method comparison
-- Also: standard-curve interpolation, area under the curve, Grubbs' outlier test
+- Also: standard-curve interpolation, area under the curve, Grubbs' outlier test, normalize/transform data
 
 Data can be typed, pasted from Excel, or imported from .xlsx / .csv files.
 
