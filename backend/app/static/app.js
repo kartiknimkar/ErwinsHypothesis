@@ -166,7 +166,11 @@
       cols: ["Sex", "Vehicle", "Drug"],
       options: { alpha: 0.05 },
       graph: { ylabel: "Response", style: "bars", err: "sd", brackets: "sig", showPoints: true },
-      examples: s => s.options.analysis === "multit" ? {
+      examples: s => s.options.rm && s.options.analysis !== "multit" ? {
+        cols: ["Day", "Vehicle", "Drug"],
+        rows: [["0", 10.2, 10.4], ["0", 9.8, 9.9], ["0", 10.5, 10.1], ["0", 10.0, 10.6], ["7", 11.1, 12.3], ["7", 10.9, 11.8], ["7", 11.6, 12.0], ["7", 10.8, 12.9],
+          ["14", 12.0, 14.6], ["14", 11.7, 14.1], ["14", 12.5, 13.8], ["14", 11.6, 15.2], ["21", 12.8, 17.3], ["21", 12.4, 16.5], ["21", 13.3, 16.9], ["21", 12.2, 18.0]],
+      } : s.options.analysis === "multit" ? {
         cols: ["Gene", "Wild type", "Knockout"],
         rows: [["Il6", 1.0, 3.9], ["Il6", 1.2, 4.4], ["Il6", 0.9, 3.6], ["Tnf", 2.1, 2.3], ["Tnf", 1.9, 2.0], ["Tnf", 2.2, 2.6],
           ["Ccl2", 0.8, 2.4], ["Ccl2", 1.1, 2.9], ["Ccl2", 0.9, 2.1], ["Actb", 10.2, 10.0], ["Actb", 9.8, 10.4], ["Actb", 10.1, 9.9],
@@ -180,12 +184,14 @@
         const body = { rows: s.data.map(r => String(r[0] || "").trim()), columns: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
           names: s.cols.slice(1).map((c, j) => c || `Group ${letter(j)}`), alpha: s.options.alpha };
         if (s.options.analysis === "multit") return ["/api/multit", { ...body, kind: s.options.mtKind || "welch", q: s.options.q || 0.05 }];
-        return ["/api/twoway", body];
+        return ["/api/twoway", { ...body, rm: !!s.options.rm }];
       },
       renderOptions: s => `<div class="seg"><button data-set="analysis:anova" class="${s.options.analysis !== "multit" ? "on" : ""}">Two-way ANOVA</button><button data-set="analysis:multit" class="${s.options.analysis === "multit" ? "on" : ""}">Multiple t tests (one per row name)</button></div>` +
         (s.options.analysis === "multit" ? `<p class="hint">One t test for each row name (e.g. each gene or protein), comparing the two columns. Rows with the same name are replicates. P values are corrected for the number of tests with the false discovery rate (Benjamini-Hochberg).</p>
           <div class="row"><label>Test</label><select id="opt-mtkind">${[["welch", "Welch's t test"], ["unpaired", "Unpaired t test"], ["mannwhitney", "Mann-Whitney"]].map(([v, l]) => `<option value="${v}" ${(s.options.mtKind || "welch") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
-          <label>FDR (Q)</label><select id="opt-q">${[0.01, 0.05, 0.1].map(v => `<option ${(s.options.q || 0.05) === v ? "selected" : ""}>${v}</option>`).join("")}</select></div>` : `<p class="hint">Tests whether the <b>column factor</b> (${esc(s.cols.slice(1).join(", "))}) matters, whether the <b>row factor</b> (${esc(s.cols[0])}) matters, and whether they <b>interact</b> (the treatment effect differs between rows). Then compares the columns within each row.</p>${alphaSelect(s)}`),
+          <label>FDR (Q)</label><select id="opt-q">${[0.01, 0.05, 0.1].map(v => `<option ${(s.options.q || 0.05) === v ? "selected" : ""}>${v}</option>`).join("")}</select></div>` : `<p class="hint">Tests whether the <b>column factor</b> (${esc(s.cols.slice(1).join(", "))}) matters, whether the <b>row factor</b> (${esc(s.cols[0])}) matters, and whether they <b>interact</b> (the treatment effect differs between rows). Then compares the columns within each row.</p>
+          <label class="check"><input type="checkbox" data-opt="rm" ${s.options.rm ? "checked" : ""}> Same subjects measured at every row (repeated measures, e.g. a time course)</label>
+          ${s.options.rm ? `<p class="hint">Enter each subject in the same position under every row name: the 1st value under each time point in a column is subject 1, the 2nd is subject 2, and so on. Subjects missing a time point are left out.</p>` : ""}${alphaSelect(s)}`),
       graphControls: () => [
         sel("style", "Style", [["bars", "Bars + dots"], ["dots", "Dots + mean"], ["lines", "Interaction plot (means)"]]),
         sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
@@ -450,6 +456,7 @@
     add("ttest", "Example: column statistics", s => { s.cols = ["A", "B", "C"]; s.options.mode = "describe"; s.options.hypothetical = "12"; });
     add("twoway", "Example: two-way ANOVA");
     add("twoway", "Example: multiple t tests", s => { s.options.analysis = "multit"; });
+    add("twoway", "Example: time course (repeated measures)", s => { s.options.rm = true; s.graph.style = "lines"; s.graph.err = "sem"; });
     add("regression", "Example: dose-response (IC50)", s => { s.options.model = "dr_inhibit"; s.graph.logX = true; });
     add("regression", "Example: standard curve");
     add("survival", "Example: survival");
@@ -980,7 +987,7 @@
   function renderTwoWayResults(r, s) {
     const pct = Math.round((1 - r.alpha) * 100);
     const t = Object.fromEntries(r.table.map(x => [x.source, x]));
-    const rowF = esc(s.cols[0] || "Row factor");
+    const rowF = esc(s.cols[0] || "Row factor") + (r.rm ? " (repeated)" : "");
     const sigTerm = (x, label) => x.p < r.alpha ? `<b>${label}</b> matters (${fmtP(x.p)}, ${x.stars})` : `${label} doesn't (${fmtP(x.p)})`;
     let h = T.summary(t.Interaction.p < r.alpha || t["Column factor"].p < r.alpha || t["Row factor"].p < r.alpha ? "sig" : "ns",
       `${sigTerm(t["Column factor"], "Column factor (groups)")}; ${sigTerm(t["Row factor"], rowF)}; ` +
@@ -989,7 +996,8 @@
     h += T.multi(["Source of variation", "% of total", "F (DFn, DFd)", "P value", ""],
       r.table.filter(x => x.F !== null).map(x => ({ cls: x.p < r.alpha ? "hl" : "",
         cells: [x.source === "Row factor" ? rowF : x.source === "Column factor" ? "Column factor (groups)" : x.source,
-          fmt(x.pct, 3) + "%", `F (${x.df}, ${t.Residual.df}) = ${fmt(x.F)}`, pOnly(x.p), st(x.stars)] })));
+          fmt(x.pct, 3) + "%", `F (${x.df}, ${x.dfd ?? t.Residual.df}) = ${fmt(x.F)}`, pOnly(x.p), st(x.stars)] })));
+    if (r.rm) h += `<p class="note">Repeated measures: ${r.n_subjects} subjects (${r.subjects_per_group.map((n, i) => `${esc(r.cols[i])}: ${n}`).join(", ")}). Row factor and interaction P values use the Geisser-Greenhouse correction (ε = ${fmt(r.epsilon, 3)}); the column factor is tested against variation between subjects.</p>`;
     h += T.multi(["ANOVA table", "SS", "DF", "MS"], r.table.map(x => [x.source === "Row factor" ? rowF : x.source, fmt(x.SS), x.df, fmt(x.MS)]));
     h += `<div class="opt-label" style="margin-top:10px">${esc(r.posthoc_name)}</div>`;
     h += T.multi([rowF, "Comparison", "Mean diff.", `${pct}% CI`, "Adj. P", ""], r.comparisons.map(c => ({ cls: c.significant ? "hl" : "",
@@ -999,7 +1007,7 @@
       const c = r.cells.find(x => x.i === i && x.j === j);
       return `${fmt(c.mean)} <span class="pd">± ${fmt(c.sd, 3)} (n=${c.n})</span>`;
     })]));
-    h += `<p class="note">Mean ± SD. ${r.balanced ? "" : "Unequal group sizes: Type III sums of squares are used. "}Comparisons use the pooled ANOVA error.</p>`;
+    h += `<p class="note">Mean ± SD. ${r.balanced ? "" : "Unequal group sizes: Type III sums of squares are used. "}${r.rm ? "Comparisons at each row use that row's own error term." : "Comparisons use the pooled ANOVA error."}</p>`;
     return h;
   }
 
@@ -1053,6 +1061,12 @@
         traces.push({ type: "scatter", mode: "markers", x: px, y: py, showlegend: false,
           marker: { color: col, size: g.pointSize * 0.85, opacity: 0.85, line: { color: "#fff", width: 1 } }, hovertemplate: "%{y}<extra></extra>" });
       }
+    });
+    if (r.rm && g.style === "lines" && g.showPoints) r.subjects.forEach(sub => {
+      const gi = r.cols.indexOf(sub.group);
+      traces.unshift({ x: sub.values.map((_, i) => i), y: sub.values, mode: "lines", showlegend: false, hoverinfo: "skip",
+        line: { color: color(g, gi, sub.group) + "55", width: 1 } });
+      sub.values.forEach(v => { ymax = Math.max(ymax, v); ymin = Math.min(ymin, v); });
     });
     const span = (ymax - Math.min(0, ymin)) || 1;
     let topExtra = span * 0.08;

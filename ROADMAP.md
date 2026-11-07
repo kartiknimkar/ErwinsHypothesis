@@ -87,6 +87,11 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
       Shapiro-Wilk + D'Agostino-Pearson, one-sample t and Wilcoxon vs a hypothetical value
 - [x] Format: Y tick interval, hide legend; 91 tests
 
+## Phase 0.20: Two-way repeated measures (done 2026-11-06)
+- [x] Mixed (split-plot) ANOVA: rows repeated on the same subjects, columns = groups; Geisser-Greenhouse;
+      Type III for unequal groups; simple-effect comparisons per row; subject trajectories on the graph
+- [x] Verified vs pingouin (balanced, interaction) and statsmodels Type III (unequal groups); 94 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

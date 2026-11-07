@@ -9,7 +9,7 @@ clean, modern interface. Everything runs on your own computer.
 - **Compare groups:** t tests (unpaired, Welch, paired), Mann-Whitney, one-way ANOVA + Tukey,
   Welch's ANOVA + Games-Howell, Kruskal-Wallis + Dunn's, normality tests, column statistics with one-sample tests; for the same subjects
   measured repeatedly: paired t, Wilcoxon, repeated-measures ANOVA, Friedman
-- **Grouped (two factors):** two-way ANOVA with multiple comparisons; multiple t tests with FDR + volcano plot
+- **Grouped (two factors):** two-way ANOVA (also repeated measures / time courses) with multiple comparisons; multiple t tests with FDR + volcano plot
 - **XY:** linear regression & correlation; curve fitting: dose-response (IC50/EC50),
   standard-slope dose-response, Michaelis-Menten, exponential growth/decay (one & two phase),
   one-phase association, Gaussian, Boltzmann; compare two models (F test / AICc)
