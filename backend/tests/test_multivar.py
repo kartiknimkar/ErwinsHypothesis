@@ -67,3 +67,22 @@ def test_bland_altman_pct_and_ratio():
     lr = np.log(np.array(b) / np.array(a))
     assert np.isclose(r["bias"], np.exp(lr.mean())) and np.isclose(r["loa"][1], np.exp(lr.mean() + 1.959964 * lr.std(ddof=1)), rtol=1e-5)
     assert np.isclose(r["points"]["diff"][0], b[0] / a[0])
+
+
+def test_hosmer_lemeshow_and_classification():
+    import numpy as np
+    from app import multivar
+    rng = np.random.default_rng(2)
+    x = rng.normal(0, 1, 300)
+    p = 1 / (1 + np.exp(-(0.3 + 1.2 * x)))
+    y = (rng.uniform(size=300) < p).astype(int)
+    r = multivar.logistic(y.tolist(), [x.tolist()], "y", ["x"])
+    hl = r["hosmer_lemeshow"]
+    assert hl["df"] == 8 and sum(g["n"] for g in hl["groups"]) == 300 and hl["p"] > 0.01
+    # hand check of the statistic
+    pr = 1 / (1 + np.exp(-(r["coefs"][0]["estimate"] + r["coefs"][1]["estimate"] * x)))
+    order = np.argsort(pr, kind="stable")
+    chi = sum((y[i].sum() - pr[i].sum()) ** 2 / (pr[i].sum() * (1 - pr[i].sum() / len(i))) for i in np.array_split(order, 10))
+    assert np.isclose(hl["chi2"], chi, rtol=1e-6)
+    c = r["classification"]
+    assert c["tp"] + c["fp"] + c["tn"] + c["fn"] == 300 and abs(c["accuracy"] - r["accuracy"]) < 1e-12

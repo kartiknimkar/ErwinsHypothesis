@@ -59,3 +59,15 @@ def test_logistic_large_intercept_is_not_separation():
     assert abs(r["coefs"][0]["estimate"]) > 25 and r["coefs"][1]["or"] > 1
     with pytest.raises(ValueError):
         multivar.logistic([0, 0, 0, 1, 1, 1], [[1, 2, 3, 4, 5, 6]], "y", ["x"])
+
+
+def test_standardized_coefficients():
+    import numpy as np
+    from app import multivar
+    rng = np.random.default_rng(8)
+    x1, x2 = rng.normal(0, 3, 40), rng.normal(5, 1, 40)
+    y = 2 + 0.5 * x1 - 1.5 * x2 + rng.normal(0, 1, 40)
+    r = multivar.multiple_linear(y.tolist(), [x1.tolist(), x2.tolist()], "y", ["x1", "x2"])
+    z = lambda v: (v - v.mean()) / v.std(ddof=1)  # noqa: E731
+    beta = np.linalg.lstsq(np.column_stack([np.ones(40), z(x1), z(x2)]), z(y), rcond=None)[0]
+    assert np.allclose([c["std_beta"] for c in r["coefs"][1:]], beta[1:])

@@ -650,12 +650,14 @@
       }),
       request: s => ["/api/multi", { columns: s.cols.map((_, j) => s.data.map(r => num(r[j]))), names: s.cols.map((c, j) => c || `Variable ${j + 1}`),
         analysis: s.options.analysis || "correlation", alpha: s.options.alpha,
-        method: s.options.analysis === "pca" ? (s.options.pcaScale || "standardized") : s.options.method }],
+        method: s.options.analysis === "pca" ? (s.options.pcaScale || "standardized") : s.options.method,
+        cutoff: isNum(s.options.cutoff) ? Number(s.options.cutoff) : 0.5 }],
       renderOptions: s => `<div class="seg"><button data-set="analysis:correlation" class="${(s.options.analysis || "correlation") === "correlation" ? "on" : ""}">Correlation matrix</button><button data-set="analysis:mlr" class="${s.options.analysis === "mlr" ? "on" : ""}">Multiple linear regression</button><button data-set="analysis:logistic" class="${s.options.analysis === "logistic" ? "on" : ""}">Logistic regression</button><button data-set="analysis:cox" class="${s.options.analysis === "cox" ? "on" : ""}">Cox regression</button><button data-set="analysis:pca" class="${s.options.analysis === "pca" ? "on" : ""}">PCA</button></div>` +
         (s.options.analysis === "pca" ? `<p class="hint">Principal component analysis finds the few directions (components) that capture most of the variation across all variables. Rows missing any value are left out.</p>
           <div class="seg"><button data-set="pcaScale:standardized" class="${(s.options.pcaScale || "standardized") === "standardized" ? "on" : ""}">Standardize variables (recommended)</button><button data-set="pcaScale:covariance" class="${s.options.pcaScale === "covariance" ? "on" : ""}">Use raw units</button></div>` :
-        (s.options.analysis || "correlation") !== "correlation" ? `<p class="hint">${s.options.analysis === "cox" ? "Survival with several predictors: first column = time to event or last follow-up, second column = 1 if the event (e.g. death) happened, 0 if censored, then one column per predictor (numbers; use 1/0 for yes/no). Results are hazard ratios." : s.options.analysis === "logistic" ? "Predicts a yes/no outcome (first column: 1 = yes, 0 = no) from the other columns. Results are odds ratios." : "Predicts the outcome (first column) from all the other columns at once; each coefficient is adjusted for the other predictors."} Rows missing any value are left out.</p>${alphaSelect(s)}` : `<div class="seg"><button data-set="method:pearson" class="${s.options.method === "pearson" ? "on" : ""}">Pearson (linear)</button><button data-set="method:spearman" class="${s.options.method === "spearman" ? "on" : ""}">Spearman (ranks, nonparametric)</button></div>${alphaSelect(s)}`),
+        (s.options.analysis || "correlation") !== "correlation" ? `<p class="hint">${s.options.analysis === "cox" ? "Survival with several predictors: first column = time to event or last follow-up, second column = 1 if the event (e.g. death) happened, 0 if censored, then one column per predictor (numbers; use 1/0 for yes/no). Results are hazard ratios." : s.options.analysis === "logistic" ? "Predicts a yes/no outcome (first column: 1 = yes, 0 = no) from the other columns. Results are odds ratios." : "Predicts the outcome (first column) from all the other columns at once; each coefficient is adjusted for the other predictors."} Rows missing any value are left out.</p>${s.options.analysis === "logistic" ? `<div class="row"><label for="opt-cut">Classification cutoff</label><input type="text" id="opt-cut" data-num="cutoff" value="${esc(s.options.cutoff ?? "0.5")}" style="width:70px" inputmode="decimal"></div>` : ""}${alphaSelect(s)}` : `<div class="seg"><button data-set="method:pearson" class="${s.options.method === "pearson" ? "on" : ""}">Pearson (linear)</button><button data-set="method:spearman" class="${s.options.method === "spearman" ? "on" : ""}">Spearman (ranks, nonparametric)</button></div>${alphaSelect(s)}`),
       graphControls: s => (s.options.analysis || "correlation") === "correlation" ? [chk("showValues", "Show r values")]
+        : s.options.analysis === "mlr" ? [sel("mlrPlot", "Plot", [["fit", "Actual vs predicted"], ["resid", "Residuals vs predicted"]])]
         : s.options.analysis === "pca" ? [sel("pcaPlot", "Plot", [["biplot", "Biplot (PC1 vs PC2)"], ["scree", "Scree plot"]]), chk("pcaLabels", "Label rows")] : [],
       renderResults: (r, s) => r.kind === "cox" ? renderCox(r) : r.kind === "pca" ? renderPCA(r) : r.kind === "linear" ? renderMLR(r) : r.kind === "logistic" ? renderLogistic(r) : renderCorrMatrix(r),
       draw: (el, r, s) => r.kind === "cox" ? drawForest(el, r, s) : r.kind === "pca" ? drawPCA(el, r, s) : r.kind === "linear" ? drawMLR(el, r, s) : r.kind === "logistic" ? drawROC(el, { auc: r.auc, curve: r.roc_curve, best: null }, s) : drawCorrMatrix(el, r, s),
@@ -2640,8 +2642,8 @@
     const preds = r.coefs.slice(1), sig = preds.filter(c => c.p < r.alpha);
     let h = T.summary(r.p < r.alpha ? "sig" : "ns", `The predictors together explain <b>${fmt(r.r_squared * 100, 3)}%</b> of the variation in <b>${esc(r.y_name)}</b> (R², ${fmtP(r.p)}). ` +
       (sig.length ? `Significant on their own (adjusted for the others): ${sig.map(c => `<b>${esc(c.name)}</b> (${c.estimate > 0 ? "+" : ""}${fmt(c.estimate, 3)} per unit)`).join(", ")}.` : "No single predictor is significant after adjusting for the others."));
-    h += T.multi(["", "Estimate", "Std. error", `${pct}% CI`, "P", "", "VIF"], r.coefs.map(c => ({ cls: c.name !== "Intercept" && c.p < r.alpha ? "hl" : "",
-      cells: [esc(c.name), fmt(c.estimate), fmt(c.se, 3), ci(...c.ci), pOnly(c.p), st(c.stars), c.vif == null ? "" : `${fmt(c.vif, 3)}${c.vif > 5 ? " ⚠︎" : ""}`] })));
+    h += T.multi(["", "Estimate", "Std. error", `${pct}% CI`, "Standardized β", "P", "", "VIF"], r.coefs.map(c => ({ cls: c.name !== "Intercept" && c.p < r.alpha ? "hl" : "",
+      cells: [esc(c.name), fmt(c.estimate), fmt(c.se, 3), ci(...c.ci), c.std_beta == null ? "" : fmt(c.std_beta, 3), pOnly(c.p), st(c.stars), c.vif == null ? "" : `${fmt(c.vif, 3)}${c.vif > 5 ? " ⚠︎" : ""}`] })));
     h += T.table([T.sec("Goodness of fit"), T.row("R²", fmt(r.r_squared)), T.row("Adjusted R²", fmt(r.adj_r_squared)), T.row("Sy.x (residual SD)", fmt(r.sy_x)),
       T.row(`F (${r.coefs.length - 1}, ${r.df})`, fmt(r.F)), T.row("P value (model)", pOnly(r.p)), T.row("Rows used", `${r.n}${r.dropped ? ` (${r.dropped} left out: missing values)` : ""}`)]);
     if (r.coefs.some(c => c.vif > 5)) h += `<p class="note warn">⚠︎ VIF above 5: that predictor is strongly correlated with the others, so its coefficient is unstable.</p>`;
@@ -2650,6 +2652,12 @@
   }
   function drawMLR(el, r, s) {
     const g = s.graph, a = r.points.actual, p = r.points.predicted, lo = Math.min(...a, ...p), hi = Math.max(...a, ...p);
+    if (g.mlrPlot === "resid") {
+      const res = a.map((v, i) => v - p[i]), plo = Math.min(...p), phi = Math.max(...p);
+      return styledReact(el, [{ x: [plo, phi], y: [0, 0], mode: "lines", line: { color: "#9aa3b2", dash: "dash" }, hoverinfo: "skip" },
+        { x: p, y: res, mode: "markers", marker: { color: color(g, 0, "Points"), size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: "Predicted %{x:.4g}, residual %{y:.4g}<extra></extra>" }],
+        { ...baseLayout(g), xaxis: axis(g, { title: { text: `Predicted ${esc(r.y_name)}` } }), yaxis: yAxis(g, "Residual (actual − predicted)") }, PLOT_CONFIG);
+    }
     styledReact(el, [{ x: [lo, hi], y: [lo, hi], mode: "lines", line: { color: "#9aa3b2", dash: "dot" }, hoverinfo: "skip" },
       { x: p, y: a, mode: "markers", marker: { color: color(g, 0, "Points"), size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: "Predicted %{x:.4g}, actual %{y:.4g}<extra></extra>" }],
       { ...baseLayout(g), annotations: [{ xref: "paper", yref: "paper", x: 0.02, y: 0.98, xanchor: "left", yanchor: "top", showarrow: false, text: `R² = ${fmt(r.r_squared, 3)}`, font: { color: "#6b7385" } }],
@@ -2689,6 +2697,16 @@
     h += T.table([T.sec("Model"), T.row("Likelihood ratio χ²", `${fmt(r.lr_chi2)}, P ${pOnly(r.p)}`), T.row("Area under ROC curve", fmt(r.auc, 3)),
       T.row("McFadden pseudo-R²", fmt(r.mcfadden_r2, 3)), T.row("Tjur R²", fmt(r.tjur_r2, 3)), T.row("Correctly classified (cutoff 0.5)", `${fmt(r.accuracy * 100, 3)}%`),
       T.row("Rows used (events)", `${r.n} (${r.n_events})${r.dropped ? `; ${r.dropped} left out: missing values` : ""}`)]);
+    const hl = r.hosmer_lemeshow, cl = r.classification;
+    if (hl) h += T.table([T.sec("Goodness of fit (Hosmer-Lemeshow)"), T.row(`Chi-square, df`, `${fmt(hl.chi2)}, ${hl.df}`),
+      T.row("P value", `${pOnly(hl.p)}${hl.p < 0.05 ? " · <b>the model fits poorly</b>" : " · no evidence of poor fit"}`)]);
+    if (cl) {
+      const pc = v => v == null ? "—" : `${fmt(v * 100, 3)}%`;
+      h += `<div class="opt-label" style="margin-top:10px">Classification table (cutoff ${fmt(cl.cutoff)})</div>` +
+        T.multi(["", "Predicted 1", "Predicted 0"], [["Actual 1", cl.tp, cl.fn], ["Actual 0", cl.fp, cl.tn]]) +
+        T.table([T.row("Sensitivity", pc(cl.sensitivity)), T.row("Specificity", pc(cl.specificity)), T.row("Positive predictive value", pc(cl.ppv)),
+          T.row("Negative predictive value", pc(cl.npv)), T.row("Correctly classified", pc(cl.accuracy))]);
+    }
     if (r.n_events < 10 * (r.coefs.length - 1) || r.n - r.n_events < 10 * (r.coefs.length - 1)) h += `<p class="note warn">⚠︎ Few events per predictor (rule of thumb: ≥ 10). Estimates may be unreliable; consider fewer predictors.</p>`;
     h += `<p class="note">Graph: ROC curve of the model's predicted probabilities. Odds ratios use Wald confidence intervals.</p>`;
     return h;

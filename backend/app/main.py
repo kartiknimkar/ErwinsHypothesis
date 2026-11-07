@@ -408,6 +408,7 @@ def import_file(req: ImportRequest):
 class MultiRequest(BaseModel):
     sd_ratio: float | None = None   # Deming: SD of method B's error / SD of method A's error
     ba_kind: str = "diff"           # Bland-Altman: diff | pct | ratio
+    cutoff: float = 0.5             # logistic: probability cutoff for the classification table
     columns: list
     names: list[str]
     analysis: str = "correlation"   # correlation | roc | bland_altman
@@ -435,8 +436,10 @@ def run_multi(req: MultiRequest):
             cols = [(n, c) for n, c in zip(req.names[1:], req.columns[1:]) if any(v is not None and str(v).strip() != "" for v in c)]
             if not cols:
                 raise ValueError("Enter at least one predictor column with values.")
-            fn = multivar.multiple_linear if req.analysis == "mlr" else multivar.logistic
-            res = fn(req.columns[0], [c for _, c in cols], req.names[0], [n for n, _ in cols], alpha=req.alpha)
+            if req.analysis == "mlr":
+                res = multivar.multiple_linear(req.columns[0], [c for _, c in cols], req.names[0], [n for n, _ in cols], alpha=req.alpha)
+            else:
+                res = multivar.logistic(req.columns[0], [c for _, c in cols], req.names[0], [n for n, _ in cols], alpha=req.alpha, cutoff=req.cutoff)
         else:
             if len(req.columns) < 2:
                 raise ValueError("Enter two columns.")

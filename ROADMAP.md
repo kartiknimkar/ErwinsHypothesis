@@ -288,6 +288,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 ## Phase 0.65: Bland-Altman options (done 2026-11-07)
 - [x] Difference, % difference (of the average), or ratio (log-based geometric mean ratio and limits); 186 tests
 
+## Phase 0.66: Regression diagnostics (done 2026-11-07)
+- [x] Logistic: Hosmer-Lemeshow test (10 groups), classification table at a chosen cutoff (sensitivity, specificity, PPV, NPV)
+- [x] Multiple linear: standardized β, residuals-vs-predicted plot; 188 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

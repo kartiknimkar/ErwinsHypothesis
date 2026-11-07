@@ -191,16 +191,45 @@ def multiple_linear(y_col, x_cols, y_name, x_names, alpha: float = 0.05) -> dict
         r2j = 1 - float(r @ r) / ss if ss > 0 else 0
         vif.append(1 / (1 - r2j) if r2j < 1 else None)
     names = ["Intercept"] + list(x_names)
+    sdy = float(np.std(y, ddof=1))
+    std = [None] + [float(beta[j] * np.std(X[:, j], ddof=1) / sdy) if sdy > 0 else None for j in range(1, X.shape[1])]
     coefs = [{"name": nm, "estimate": float(b), "se": float(s), "ci": [float(b - tc * s), float(b + tc * s)],
-              "t": float(tt), "p": float(pp), "stars": stars(float(pp)), "vif": v}
-             for nm, b, s, tt, pp, v in zip(names, beta, se, t, p, vif)]
+              "t": float(tt), "p": float(pp), "stars": stars(float(pp)), "vif": v, "std_beta": sb}
+             for nm, b, s, tt, pp, v, sb in zip(names, beta, se, t, p, vif, std)]
     return {"test_name": "Multiple linear regression", "kind": "linear", "y_name": y_name, "n": n, "dropped": dropped,
             "df": df, "coefs": coefs, "r_squared": r2, "adj_r_squared": adj, "sy_x": math.sqrt(mse), "F": F,
             "p": pF, "stars": stars(pF) if pF is not None else "", "alpha": alpha,
             "points": {"actual": y.tolist(), "predicted": fit.tolist()}}
 
 
-def logistic(y_col, x_cols, y_name, x_names, alpha: float = 0.05) -> dict:
+def hosmer_lemeshow(y, pr, groups: int = 10) -> dict | None:
+    """Hosmer-Lemeshow goodness of fit: observations sorted by predicted probability, split into (up to) 10
+    groups of nearly equal size; chi-square on observed vs expected events, df = groups − 2."""
+    n = len(y)
+    g = min(groups, n // 5) if n >= 15 else 0
+    if g < 3:
+        return None
+    order = np.argsort(pr, kind="stable")
+    chi2, rows = 0.0, []
+    for idx in np.array_split(order, g):
+        o, e, m = float(y[idx].sum()), float(pr[idx].sum()), len(idx)
+        if 0 < e < m:
+            chi2 += (o - e) ** 2 / (e * (1 - e / m))
+        rows.append({"n": m, "observed": o, "expected": e})
+    df = g - 2
+    return {"chi2": chi2, "df": df, "p": float(stats.chi2.sf(chi2, df)), "groups": rows}
+
+
+def classification(y, pr, cutoff: float = 0.5) -> dict:
+    pred = (pr >= cutoff).astype(int)
+    tp, fp = int(np.sum((pred == 1) & (y == 1))), int(np.sum((pred == 1) & (y == 0)))
+    tn, fn = int(np.sum((pred == 0) & (y == 0))), int(np.sum((pred == 0) & (y == 1)))
+    div = lambda a, b: a / b if b else None  # noqa: E731
+    return {"cutoff": cutoff, "tp": tp, "fp": fp, "tn": tn, "fn": fn, "sensitivity": div(tp, tp + fn), "specificity": div(tn, tn + fp),
+            "ppv": div(tp, tp + fp), "npv": div(tn, tn + fn), "accuracy": div(tp + tn, len(y))}
+
+
+def logistic(y_col, x_cols, y_name, x_names, alpha: float = 0.05, cutoff: float = 0.5) -> dict:
     """Binary logistic regression (Newton-Raphson / IRLS). Y must be 0 or 1."""
     y, X, dropped = _design(y_col, x_cols)
     if not np.all(np.isin(y, (0, 1))):
@@ -255,6 +284,7 @@ def logistic(y_col, x_cols, y_name, x_names, alpha: float = 0.05) -> dict:
             "tjur_r2": float(pr[y == 1].mean() - pr[y == 0].mean()), "auc": roc_res["auc"] if roc_res else None,
             "roc_curve": roc_res["curve"] if roc_res else None,
             "accuracy": float(np.mean(pred == y)), "alpha": alpha,
+            "hosmer_lemeshow": hosmer_lemeshow(y, pr), "classification": classification(y, pr, cutoff),
             "points": {"actual": y.tolist(), "predicted": pr.tolist()}}
 
 
