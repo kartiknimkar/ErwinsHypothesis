@@ -68,3 +68,17 @@ def test_results_xlsx(client):
     assert wb.sheetnames == ["Results", "Data"]
     assert wb["Results"]["B3"].value == 0.003  # stored as a real number
     assert [[c.value for c in row] for row in wb["Data"].iter_rows()] == [["A", "B"], [1, 2.5], ["x", 3]]
+
+
+def test_tiff_and_png_dpi(client):
+    import io
+    from PIL import Image
+    c, home = client
+    buf = io.BytesIO(); Image.new("RGBA", (40, 30), (255, 0, 0, 255)).save(buf, format="PNG")
+    url = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    t = c.post("/api/exports", json={"filename": "g", "data_url": url, "fmt": "tiff", "dpi": 600}).json()
+    assert t["file"] == "g.tif"
+    im = Image.open(home / "exports" / "g.tif")
+    assert im.format == "TIFF" and im.size == (40, 30) and round(im.info["dpi"][0]) == 600
+    p = c.post("/api/exports", json={"filename": "g", "data_url": url, "dpi": 300}).json()
+    assert round(Image.open(home / "exports" / p["file"]).info["dpi"][0]) == 300

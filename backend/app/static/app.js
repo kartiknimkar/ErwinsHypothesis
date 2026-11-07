@@ -51,7 +51,7 @@
   };
   // a color picked by the user for a named series wins over the palette
   const color = (g, i, name) => (name != null && g.colors && g.colors[name]) || (PALETTES[g.palette] || PALETTES.vivid)[i % 8];
-  const COMMON_GRAPH = { title: "", palette: "vivid", pointSize: 8, fontSize: 13, ymin: "", ymax: "", logY: false, exportSize: "15", exportDpi: "300" };
+  const COMMON_GRAPH = { pcaPlot: "biplot", pcaLabels: false, title: "", palette: "vivid", pointSize: 8, fontSize: 13, ymin: "", ymax: "", logY: false, exportSize: "15", exportDpi: "300" };
   // export sizes in inches (width x height); journals usually ask for 300-600 DPI
   const EXPORT_SIZES = { "1": [3.5, 2.8, "Single column (3.5 × 2.8 in)"], "15": [5.5, 4.2, "1.5 column (5.5 × 4.2 in)"],
     "2": [7.2, 5, "Double column (7.2 × 5 in)"], "slide": [10, 6.5, "Slide (10 × 6.5 in)"], "sq": [4, 4, "Square (4 × 4 in)"] };
@@ -275,12 +275,16 @@
           [41, 23.3, 90, 6.6, 9.1], [66, 30.5, 121, 13.8, 3.6], [33, 25.8, 95, 8.1, 7.4], [58, 28.2, 108, 11.0, 5.0]],
       }),
       request: s => ["/api/multi", { columns: s.cols.map((_, j) => s.data.map(r => num(r[j]))), names: s.cols.map((c, j) => c || `Variable ${j + 1}`),
-        analysis: s.options.analysis || "correlation", method: s.options.method, alpha: s.options.alpha }],
-      renderOptions: s => `<div class="seg"><button data-set="analysis:correlation" class="${(s.options.analysis || "correlation") === "correlation" ? "on" : ""}">Correlation matrix</button><button data-set="analysis:mlr" class="${s.options.analysis === "mlr" ? "on" : ""}">Multiple linear regression</button><button data-set="analysis:logistic" class="${s.options.analysis === "logistic" ? "on" : ""}">Logistic regression</button></div>` +
-        ((s.options.analysis || "correlation") !== "correlation" ? `<p class="hint">${s.options.analysis === "logistic" ? "Predicts a yes/no outcome (first column: 1 = yes, 0 = no) from the other columns. Results are odds ratios." : "Predicts the outcome (first column) from all the other columns at once; each coefficient is adjusted for the other predictors."} Rows missing any value are left out.</p>${alphaSelect(s)}` : `<div class="seg"><button data-set="method:pearson" class="${s.options.method === "pearson" ? "on" : ""}">Pearson (linear)</button><button data-set="method:spearman" class="${s.options.method === "spearman" ? "on" : ""}">Spearman (ranks, nonparametric)</button></div>${alphaSelect(s)}`),
-      graphControls: s => (s.options.analysis || "correlation") === "correlation" ? [chk("showValues", "Show r values")] : [],
-      renderResults: (r, s) => r.kind === "linear" ? renderMLR(r) : r.kind === "logistic" ? renderLogistic(r) : renderCorrMatrix(r),
-      draw: (el, r, s) => r.kind === "linear" ? drawMLR(el, r, s) : r.kind === "logistic" ? drawROC(el, { auc: r.auc, curve: r.roc_curve, best: null }, s) : drawCorrMatrix(el, r, s),
+        analysis: s.options.analysis || "correlation", alpha: s.options.alpha,
+        method: s.options.analysis === "pca" ? (s.options.pcaScale || "standardized") : s.options.method }],
+      renderOptions: s => `<div class="seg"><button data-set="analysis:correlation" class="${(s.options.analysis || "correlation") === "correlation" ? "on" : ""}">Correlation matrix</button><button data-set="analysis:mlr" class="${s.options.analysis === "mlr" ? "on" : ""}">Multiple linear regression</button><button data-set="analysis:logistic" class="${s.options.analysis === "logistic" ? "on" : ""}">Logistic regression</button><button data-set="analysis:pca" class="${s.options.analysis === "pca" ? "on" : ""}">PCA</button></div>` +
+        (s.options.analysis === "pca" ? `<p class="hint">Principal component analysis finds the few directions (components) that capture most of the variation across all variables. Rows missing any value are left out.</p>
+          <div class="seg"><button data-set="pcaScale:standardized" class="${(s.options.pcaScale || "standardized") === "standardized" ? "on" : ""}">Standardize variables (recommended)</button><button data-set="pcaScale:covariance" class="${s.options.pcaScale === "covariance" ? "on" : ""}">Use raw units</button></div>` :
+        (s.options.analysis || "correlation") !== "correlation" ? `<p class="hint">${s.options.analysis === "logistic" ? "Predicts a yes/no outcome (first column: 1 = yes, 0 = no) from the other columns. Results are odds ratios." : "Predicts the outcome (first column) from all the other columns at once; each coefficient is adjusted for the other predictors."} Rows missing any value are left out.</p>${alphaSelect(s)}` : `<div class="seg"><button data-set="method:pearson" class="${s.options.method === "pearson" ? "on" : ""}">Pearson (linear)</button><button data-set="method:spearman" class="${s.options.method === "spearman" ? "on" : ""}">Spearman (ranks, nonparametric)</button></div>${alphaSelect(s)}`),
+      graphControls: s => (s.options.analysis || "correlation") === "correlation" ? [chk("showValues", "Show r values")]
+        : s.options.analysis === "pca" ? [sel("pcaPlot", "Plot", [["biplot", "Biplot (PC1 vs PC2)"], ["scree", "Scree plot"]]), chk("pcaLabels", "Label rows")] : [],
+      renderResults: (r, s) => r.kind === "pca" ? renderPCA(r) : r.kind === "linear" ? renderMLR(r) : r.kind === "logistic" ? renderLogistic(r) : renderCorrMatrix(r),
+      draw: (el, r, s) => r.kind === "pca" ? drawPCA(el, r, s) : r.kind === "linear" ? drawMLR(el, r, s) : r.kind === "logistic" ? drawROC(el, { auc: r.auc, curve: r.roc_curve, best: null }, s) : drawCorrMatrix(el, r, s),
     },
     // ---------------------------------------------------------------- diagnostics
     diagnostic: {
@@ -446,6 +450,7 @@
     add("multivar", "Example: correlation matrix");
     add("multivar", "Example: multiple regression", s => { s.options.analysis = "mlr"; });
     add("multivar", "Example: logistic regression", s => { s.options.analysis = "logistic"; });
+    add("multivar", "Example: PCA", s => { s.options.analysis = "pca"; });
     add("diagnostic", "Example: ROC curve");
     add("diagnostic", "Example: Bland-Altman", s => { s.options.analysis = "bland_altman"; });
     project.activeId = first.id;
@@ -807,7 +812,7 @@
   function seriesNames(s) {
     if (s.type === "ttest") return filledCols(s).map(j => s.cols[j] || `Group ${letter(j)}`);
     if (s.type === "regression") return ["Curve", ...(s.options.compare ? ["Comparison curve"] : []), "Unknowns"];
-    if (s.type === "multivar") return (s.options.analysis || "correlation") === "correlation" ? [] : s.options.analysis === "logistic" ? ["Curve"] : ["Points"];
+    if (s.type === "multivar") return (s.options.analysis || "correlation") === "correlation" ? [] : s.options.analysis === "logistic" ? ["Curve"] : s.options.analysis === "pca" ? ["Points", "Loadings"] : ["Points"];
     if (s.type === "twoway" && s.options.analysis === "multit") return ["Discoveries"];
     if (s.type === "diagnostic") return s.options.analysis === "roc" ? ["Curve", "Best cutoff"] : ["Points"];
     return s.cols.slice(1).map((c, j) => c || (s.type === "contingency" ? `Outcome ${j + 1}` : `Group ${letter(j)}`));
@@ -822,7 +827,7 @@
       { k: "pointSize", label: "Point size", kind: "range", min: 3, max: 16 },
       { k: "fontSize", label: "Font size", kind: "range", min: 9, max: 22 },
       sel("exportSize", "Export size", Object.entries(EXPORT_SIZES).map(([k, v]) => [k, v[2]])),
-      sel("exportDpi", "Export resolution (PNG)", [["150", "150 DPI (screen)"], ["300", "300 DPI (print)"], ["600", "600 DPI (high)"]])];
+      sel("exportDpi", "Export resolution (PNG/TIFF)", [["150", "150 DPI (screen)"], ["300", "300 DPI (print)"], ["600", "600 DPI (high)"]])];
     $("graph-format").innerHTML = ctrls.map(c => {
       const v = g[c.k];
       if (c.kind === "select") return `<label>${c.label}<select data-g="${c.k}">${c.opts.map(([o, l]) => `<option value="${o}" ${v === o ? "selected" : ""}>${l}</option>`).join("")}</select></label>`;
@@ -1139,6 +1144,51 @@
       PLOT_CONFIG);
   }
 
+  // ---------------------------------------------------------------- PCA
+  function renderPCA(r) {
+    const k = r.eigenvalues.length, show = Math.min(k, 4);
+    let h = T.summary("sig", `The first two components explain <b>${fmt(r.cumulative_pct[Math.min(1, k - 1)], 3)}%</b> of the variation in ${r.names.length} variables. ` +
+      `${r.kaiser} component${r.kaiser === 1 ? " has" : "s have"} an eigenvalue above 1 (Kaiser rule)${r.standardized ? "" : " (raw units: the rule applies to standardized data only)"}. ` +
+      `PC1 is driven mostly by ${topVars(r, 0)}.`);
+    h += T.multi(["Component", "Eigenvalue", "% of variance", "Cumulative %"], r.eigenvalues.map((e, i) => ({ cls: e > 1 && r.standardized ? "hl" : "",
+      cells: [`PC${i + 1}`, fmt(e, 4), fmt(r.variance_pct[i], 3), fmt(r.cumulative_pct[i], 4)] })));
+    h += `<div class="opt-label" style="margin-top:10px">Loadings${r.standardized ? " (correlation of each variable with each component)" : ""}</div>` +
+      T.multi(["Variable", ...Array.from({ length: show }, (_, i) => `PC${i + 1}`)], r.names.map((n, v) => [esc(n), ...Array.from({ length: show }, (_, i) => {
+        const L = r.loadings[v][i]; return Math.abs(L) >= 0.5 ? `<b>${fmt(L, 3)}</b>` : fmt(L, 3);
+      })]));
+    h += `<p class="note">Bold: |loading| ≥ 0.5. ${r.n} rows used${r.dropped ? `; ${r.dropped} left out (missing values)` : ""}. Component signs are arbitrary: only the pattern matters.</p>`;
+    return h;
+  }
+  function topVars(r, pc) {
+    return r.names.map((n, v) => [n, r.loadings[v][pc]]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 2)
+      .map(([n, L]) => `<b>${esc(n)}</b> (${L > 0 ? "+" : "−"})`).join(" and ");
+  }
+  function drawPCA(el, r, s) {
+    const g = s.graph;
+    if (g.pcaPlot === "scree") {
+      Plotly.react(el, [{ type: "bar", x: r.eigenvalues.map((_, i) => `PC${i + 1}`), y: r.variance_pct, marker: { color: color(g, 0, "Points") + "aa", line: { color: color(g, 0, "Points"), width: 1.4 } },
+        hovertemplate: "%{x}: %{y:.1f}%<extra></extra>", name: "% of variance" },
+        { x: r.eigenvalues.map((_, i) => `PC${i + 1}`), y: r.cumulative_pct, mode: "lines+markers", line: { color: "#1b2130", width: 2 }, marker: { size: g.pointSize }, name: "Cumulative %", hovertemplate: "Cumulative %{y:.1f}%<extra></extra>" }],
+        { ...baseLayout(g), showlegend: true, legend: { orientation: "h", y: 1.08, x: 0 }, xaxis: axis(g), yaxis: yAxis(g, "% of variance", { range: [0, 105] }) }, PLOT_CONFIG);
+      return;
+    }
+    if (r.eigenvalues.length < 2) { Plotly.purge(el); el.innerHTML = `<div class="empty"><div>Need at least 2 components for a biplot.</div></div>`; return; }
+    const sc = r.scores, px = sc.map(p => p[0]), py = sc.map(p => p[1]);
+    const span = Math.max(...px.map(Math.abs), ...py.map(Math.abs)) || 1;
+    const vmax = Math.max(...r.vectors[0].map(Math.abs), ...r.vectors[1].map(Math.abs)) || 1, f = span / vmax * 0.85;
+    const shapes = [], annotations = [];
+    r.names.forEach((n, v) => {
+      const x = r.vectors[0][v] * f, y = r.vectors[1][v] * f;
+      annotations.push({ x, y, ax: 0, ay: 0, xref: "x", yref: "y", axref: "x", ayref: "y", showarrow: true, arrowhead: 2, arrowwidth: 1.6, arrowcolor: color(g, 1, "Loadings"), text: "" },
+        { x: x * 1.1, y: y * 1.1, text: `<b>${esc(n)}</b>`, showarrow: false, font: { color: color(g, 1, "Loadings"), size: (g.fontSize || 13) - 1 } });
+    });
+    Plotly.react(el, [{ x: px, y: py, mode: g.pcaLabels ? "markers+text" : "markers", text: px.map((_, i) => String(i + 1)), textposition: "top center",
+      marker: { color: color(g, 0, "Points"), size: g.pointSize, opacity: 0.8, line: { color: "#fff", width: 1 } }, hovertemplate: "Row %{text}: PC1 %{x:.3g}, PC2 %{y:.3g}<extra></extra>" }],
+      { ...baseLayout(g), shapes, annotations,
+        xaxis: axis(g, { title: { text: `PC1 (${fmt(r.variance_pct[0], 3)}%)` }, zeroline: true, zerolinecolor: "#d0d4db" }),
+        yaxis: yAxis(g, `PC2 (${fmt(r.variance_pct[1], 3)}%)`, { zeroline: true, zerolinecolor: "#d0d4db" }) }, PLOT_CONFIG);
+  }
+
   // ---------------------------------------------------------------- multiple / logistic regression
   function renderMLR(r) {
     const pct = Math.round((1 - r.alpha) * 100);
@@ -1440,14 +1490,15 @@
       xaxis: axis(g), yaxis: yAxis(g, g.ylabel || (g.mode === "count" ? "Count" : "Percent of row")) }, PLOT_CONFIG);
   }
 
-  async function exportPlot(format) {
+  async function exportPlot(format, convert) {
     if (!lastResult) { toast("Add some data first, then export the graph."); return; }
     try {
       const g = active().graph, [wIn, hIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["15"];
       // 96 CSS pixels per inch; PNG resolution comes from the scale factor
       const url = await Plotly.toImage($("plot"), { format, width: Math.round(wIn * 96), height: Math.round(hIn * 96),
         scale: format === "png" ? Number(g.exportDpi || 300) / 96 : 1 });
-      const res = await api("/api/exports", { method: "POST", body: JSON.stringify({ filename: `${projectName} - ${active().title}`, data_url: url }) });
+      const res = await api("/api/exports", { method: "POST", body: JSON.stringify({ filename: `${projectName} - ${active().title}`, data_url: url,
+        fmt: convert || null, dpi: format === "png" ? Number(g.exportDpi || 300) : null }) });
       toast(`Saved <b>${esc(res.file)}</b> to the exports folder`, "exports");
     } catch (e) { toast(esc(e.message || "Export failed.")); }
   }
@@ -1600,6 +1651,7 @@
   };
   $("btn-png").onclick = () => exportPlot("png");
   $("btn-svg").onclick = () => exportPlot("svg");
+  $("btn-tiff").onclick = () => exportPlot("png", "tiff");
   $("btn-copy").onclick = copyResults;
   $("btn-xlsx").onclick = exportXlsx;
   document.addEventListener("keydown", e => {

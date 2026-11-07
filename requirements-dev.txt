@@ -6,3 +6,5 @@ statsmodels
 pingouin
 scikit-posthocs
 lifelines
+# optional: browser test of the interface (also run: python -m playwright install chromium)
+playwright

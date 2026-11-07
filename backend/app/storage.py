@@ -141,8 +141,10 @@ def set_last_project(name: str) -> None:
 
 # ---- exports -------------------------------------------------------------
 
-def save_export(filename: str, data_url: str) -> str:
-    """Save a graph sent from the interface as a data: URL. Returns the file name used."""
+def save_export(filename: str, data_url: str, fmt: str | None = None, dpi: int | None = None) -> str:
+    """Save a graph sent from the interface as a data: URL. Returns the file name used.
+    fmt="tiff" converts a PNG to an LZW-compressed TIFF; dpi is written into PNG/TIFF files
+    so Word and journal systems show them at the intended print size."""
     m = re.match(r"^data:image/(png|svg\+xml)(;base64)?,(.*)$", data_url, re.S)
     if not m:
         raise ValueError("Unsupported image data.")
@@ -153,6 +155,18 @@ def save_export(filename: str, data_url: str) -> str:
     else:
         from urllib.parse import unquote
         raw = unquote(payload).encode("utf-8")
+    if ext == "png" and (fmt == "tiff" or dpi):
+        import io
+        from PIL import Image
+        img = Image.open(io.BytesIO(raw))
+        out = io.BytesIO()
+        d_ = (int(dpi), int(dpi)) if dpi else (300, 300)
+        if fmt == "tiff":
+            img.convert("RGB").save(out, format="TIFF", compression="tiff_lzw", dpi=d_)
+            ext = "tif"
+        else:
+            img.save(out, format="PNG", dpi=d_, optimize=True)
+        raw = out.getvalue()
     base = safe_name(filename, "graph")
     d = exports_dir()
     path = d / f"{base}.{ext}"

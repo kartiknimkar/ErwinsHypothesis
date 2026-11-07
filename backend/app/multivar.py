@@ -236,3 +236,35 @@ def logistic(y_col, x_cols, y_name, x_names, alpha: float = 0.05) -> dict:
             "roc_curve": roc_res["curve"] if roc_res else None,
             "accuracy": float(np.mean(pred == y)), "alpha": alpha,
             "points": {"actual": y.tolist(), "predicted": pr.tolist()}}
+
+
+def pca(columns, names, standardize: bool = True) -> dict:
+    """Principal component analysis on complete rows. Standardized (correlation-based) by default."""
+    cols = [[_num(v) for v in c] for c in columns]
+    keep = [i for i, c in enumerate(cols) if sum(v is not None for v in c) >= 3]
+    cols = [cols[i] for i in keep]; names = [names[i] for i in keep]
+    if len(cols) < 2:
+        raise ValueError("PCA needs at least 2 variables (columns) with values.")
+    rows = [r for r in zip(*cols) if all(v is not None for v in r)]
+    n, p = len(rows), len(cols)
+    if n < 3:
+        raise ValueError("PCA needs at least 3 rows with a value in every column.")
+    X = np.array(rows, float)
+    sd = X.std(axis=0, ddof=1)
+    if np.any(sd == 0):
+        raise ValueError("A variable has the same value in every row; remove it.")
+    Z = (X - X.mean(axis=0)) / (sd if standardize else 1)
+    U, S, Vt = np.linalg.svd(Z, full_matrices=False)
+    eig = S ** 2 / (n - 1)
+    # sign convention: largest loading of each component is positive
+    for k in range(len(S)):
+        if Vt[k, np.argmax(np.abs(Vt[k]))] < 0:
+            Vt[k] *= -1; U[:, k] *= -1
+    scores = Z @ Vt.T
+    var = eig / eig.sum()
+    m = min(p, n - 1)
+    loadings = (Vt[:m].T * np.sqrt(eig[:m]))  # correlation of each variable with each component (standardized)
+    return {"test_name": "Principal component analysis", "kind": "pca", "names": names, "n": n, "standardized": standardize,
+            "eigenvalues": eig[:m].tolist(), "variance_pct": (100 * var[:m]).tolist(), "cumulative_pct": (100 * np.cumsum(var[:m])).tolist(),
+            "kaiser": int(np.sum(eig[:m] > 1)), "vectors": Vt[:m].tolist(), "loadings": loadings.tolist(),
+            "scores": scores[:, :m].tolist(), "dropped": int(len(list(zip(*cols))) - n)}

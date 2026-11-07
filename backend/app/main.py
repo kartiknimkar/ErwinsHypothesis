@@ -235,6 +235,8 @@ def run_multi(req: MultiRequest):
     try:
         if req.analysis == "correlation":
             res = multivar.correlation_matrix(req.columns, req.names, req.method, req.alpha)
+        elif req.analysis == "pca":
+            res = multivar.pca(req.columns, req.names, standardize=req.method != "covariance")
         elif req.analysis in ("mlr", "logistic"):
             if len(req.columns) < 2:
                 raise ValueError("Enter the outcome in the first column and at least one predictor.")
@@ -329,6 +331,8 @@ class RenameBody(BaseModel):
 class ExportBody(BaseModel):
     filename: str
     data_url: str
+    fmt: str | None = None    # "tiff" to convert a PNG to TIFF
+    dpi: int | None = None
 
 
 @app.get("/api/projects")
@@ -379,7 +383,7 @@ def project_delete(name: str):
 @app.post("/api/exports")
 def export_save(body: ExportBody):
     try:
-        return {"file": storage.save_export(body.filename, body.data_url),
+        return {"file": storage.save_export(body.filename, body.data_url, fmt=body.fmt, dpi=body.dpi),
                 "folder": str(storage.exports_dir())}
     except ValueError as e:
         raise HTTPException(400, str(e))

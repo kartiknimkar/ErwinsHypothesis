@@ -76,6 +76,12 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 ## Phase 0.17: Export sizes (done 2026-11-06)
 - [x] Journal export presets (single/1.5/double column, slide, square) and 150/300/600 DPI PNG
 
+## Phase 0.18: PCA, TIFF, UI test (done 2026-11-06)
+- [x] PCA (standardized or raw), eigenvalues, loadings, Kaiser rule, biplot and scree plot
+- [x] TIFF export (LZW) and DPI metadata in PNG/TIFF (adds Pillow)
+- [x] Automatic UI smoke test: every example renders without JS errors (skips without Playwright)
+- [x] 89 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
