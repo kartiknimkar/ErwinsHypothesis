@@ -192,6 +192,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Method comparison: Deming regression with error SD ratio, jackknife SE/CI, tests of slope = 1 and intercept = 0,
       identity line on graph; equals orthogonal regression (ratio 1) and scipy.odr (other ratios); 144 tests
 
+## Phase 0.41: Three-way ANOVA (done 2026-11-07)
+- [x] New "Three factors" type (long format: 3 label columns + value; grid supports several text columns via
+      isTextCol); Type III SS matching statsmodels (balanced and unbalanced); grouped bar graph; 147 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

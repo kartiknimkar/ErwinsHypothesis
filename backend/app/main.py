@@ -335,6 +335,22 @@ def run_twoway(req: TwoWayRequest):
     return JSONResponse(_json_safe(res))
 
 
+class ThreeWayRequest(BaseModel):
+    factors: list            # three lists: level of each factor per row
+    values: list
+    names: list[str]
+    alpha: float = 0.05
+
+
+@app.post("/api/threeway")
+def run_threeway(req: ThreeWayRequest):
+    try:
+        res = anova2.three_way(req.factors, req.values, req.names, alpha=req.alpha)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(_json_safe(res))
+
+
 class ImportRequest(BaseModel):
     filename: str
     data: str                # base64 file contents

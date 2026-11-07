@@ -374,6 +374,32 @@
       renderResults: (r, s) => r.kind === "freq" ? renderFreq(r) : r.kind === "describe" ? renderColStats(r) : renderGroupResults(r, s),
       draw: drawGroups,
     },
+    // ---------------------------------------------------------------- three-way ANOVA (long format)
+    threeway: {
+      label: "Three factors", newTitle: "Three-way",
+      minCols: 4, maxCols: 4, fixedCols: 4, textCol: [0, 1, 2], addLabel: "", minRows: 25,
+      colKind: j => ["Factor A", "Factor B", "Factor C", "Value"][j], newColName: () => "",
+      hint: "One row per measurement: the level of each of the three factors (e.g. sex, treatment, time), then the value. Repeat rows for replicates.",
+      cols: ["Factor A", "Factor B", "Factor C", "Value"],
+      options: { alpha: 0.05 },
+      graph: { ylabel: "Response", err: "sem", showPoints: true },
+      examples: () => {
+        const rows = [], vals = [9.8, 10.4, 10.1, 11.2, 10.6, 9.9, 10.3, 11.0, 12.2, 12.9, 13.4, 12.6, 12.0, 11.7, 12.5, 12.8, 14.6, 15.3, 14.1, 15.0, 11.3, 11.9, 10.8, 11.6, 13.4, 13.9, 14.4, 13.0, 15.8, 16.4, 15.1, 16.9, 10.6, 10.1, 11.2, 10.8, 11.8, 12.3, 12.1, 11.5, 14.2, 13.6, 14.8, 14.1, 17.2, 17.9, 16.5, 18.3];
+        let k = 0;
+        for (const sex of ["Male", "Female"]) for (const tr of ["Vehicle", "Drug"]) for (const day of ["Day 1", "Day 7", "Day 14"]) for (let r = 0; r < 2; r++) rows.push([sex, tr, day, vals[k++]]);
+        return { cols: ["Sex", "Treatment", "Time", "Weight (g)"], rows };
+      },
+      request: s => {
+        const rows = s.data.filter(r => isNum(r[3]) && [0, 1, 2].every(j => String(r[j] ?? "").trim() !== ""));
+        return ["/api/threeway", { factors: [0, 1, 2].map(j => rows.map(r => String(r[j]).trim())), values: rows.map(r => num(r[3])),
+          names: s.cols.slice(0, 3).map((c, j) => c || `Factor ${"ABC"[j]}`), alpha: s.options.alpha }];
+      },
+      renderOptions: s => `<p class="hint">Tests each factor, every pair of factors, and all three together for interactions (Type III sums of squares, so unequal group sizes are fine). Every combination of levels needs at least one value.</p>${alphaSelect(s)}`,
+      graphControls: () => [sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
+        txt("ylabel", "Y axis label"), chk("showPoints", "Show points")],
+      renderResults: (r, s) => renderThreeWay(r, s),
+      draw: drawThreeWay,
+    },
     // ---------------------------------------------------------------- nested (subjects with replicates)
     nested: {
       label: "Nested (subjects with replicates)", newTitle: "Nested",
@@ -829,6 +855,7 @@
       s.options.mode = "freq"; s.graph.normalCurve = true; s.graph.ylabel = "Cell size (µm)"; });
     add("ttest", "Example: column statistics", s => { s.cols = ["A", "B", "C"]; s.options.mode = "describe"; s.options.hypothetical = "12"; });
     add("nested", "Example: nested (cells within animals)");
+    add("threeway", "Example: three-way ANOVA");
     add("twoway", "Example: two-way ANOVA");
     add("twoway", "Example: multiple t tests", s => { s.options.analysis = "multit"; });
     add("twoway", "Example: time course (repeated measures)", s => { s.options.rm = true; s.graph.style = "lines"; s.graph.err = "sem"; });
@@ -982,7 +1009,9 @@
       };
     });
   }
-  const badgeText = t => ({ nested: "N", layout: "▦", summary: "Σ", ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#", multivar: "MV", diagnostic: "Dx" }[t]);
+  // a type's text (label) columns: textCol is one index, or a list for long-format tables
+  const isTextCol = (t, j) => Array.isArray(t.textCol) ? t.textCol.includes(j) : j === t.textCol;
+  const badgeText = t => ({ threeway: "3W", nested: "N", layout: "▦", summary: "Σ", ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#", multivar: "MV", diagnostic: "Dx" }[t]);
 
   // ======================================================================
   // data grid
@@ -1002,7 +1031,7 @@
     s.data.forEach((r, i) => {
       h += `<tr><td class="rownum" data-row="${i}" title="Click to select the row; right-click to insert or delete rows">${i + 1}</td>`;
       r.forEach((v, j) => {
-        const text = j === t.textCol;
+        const text = isTextCol(t, j);
         const bad = (!text && String(v).trim() !== "" && !isNum(v) ? " bad" : "") + (isExcluded(s, i, j) ? " excl" : "");
         h += `<td><input class="cell${text ? " txt" : ""}${bad}" data-r="${i}" data-c="${j}" value="${esc(v)}" ${text ? "" : 'inputmode="decimal"'} spellcheck="false"></td>`;
       });
@@ -1030,7 +1059,7 @@
     recordUndo();
     const c = +el.dataset.c;
     s.data[+el.dataset.r][c] = el.value;
-    el.classList.toggle("bad", c !== t.textCol && el.value.trim() !== "" && !isNum(el.value));
+    el.classList.toggle("bad", !isTextCol(t, c) && el.value.trim() !== "" && !isNum(el.value));
     const before = s.data.length;
     padRows(s);
     if (s.data.length !== before) { renderGrid(); cellAt(+el.dataset.r, c).focus(); }
@@ -1134,13 +1163,13 @@
   }
   function cellMenu(e, el) {
     const s = active(), r = +el.dataset.r, c = +el.dataset.c, t = TYPES[s.type];
-    if (c === t.textCol) return;
+    if (isTextCol(t, c)) return;
     e.preventDefault();
     const g = selRange();
     const inSel = g && r >= g.r0 && r <= g.r1 && c >= g.c0 && c <= g.c1;
     const cells = [];
     const R = inSel ? g : { r0: r, r1: r, c0: c, c1: c };
-    for (let i = R.r0; i <= R.r1; i++) for (let j = R.c0; j <= R.c1; j++) if (j !== t.textCol && isNum(s.data[i][j])) cells.push([i, j]);
+    for (let i = R.r0; i <= R.r1; i++) for (let j = R.c0; j <= R.c1; j++) if (!isTextCol(t, j) && isNum(s.data[i][j])) cells.push([i, j]);
     if (!cells.length) return;
     const allEx = cells.every(([i, j]) => isExcluded(s, i, j));
     const menu = $("row-menu");
@@ -1238,6 +1267,7 @@
       ["By two factors", "e.g. treatment × sex, or treatment × time", { q: "Is one factor time points (or conditions) measured on the same subjects?", opts: [
         ["No: every value is a different subject", "", rec("Two-way ANOVA", "Tests both factors and their interaction, then compares groups within each row.", "twoway", s => {})],
         ["Yes: e.g. each animal measured on several days", "", rec("Two-way repeated-measures ANOVA", "Mixed ANOVA for time courses: put time points as row names and groups as columns.", "twoway", s => { s.options.rm = true; s.graph.style = "lines"; s.graph.err = "sem"; })] ] }],
+      ["By three factors", "e.g. sex × treatment × time", rec("Three-way ANOVA", "All three main effects and their interactions. One row per measurement with the level of each factor.", "threeway", s => {})],
       ["Many separate items (genes, proteins…)", "the same two groups compared for each item", rec("Multiple t tests with FDR", "One test per item with false-discovery-rate correction and a volcano plot.", "twoway", s => { s.options.analysis = "multit"; s.cols = ["Gene", "Control", "Treated"]; })] ] }],
     ["Compare groups with several measurements per subject", "e.g. many cells from each animal (technical replicates)", rec("Nested t test / nested ANOVA", "Uses every replicate but compares groups by subject-to-subject variation, so replicates aren't treated as independent.", "nested", s => {})],
     ["Compare groups from published means", "I only have mean, SD (or SEM) and n for each group", rec("Compare groups (mean, SD, n)", "Exact t tests and ANOVA from summary statistics: one row per group.", "summary", s => {})],
@@ -1347,7 +1377,7 @@
       if (s.data.some(r => r.some(v => String(v).trim() !== "")) && !confirm("Replace the data in this table with the file's data? (You can undo.)")) return;
       // first row is a header if it has text where the rows below have numbers
       const first = rows[0], rest = rows.slice(1);
-      const header = rest.length > 0 && first.some((v, j) => j !== t.textCol && v !== "" && !isNum(v) && rest.some(r => isNum(r[j])));
+      const header = rest.length > 0 && first.some((v, j) => !isTextCol(t, j) && v !== "" && !isNum(v) && rest.some(r => isNum(r[j])));
       const width = Math.min(t.maxCols, Math.max(t.minCols, ...rows.map(r => r.length)));
       recordUndo(true);
       s.cols = Array.from({ length: width }, (_, j) => (header && first[j]) || (j < s.cols.length ? s.cols[j] : t.newColName(j)));
@@ -1373,7 +1403,7 @@
     ["linear", "Y × K + C", "Multiply and/or add a constant (e.g. unit conversion)."],
   ];
   // which columns hold Y values (numbers to transform) for each analysis type
-  const yCols = s => s.type === "regression" || s.type === "survival" || s.type === "twoway" || s.type === "contingency" || s.type === "nested"
+  const yCols = s => s.type === "threeway" ? [3] : s.type === "regression" || s.type === "survival" || s.type === "twoway" || s.type === "contingency" || s.type === "nested"
     ? s.cols.map((_, j) => j).slice(1) : s.cols.map((_, j) => j);
   function showTransform() {
     const s = active();
@@ -1505,6 +1535,7 @@
     if (s.type === "regression") return ["Curve", ...(s.options.compare ? ["Comparison curve"] : []), "Unknowns"];
     if (s.type === "layout") return [];
     if (s.type === "summary") return s.data.filter(r => isNum(r[1])).map((r, i) => String(r[0] || `Group ${i + 1}`));
+    if (s.type === "threeway") return [...new Set(s.data.map(r => String(r[1] ?? "").trim()).filter(Boolean))];
     if (s.type === "nested") return [...new Set(s.data.map(r => String(r[0] ?? "").trim()).filter(Boolean))];
     if (s.type === "multivar") return (s.options.analysis || "correlation") === "correlation" ? [] : s.options.analysis === "logistic" ? ["Curve"] : s.options.analysis === "pca" ? ["Points", "Loadings"] : ["Points"];
     if (s.type === "twoway" && s.options.analysis === "multit") return ["Discoveries"];
@@ -1652,6 +1683,11 @@
       const res = r.groups.map(g => `${esc(g.name)}: ${r2(g.mean)} ± ${r2(g.sd)} (mean ± SD, n = ${g.n})${g.one_sample_t ? `, t(${g.one_sample_t.df}) = ${r2(g.one_sample_t.t)}, ${apaP(g.one_sample_t.p)}` : ""}`).join("; ") + ".";
       return { methods: m, results: res };
     }
+    if (s.type === "threeway") {
+      const sig = r.table.filter(x => x.F !== null && x.p < r.alpha), dfr = r.table[r.table.length - 1].df;
+      return { methods: `Data were analyzed by three-way ANOVA (${r.factors.map(esc).join(" × ")}; Type III sums of squares). Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+        results: r.table.filter(x => x.F !== null).map(x => `${esc(x.source)}: F(${x.df}, ${dfr}) = ${r2(x.F)}, ${apaP(x.p)}`).join("; ") + "." };
+    }
     if (s.type === "nested") {
       const two = r.n_groups === 2, c = r.comparisons[0];
       return { methods: `Because several replicate measurements were made on each subject, groups were compared with a ${two ? "nested t test" : "nested one-way ANOVA"} (linear mixed-effects model with subject as a random effect, REML; denominator degrees of freedom = subjects − groups)${two ? "" : ", followed by Tukey's multiple comparisons"}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
@@ -1777,6 +1813,46 @@
     const names = r.normality_of === "differences" ? ["Differences"] : r.groups.map(g => g.name);
     return [T.sec("Normality (Shapiro-Wilk)"), ...r.normality.map((n, i) => T.row(esc(names[i]),
       n ? `W = ${fmt(n.W, 3)}, P = ${fmt(n.p, 3)} · ${n.normal ? "passed" : "<b>not normal</b>"}` : "needs 3+ values"))];
+  }
+  function renderThreeWay(r, s) {
+    const sig = r.table.filter(x => x.F !== null && x.p < r.alpha);
+    let h = T.summary(sig.length ? "sig" : "ns", sig.length ? `Significant: ${sig.map(x => `<b>${esc(x.source)}</b> (${fmtP(x.p)})`).join(", ")}.` + (sig.some(x => x.key.includes("×")) ? " An interaction means the effect of one factor depends on the level of another." : "")
+      : "No factor or interaction is significant.");
+    h += T.multi(["Source of variation", "% of total", "F (DFn, DFd)", "P value", ""], r.table.filter(x => x.F !== null).map(x => ({ cls: x.p < r.alpha ? "hl" : "",
+      cells: [esc(x.source), fmt(x.pct, 3) + "%", `F (${x.df}, ${r.table[r.table.length - 1].df}) = ${fmt(x.F)}`, pOnly(x.p), st(x.stars)] })));
+    h += T.multi(["ANOVA table", "SS", "DF", "MS"], r.table.map(x => [esc(x.source), fmt(x.SS), x.df, fmt(x.MS)]));
+    h += `<div class="opt-label" style="margin-top:10px">Cell means</div>` + T.multi([esc(r.factors[0]), esc(r.factors[1]), esc(r.factors[2]), "Mean", "SD", "n"],
+      r.cells.map(c => [esc(r.levels[0][c.a]), esc(r.levels[1][c.b]), esc(r.levels[2][c.c]), fmt(c.mean), fmt(c.sd, 3), c.n]));
+    h += `<p class="note">${r.balanced ? "" : "Unequal group sizes: "}Type III sums of squares (effect coding), as in Prism and SPSS. ${r.n} values.</p>`;
+    return h;
+  }
+  function drawThreeWay(el, r, s) {
+    const g = s.graph, traces = [], [LA, LB, LC] = r.levels;
+    // x positions: one cluster per (C, A) combination; colors = levels of B
+    const nb = LB.length, width = 0.8, step = width / nb;
+    const xlab = [];
+    LC.forEach((c, ci) => LA.forEach((a, ai) => xlab.push(`${esc(a)}<br><span style="font-size:0.85em">${esc(c)}</span>`)));
+    const errOf = c => g.err === "sem" ? c.sem : g.err === "ci95" ? c.ci95 : g.err === "sd" ? c.sd : 0;
+    LB.forEach((b, bi) => {
+      const col = color(g, bi, b), xs = [], ys = [], es = [];
+      LC.forEach((_, ci) => LA.forEach((_, ai) => {
+        const cell = r.cells.find(x => x.a === ai && x.b === bi && x.c === ci);
+        xs.push(ci * LA.length + ai - width / 2 + step * (bi + 0.5)); ys.push(cell.mean); es.push(errOf(cell) || 0);
+      }));
+      traces.push({ type: "bar", name: esc(b), x: xs, y: ys, width: step * 0.9, marker: { color: col + "40", line: { color: col, width: 1.5 } },
+        error_y: { type: "data", array: es, visible: g.err !== "none", color: "#1b2130", thickness: 1.4, width: 5 }, hovertemplate: `${esc(b)}: mean %{y:.4g}<extra></extra>` });
+      if (g.showPoints) {
+        const px = [], py = [];
+        s.data.forEach(row => {
+          const ai = LA.indexOf(String(row[0] ?? "").trim()), bj = LB.indexOf(String(row[1] ?? "").trim()), ci = LC.indexOf(String(row[2] ?? "").trim()), v = num(row[3]);
+          if (bj === bi && ai >= 0 && ci >= 0 && v !== null) { px.push(ci * LA.length + ai - width / 2 + step * (bi + 0.5) + ((px.length * 0.618) % 1 - 0.5) * step * 0.4); py.push(v); }
+        });
+        traces.push({ type: "scatter", mode: "markers", x: px, y: py, showlegend: false, marker: { color: col, size: g.pointSize * 0.8, line: { color: "#fff", width: 1 } }, hovertemplate: "%{y}<extra></extra>" });
+      }
+    });
+    styledReact(el, traces, { ...baseLayout(g), barmode: "overlay", showlegend: true, meta: "flippable", legend: { orientation: "h", y: 1.1, x: 0 },
+      xaxis: axis(g, { tickvals: xlab.map((_, i) => i), ticktext: xlab, range: [-0.6, xlab.length - 0.4] }),
+      yaxis: yAxis(g, g.ylabel, { rangemode: "tozero" }) }, PLOT_CONFIG);
   }
   function renderNested(r, s) {
     const pct = Math.round((1 - r.alpha) * 100), two = r.n_groups === 2;

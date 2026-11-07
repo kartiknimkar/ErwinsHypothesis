@@ -6,6 +6,7 @@ repeated_measures: one-way RM ANOVA with Geisser-Greenhouse correction, Friedman
 """
 from __future__ import annotations
 
+import itertools
 import math
 
 import numpy as np
@@ -385,3 +386,64 @@ def two_way_rm(row_labels, columns, col_names, alpha: float = 0.05) -> dict:
             "table": table, "cells": cells, "comparisons": comps, "posthoc_name": method, "epsilon": eps,
             "p": table[0]["p"], "n": int(S * a), "n_subjects": S, "subjects": subj_out,
             "subjects_per_group": [int(np.sum(G == g)) for g in range(b)], "balanced": len(set(np.bincount(G))) == 1}
+
+
+def three_way(factors, values, factor_names, alpha: float = 0.05) -> dict:
+    """Three-way ANOVA (Type III sums of squares, effect coding) from long-format data:
+    factors = [levels of A per row, levels of B per row, levels of C per row]; values = one number per row."""
+    obs = []
+    for i, v in enumerate(values):
+        y = _num(v)
+        labs = [str(f[i] if i < len(f) and f[i] is not None else "").strip() for f in factors]
+        if y is not None and all(labs):
+            obs.append((*labs, y))
+    if len(obs) < 3:
+        raise ValueError("Enter one row per measurement: the level of each of the three factors, then the value.")
+    lev = [list(dict.fromkeys(o[k] for o in obs)) for k in range(3)]
+    for k in range(3):
+        if len(lev[k]) < 2:
+            raise ValueError(f"'{factor_names[k]}' needs at least 2 different levels.")
+    idx = [np.array([lev[k].index(o[k]) for o in obs]) for k in range(3)]
+    y = np.array([o[3] for o in obs])
+    N = len(y)
+    shape = tuple(len(l) for l in lev)
+    counts = np.zeros(shape, int)
+    for a, b, c in zip(*idx):
+        counts[a, b, c] += 1
+    if np.any(counts == 0):
+        miss = [f"{lev[0][a]} / {lev[1][b]} / {lev[2][c]}" for a, b, c in zip(*np.nonzero(counts == 0))]
+        raise ValueError("Every combination of the three factors needs at least one value. Missing: " + ", ".join(miss[:4]))
+    X = [_effect_cols(idx[k], shape[k]) for k in range(3)]
+    inter = lambda *ms: np.column_stack([np.prod(np.column_stack(c), axis=1) for c in itertools.product(*[[m[:, j] for j in range(m.shape[1])] for m in ms])])
+    blocks = {"A": X[0], "B": X[1], "C": X[2], "A×B": inter(X[0], X[1]), "A×C": inter(X[0], X[2]), "B×C": inter(X[1], X[2]),
+              "A×B×C": inter(X[0], X[1], X[2])}
+    one = np.ones((N, 1))
+    full = np.column_stack([one, *blocks.values()])
+    df_res = N - full.shape[1]
+    if df_res < 1:
+        raise ValueError("Not enough replicates: enter more than one value for at least some combinations.")
+    rss_full = _rss(full, y)
+    ms_res = rss_full / df_res
+    ss_tot = float(np.sum((y - y.mean()) ** 2))
+    label = {"A": factor_names[0], "B": factor_names[1], "C": factor_names[2]}
+    nice = lambda key: " × ".join(label[p] for p in key.split("×"))
+    table = []
+    for key, Xk in blocks.items():
+        reduced = np.column_stack([one, *[v for k2, v in blocks.items() if k2 != key]])
+        ss = _rss(reduced, y) - rss_full
+        df = Xk.shape[1]
+        F = (ss / df) / ms_res if ms_res > 0 else float("inf")
+        p = float(stats.f.sf(F, df, df_res))
+        table.append({"source": nice(key), "key": key, "SS": ss, "df": df, "MS": ss / df, "F": F, "p": p,
+                      "pct": 100 * ss / ss_tot if ss_tot > 0 else None, "stars": stars(p)})
+    table.append({"source": "Residual", "key": "res", "SS": rss_full, "df": df_res, "MS": ms_res, "F": None, "p": None, "pct": None})
+    cells = []
+    for a in range(shape[0]):
+        for b in range(shape[1]):
+            for c in range(shape[2]):
+                v = y[(idx[0] == a) & (idx[1] == b) & (idx[2] == c)]
+                d = describe(v, f"{lev[0][a]} · {lev[1][b]} · {lev[2][c]}")
+                d.update(a=a, b=b, c=c)
+                cells.append(d)
+    return {"test_name": "Three-way ANOVA", "kind": "threeway", "factors": list(factor_names), "levels": lev, "alpha": alpha,
+            "table": table, "cells": cells, "n": N, "balanced": bool(np.all(counts == counts.flat[0]))}
