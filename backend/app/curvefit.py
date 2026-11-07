@@ -294,3 +294,47 @@ def compare(x, y, model_a: str, model_b: str, x_is_log: bool = False, alpha: flo
                              "simple": simple["model"], "complex": cplx["model"],
                              "preferred": cplx["model"] if pval < alpha else simple["model"]}
     return out
+
+
+def interpolate(res: dict, ys, equation: str | None = None, initial: dict | None = None) -> list[dict]:
+    """Read unknown samples off a fitted curve: for each Y, find X with f(X) = Y.
+
+    Works for the straight line and every curve model. Only X values inside the range of the
+    standards are reported (no extrapolation, as in Prism); X is returned in the units the
+    user entered (concentration, not log) for dose-response models.
+    """
+    out = []
+    if res.get("model") == "linear":
+        m, b = res["slope"], res["intercept"]
+        xs = res["points"]["x"]
+        lo, hi = min(xs), max(xs)
+        for y in ys:
+            x = (y - b) / m if m else None
+            ok = x is not None and lo <= x <= hi
+            out.append({"y": y, "x": x if ok else None, "note": "" if ok else "outside the standards' range"})
+        return out
+    model = res["model"]
+    mdl = custom_model(equation or "", initial) if model == "custom" else MODELS[model]
+    vals = [p["value"] for p in res["params"]]
+    f = lambda xx: mdl["f"](xx, *vals)  # noqa: E731
+    lo, hi = min(res["points"]["x"]), max(res["points"]["x"])
+    grid = np.linspace(lo, hi, 4001)
+    with np.errstate(all="ignore"):
+        fg = f(grid)
+    for y in ys:
+        d = fg - y
+        idx = np.where(np.sign(d[:-1]) * np.sign(d[1:]) <= 0)[0]
+        idx = [i for i in idx if np.isfinite(d[i]) and np.isfinite(d[i + 1])]
+        if not idx:
+            out.append({"y": y, "x": None, "note": "outside the curve's range"})
+            continue
+        i = idx[0]
+        try:
+            root = optimize.brentq(lambda xx: float(f(np.array([xx]))[0]) - y, grid[i], grid[i + 1]) \
+                if d[i] != 0 else float(grid[i])
+        except ValueError:
+            root = float(grid[i])
+        note = "more than one X gives this Y; first shown" if len(idx) > 1 and (idx[-1] - idx[0]) > 1 else ""
+        x = 10 ** root if res.get("x_is_log") and mdl["log_x"] and not res.get("x_was_log") else root
+        out.append({"y": y, "x": float(x), "note": note})
+    return out

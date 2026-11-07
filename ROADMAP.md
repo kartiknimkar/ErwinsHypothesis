@@ -45,6 +45,11 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Type any equation (safe AST parser: arithmetic + whitelisted math functions only),
       parameters detected automatically, starting values, constraints; 68 tests
 
+## Phase 0.11: Standard curves + colors (done 2026-11-06)
+- [x] Interpolate unknowns from any fitted curve (rows with blank X): linear, 4PL, custom; no extrapolation
+- [x] Per-series color pickers in the Format panel (by series name, saved with the graph)
+- [x] 72 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

@@ -137,6 +137,26 @@ def _flatten_xy(x, ys):
     return px, py
 
 
+def _unknowns(x, ys):
+    """Rows with Y values but no X are samples to read off the standard curve."""
+    out = []
+    for i, vx in enumerate(x):
+        if vx is not None and str(vx).strip() != "":
+            continue
+        vals = []
+        for col in ys:
+            v = col[i] if i < len(col) else None
+            try:
+                f = float(v)
+                if math.isfinite(f):
+                    vals.append(f)
+            except (TypeError, ValueError):
+                pass
+        if vals:
+            out.append({"row": i + 1, "y": sum(vals) / len(vals), "n": len(vals)})
+    return out
+
+
 @app.post("/api/fit")
 def run_fit(req: FitRequest):
     try:
@@ -152,6 +172,11 @@ def run_fit(req: FitRequest):
                     res["comparison"] = curvefit.compare(px, py, req.model, req.compare, x_is_log=req.x_is_log, alpha=req.alpha, fixed=req.fixed)
                 except ValueError as e:
                     res["comparison"] = {"error": str(e)}
+        unk = _unknowns(req.x, req.ys)
+        if unk:
+            res["x_was_log"] = bool(req.x_is_log)
+            vals = curvefit.interpolate(res, [u["y"] for u in unk], equation=req.equation, initial=req.initial)
+            res["unknowns"] = [{**u, **v} for u, v in zip(unk, vals)]
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))

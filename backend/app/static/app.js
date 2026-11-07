@@ -49,7 +49,8 @@
     pastel: ["#7aa6f0", "#f4a582", "#80cdc1", "#c2a5cf", "#fdd49e", "#f1b6da", "#a6d96a", "#bababa"],
     grayscale: ["#111111", "#666666", "#999999", "#444444", "#bbbbbb", "#222222", "#888888", "#555555"],
   };
-  const color = (g, i) => (PALETTES[g.palette] || PALETTES.vivid)[i % 8];
+  // a color picked by the user for a named series wins over the palette
+  const color = (g, i, name) => (name != null && g.colors && g.colors[name]) || (PALETTES[g.palette] || PALETTES.vivid)[i % 8];
   const COMMON_GRAPH = { title: "", palette: "vivid", pointSize: 8, fontSize: 13, ymin: "", ymax: "", logY: false };
 
   function axis(g, extra = {}) {
@@ -179,7 +180,7 @@
       label: "XY: curves & regression", newTitle: "XY analysis",
       minCols: 2, maxCols: 13, fixedCols: 1, textCol: -1, addLabel: "+ Replicate", minRows: 15,
       colKind: j => j === 0 ? "X" : `Y${j}`, newColName: j => `Y${j}`,
-      hint: "X in the first column; Y values to the right. Add Y columns for replicates (each row = one X). Rename columns by clicking their names.",
+      hint: "X in the first column; Y values to the right. Add Y columns for replicates. Unknown samples: leave X blank and enter their Y; the app reads their X off the fitted curve (standard-curve interpolation).",
       cols: ["X", "Y"],
       options: { model: "linear", xIsLog: false, alpha: 0.05 },
       graph: { xlabel: "", ylabel: "", band: true, showEq: true, repMode: "mean", logX: false, xmin: "", xmax: "" },
@@ -189,7 +190,7 @@
           [1, 50.1, 55.8, 52.0], [3, 30.2, 26.9, 29.4], [10, 12.8, 15.1, 13.0], [30, 7.5, 9.2, 6.9], [100, 6.4, 4.8, 6.1]],
       } : {
         cols: ["Concentration (µg/mL)", "Absorbance"],
-        rows: [[0, 0.02], [5, 0.11], [10, 0.21], [20, 0.39], [40, 0.83], [60, 1.18], [80, 1.62]],
+        rows: [[0, 0.02], [5, 0.11], [10, 0.21], [20, 0.39], [40, 0.83], [60, 1.18], [80, 1.62], ["", 0.55], ["", 1.31]],
       },
       request(s) {
         return ["/api/fit", { x: s.data.map(r => num(r[0])), ys: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
@@ -640,6 +641,13 @@
     if (lg) lg.onchange = e => { s.options.xIsLog = e.target.checked; s.graph.logX = !e.target.checked; save(); renderFormat(); scheduleRun(); };
   }
 
+  function seriesNames(s) {
+    if (s.type === "ttest") return filledCols(s).map(j => s.cols[j] || `Group ${letter(j)}`);
+    if (s.type === "regression") return ["Curve", ...(s.options.compare ? ["Comparison curve"] : []), "Unknowns"];
+    return s.cols.slice(1).map((c, j) => c || (s.type === "contingency" ? `Outcome ${j + 1}` : `Group ${letter(j)}`));
+  }
+  const toHex = c => /^#[0-9a-f]{6}$/i.test(c) ? c : "#000000";
+
   function renderFormat() {
     const s = active(), g = s.graph;
     const ctrls = [txt("title", "Graph title"), ...TYPES[s.type].graphControls(s),
@@ -653,7 +661,15 @@
       if (c.kind === "check") return `<label class="check"><input type="checkbox" data-g="${c.k}" ${v ? "checked" : ""}> ${c.label}</label>`;
       if (c.kind === "range") return `<label>${c.label} <input type="range" data-g="${c.k}" min="${c.min}" max="${c.max}" value="${v}"></label>`;
       return `<label>${c.label}<input type="text" data-g="${c.k}" value="${esc(v ?? "")}" placeholder="${esc(c.ph || "")}"></label>`;
-    }).join("");
+    }).join("") + `<div class="wide colors"><span>Series colors</span>${seriesNames(s).map((n, i) =>
+      `<label class="swatch" title="${esc(n)}"><input type="color" data-color="${esc(n)}" value="${toHex(color(g, i, n))}"><span>${esc(n)}</span></label>`).join("")}
+      ${g.colors && Object.keys(g.colors).length ? `<button class="ghost small" id="btn-reset-colors">Reset</button>` : ""}</div>`;
+    $("graph-format").querySelectorAll("[data-color]").forEach(el => {
+      el.oninput = () => { g.colors = { ...(g.colors || {}), [el.dataset.color]: el.value }; save(); drawPlot(); };
+      el.onchange = () => renderFormat();
+    });
+    const rc = $("btn-reset-colors");
+    if (rc) rc.onclick = () => { g.colors = {}; save(); renderFormat(); drawPlot(); };
     $("graph-format").querySelectorAll("[data-g]").forEach(el => {
       el.oninput = el.onchange = () => {
         g[el.dataset.g] = el.type === "checkbox" ? el.checked : el.type === "range" ? Number(el.value) : el.value;
@@ -776,7 +792,7 @@
     let ymax = -Infinity, ymin = Infinity;
     const errOf = c => g.err === "sem" ? c.sem : g.err === "ci95" ? c.ci95 : g.err === "sd" ? c.sd : 0;
     r.cols.forEach((name, j) => {
-      const col = color(g, j);
+      const col = color(g, j, name);
       const cells = r.rows.map((_, i) => r.cells.find(c => c.i === i && c.j === j));
       cells.forEach(c => { ymax = Math.max(ymax, c.max, c.mean + (errOf(c) || 0)); ymin = Math.min(ymin, c.min); });
       const xs = r.rows.map((_, i) => g.style === "lines" ? i : pos(i, j));
@@ -816,6 +832,17 @@
 
   // ---------------------------------------------------------------- XY
   function renderXYResults(r, s) {
+    return renderXYCore(r, s) + (r.unknowns ? renderUnknowns(r, s) : "");
+  }
+  function renderUnknowns(r, s) {
+    const xName = esc(s.cols[0] || "X");
+    const ok = r.unknowns.filter(u => u.x != null).length;
+    return `<div class="opt-label" style="margin-top:10px">Interpolated unknowns: ${ok} of ${r.unknowns.length} read off the curve</div>` +
+      T.multi(["Row", "Y" + (r.unknowns.some(u => u.n > 1) ? " (mean)" : ""), `Interpolated ${xName}`, ""],
+        r.unknowns.map(u => ({ cls: u.x != null ? "hl" : "", cells: [u.row, `${fmt(u.y)}${u.n > 1 ? ` <span class="pd">(n=${u.n})</span>` : ""}`,
+          u.x != null ? `<b>${fmt(u.x)}</b>` : "—", u.note ? `<span class="pd">${esc(u.note)}</span>` : ""] })));
+  }
+  function renderXYCore(r, s) {
     const pct = Math.round((1 - r.alpha) * 100);
     const xName = esc(s.cols[0] || "X"), yName = esc(s.cols[1] || "Y");
     if (r.model === "linear") {
@@ -950,7 +977,7 @@
     const groups = cols.map(j => s.data.map(row => num(row[j])).filter(v => v !== null));
     let ymax = -Infinity, ymin = Infinity;
     groups.forEach((vals, i) => {
-      const stt = r.groups[i] || {}, c = color(g, i);
+      const stt = r.groups[i] || {}, c = color(g, i, stt.name);
       const err = g.err === "sem" ? stt.sem : g.err === "ci95" ? stt.ci95 : g.err === "sd" ? stt.sd : 0;
       vals.forEach(v => { ymax = Math.max(ymax, v); ymin = Math.min(ymin, v); });
       ymax = Math.max(ymax, (stt.mean ?? 0) + (err || 0));
@@ -999,7 +1026,7 @@
   }
 
   function drawXY(el, r, s) {
-    const g = s.graph, c0 = color(g, 0), traces = [];
+    const g = s.graph, c0 = color(g, 0, "Curve"), traces = [];
     const logFit = r.model !== "linear" && r.x_is_log && !s.options.xIsLog;
     const tx = x => (logFit ? Math.pow(10, x) : x);
     // data points (raw sheet values so the axis shows real concentrations)
@@ -1013,7 +1040,7 @@
     const curve = r.model === "linear" ? r.line : r.curve;
     traces.push({ x: curve.x.map(tx), y: curve.y, mode: "lines", line: { color: c0, width: 2.4 }, hovertemplate: "Fit: %{y:.4g}<extra></extra>" });
     const cmpFit = r.comparison && r.comparison.fit_b;
-    if (cmpFit) traces.push({ x: cmpFit.curve.x.map(tx), y: cmpFit.curve.y, mode: "lines", line: { color: color(g, 1), width: 2, dash: "dash" },
+    if (cmpFit) traces.push({ x: cmpFit.curve.x.map(tx), y: cmpFit.curve.y, mode: "lines", line: { color: color(g, 1, "Comparison curve"), width: 2, dash: "dash" },
       hovertemplate: `${esc(cmpFit.model_name)}: %{y:.4g}<extra></extra>` });
     if (reps) {
       const stats = rows.map(p => {
@@ -1029,6 +1056,10 @@
       traces.push({ x: pts.map(p => p[0]), y: pts.map(p => p[1]), mode: "markers",
         marker: { color: "#1b2130", size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: "(%{x}, %{y})<extra></extra>" });
     }
+    const unk = (r.unknowns || []).filter(u => u.x != null);
+    if (unk.length) traces.push({ x: unk.map(u => u.x), y: unk.map(u => u.y), mode: "markers", name: "Unknowns",
+      marker: { symbol: "diamond", color: color(g, 1, "Unknowns"), size: g.pointSize + 3, line: { color: "#fff", width: 1 } },
+      hovertemplate: "Unknown: X = %{x:.4g}, Y = %{y:.4g}<extra></extra>" });
     const annotations = [];
     if (g.showEq) {
       let text = r.model === "linear" ? `${r.equation}<br>R² = ${fmt(r.r_squared, 4)}` : `${r.derived[0] ? `${r.derived[0].name} = ${fmt(r.derived[0].value)}<br>` : ""}R² = ${fmt(r.r_squared, 4)}`;
@@ -1048,7 +1079,7 @@
     const g = s.graph, traces = [];
     const tmax = Math.max(...s.data.map(row => num(row[0]) ?? 0));
     r.curves.forEach((c, i) => {
-      const col = color(g, i);
+      const col = color(g, i, c.name);
       const xs = [...c.steps.map(p => p.t), tmax], ys = [...c.steps.map(p => p.s * 100), c.steps[c.steps.length - 1].s * 100];
       if (g.showCI) {
         traces.push({ x: xs, y: [...c.steps.map(p => p.lo * 100), c.steps[c.steps.length - 1].lo * 100], mode: "lines", line: { width: 0, shape: "hv" }, hoverinfo: "skip" });
@@ -1068,7 +1099,7 @@
     const g = s.graph;
     const traces = r.cols.map((c, j) => ({ type: "bar", name: esc(c), x: r.rows.map(esc), showlegend: true,
       y: r.table.map((row, i) => g.mode === "count" ? row[j] : r.row_pct[i][j]),
-      marker: { color: color(g, j), line: { color: "#1b2130", width: 0.8 } },
+      marker: { color: color(g, j, c), line: { color: "#1b2130", width: 0.8 } },
       hovertemplate: `${esc(c)}: %{y:.3g}${g.mode === "count" ? "" : "%"}<extra></extra>` }));
     Plotly.react(el, traces, { ...baseLayout(g), barmode: "group", bargap: 0.3, showlegend: true,
       legend: { orientation: "h", y: 1.08, x: 0 },
