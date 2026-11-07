@@ -115,3 +115,58 @@ def goodness_of_fit(names, observed, expected, expected_is_pct: bool = False, al
     if len(o) == 2:
         res["binomial_p"] = float(stats.binomtest(int(o[0]), int(o.sum()), e[0] / o.sum()).pvalue)
     return res
+
+
+def checklist(res: dict) -> list:
+    """Assumption checklist for contingency analyses. Items: {"check", "status": ok | warn | info, "text"}."""
+    out = []
+    kind = res.get("kind", "table")
+    if kind == "mcnemar":
+        d = res["b"] + res["c"]
+        out.append({"check": "Discordant pairs", "status": "ok" if d >= 10 else "warn",
+                    "text": f"{d} pairs changed. The P value shown is the exact (binomial) one, valid at any size." +
+                            ("" if d >= 10 else " With so few changed pairs, only a large imbalance can reach significance.")})
+        out.append({"check": "Real pairs", "status": "info",
+                    "text": "Each count must be a pair (same subject twice, or a matched case and control), and every pair counted once."})
+        return out
+    if kind == "gof":
+        e = np.asarray(res["expected"], float)
+        small = int(np.sum(e < 5))
+        if small == 0:
+            out.append({"check": "Expected counts", "status": "ok", "text": f"Every expected count is at least 5 (smallest {e.min():.3g}), so the chi-square P value is accurate."})
+        elif len(e) == 2:
+            out.append({"check": "Expected counts", "status": "info",
+                        "text": f"An expected count is below 5 ({e.min():.3g}): use the exact binomial P value shown below instead of the chi-square one."})
+        else:
+            out.append({"check": "Expected counts", "status": "warn",
+                        "text": f"{small} of {len(e)} categories expect fewer than 5 (smallest {e.min():.3g}), so the chi-square P value is only approximate. Combine rare categories if that makes sense."})
+        out.append({"check": "Counts, not percentages", "status": "info",
+                    "text": "Observed values must be numbers of subjects (the expected column may be counts, percentages or ratios)."})
+        return out
+    t = np.asarray(res["table"], float)
+    N = t.sum()
+    exp_ = np.outer(t.sum(1), t.sum(0)) / N
+    small = int(np.sum(exp_ < 5)); frac = small / exp_.size
+    if t.shape == (2, 2):
+        out.append({"check": "Expected counts", "status": "ok",
+                    "text": "Fisher's exact test is used for 2×2 tables, so small counts are fine." +
+                            (f" (The chi-square P value shown alongside would be unreliable here: smallest expected count {exp_.min():.3g}.)" if small else "")})
+    elif exp_.min() < 1 or frac > 0.2:
+        out.append({"check": "Expected counts", "status": "warn",
+                    "text": f"{small} of {exp_.size} cells expect fewer than 5 (smallest {exp_.min():.3g}). The usual rule is at most 20% below 5 and none below 1, "
+                            "so the chi-square P value may be off. Combine rows or columns where it makes sense (e.g. merge rare outcomes)."})
+    else:
+        out.append({"check": "Expected counts", "status": "ok",
+                    "text": f"{'All' if small == 0 else f'All but {small}'} expected counts are at least 5 (smallest {exp_.min():.3g}), so the chi-square approximation holds."})
+    rs = t.sum(1)
+    if len(rs) >= 2 and np.all(np.isclose(rs, 100)):
+        out.append({"check": "Counts, not percentages", "status": "warn",
+                    "text": "Every row adds up to exactly 100. If these are percentages, enter the actual numbers of subjects instead: the test depends on how many there are."})
+    else:
+        out.append({"check": "Counts, not percentages", "status": "ok", "text": f"{int(N)} subjects in total; enter actual numbers of subjects, never percentages or means."})
+    if t.shape[1] == 2 and t.shape[0] >= 3:
+        out.append({"check": "Order of rows", "status": "info",
+                    "text": "If the rows have a natural order (e.g. doses or age groups), the test for trend below is more powerful than the overall chi-square."})
+    out.append({"check": "Independent subjects", "status": "info",
+                "text": "Each subject must be counted in exactly one cell. Before/after results on the same subjects need McNemar's test instead."})
+    return out

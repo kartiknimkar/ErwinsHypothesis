@@ -143,7 +143,7 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (bp) results: show which assumptions were checked in a short "Checklist" box (normality, equal variances, outliers, sample size) with plain advice
 - [x] (bq) XY fits / linear regression checklist: points per parameter, poorly determined parameters (SE > value), runs test, normal residuals, equal scatter (Spearman |resid| vs fitted), ROUT outliers (Q 1%), independence. Also fixed an OverflowError crash on ambiguous log-X fits (curvefit._pow10)
 - [x] (br) two-way / three-way ANOVA checklist (anova2.cells_checklist: cell sizes, residual normality, Brown-Forsythe across cells or GG sphericity for RM, Grubbs per cell)
-- [ ] (bs) contingency checklist: expected counts < 5 → recommend Fisher's exact; tiny tables
+- [x] (bs) contingency checklist (contingency.checklist): Cochran rule for r×c, Fisher for 2×2, rows summing to 100 = percentages?, trend hint, McNemar discordant pairs, GOF expected counts
 - [ ] (bt) correlation: add Kendall's tau option (validate vs scipy.stats.kendalltau) and CI for Spearman r
 - [ ] (bu) XY analyses: smooth (moving average / LOWESS-like), first derivative, cumulative integral → new analysis copy
 - [ ] (bv) multiple Poisson regression (counts outcome) in Multiple variables; validate vs statsmodels GLM Poisson

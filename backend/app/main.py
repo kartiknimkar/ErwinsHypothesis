@@ -557,6 +557,10 @@ def run_contingency(req: ContingencyRequest):
                                               [r[1] if len(r) > 1 else None for r in req.table], req.expected_pct, req.alpha)
         else:
             res = contingency.analyze(req.table, req.rows, req.cols, alpha=req.alpha)
+        try:
+            res["checklist"] = contingency.checklist(res)
+        except Exception:  # advice only
+            pass
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))

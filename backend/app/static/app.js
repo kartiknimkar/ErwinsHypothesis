@@ -3065,12 +3065,12 @@
         T.row("Risk difference", fmt(r.risk_difference.value)));
     }
     h += T.table(rows);
-    if (r.chi_square.min_expected < 5 && !r.fisher) h += `<p class="note warn">⚠︎ Some expected counts are below 5, so the chi-square P value is approximate.</p>`;
     if (r.odds_ratio) h += `<p class="note">Odds ratio and relative risk compare the first row with the second, for the outcome in the first column.</p>`;
     if (r.row_props) h += `<div class="opt-label" style="margin-top:10px">Proportion of each row with "${esc(r.cols[0])}"</div>` +
       T.multi(["", "Proportion", `${pct}% CI (Wilson)`], r.row_props.map(p => [esc(p.row), `${fmt(p.p * 100, 3)}% <span class="pd">(${p.k}/${p.n})</span>`, `${fmt(p.ci[0] * 100, 3)}% – ${fmt(p.ci[1] * 100, 3)}%`]));
     if (r.trend) h += T.table([T.sec("Chi-square test for trend (rows in order, scores 1, 2, 3…)"), T.row("Chi-square, df", `${fmt(r.trend.chi2)}, 1`),
       T.row("P value", `${pOnly(r.trend.p)} ${st(stars(r.trend.p))}`), T.row(`Proportion of ${esc(r.cols[0])}`, r.trend.p < r.alpha ? `<b>${r.trend.direction}</b> down the rows` : "no significant trend")]);
+    if (r.checklist) h += checklistBox(r.checklist);
     return h;
   }
   function renderMcNemar(r) {
@@ -3081,6 +3081,7 @@
       T.row("Chi-square (continuity corrected), df", `${fmt(r.chi2)}, 1 (P ${pOnly(r.p_chi2)})`),
       T.row("Discordant pairs", `${r.b} and ${r.c}`), T.row("Odds ratio (b/c)", fmt(r.odds_ratio.value)), T.row(`${pct}% CI`, ci(...r.odds_ratio.ci))]);
     h += `<p class="note">Only discordant pairs (one result positive, the other negative) carry information; pairs that agree are ignored.</p>`;
+    if (r.checklist) h += checklistBox(r.checklist);
     return h;
   }
   function renderGOF(r) {
@@ -3091,8 +3092,8 @@
     const rows = [T.sec("Chi-square goodness of fit"), T.row("Chi-square, df", `${fmt(r.chi2)}, ${r.df}`), T.row("P value", `${pOnly(r.p)} ${st(stars(r.p))}`)];
     if (r.binomial_p != null) rows.push(T.row("Exact binomial test P", pOnly(r.binomial_p)));
     h += T.table(rows);
-    if (r.min_expected < 5) h += `<p class="note warn">⚠︎ Some expected counts are below 5, so the chi-square P value is approximate${r.binomial_p != null ? "; use the exact binomial P" : ""}.</p>`;
     h += `<p class="note">Highlighted rows (|standardized residual| > 2) contribute most to the difference.</p>`;
+    if (r.checklist) h += checklistBox(r.checklist);
     return h;
   }
   function drawGOF(el, r, s) {

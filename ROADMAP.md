@@ -370,6 +370,7 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Every t test / ANOVA / rank test result shows a checklist: sample size (incl. the smallest P a rank test can ever reach), normality (of groups, differences or RM residuals), equal SDs or sphericity, outliers, independence, each with plain advice; 218 tests
 - [x] Curve fits and linear regression get a checklist too (points per parameter, ambiguous parameters, runs test, residual normality, equal scatter, outliers); 221 tests
 - [x] Two-way and three-way ANOVA checklist (cell sizes, residual normality, equal SDs across cells or sphericity, outliers per cell); 223 tests
+- [x] Contingency, McNemar and goodness-of-fit checklist (expected counts, percentages entered by mistake, order of rows, real pairs); 225 tests
 
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol

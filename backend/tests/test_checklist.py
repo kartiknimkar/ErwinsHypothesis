@@ -148,3 +148,31 @@ def test_two_way_rm_and_three_way_checklists():
     it = _items(r)
     assert it["Sample size"]["text"].startswith("3 values")
     assert "Every combination has data" not in it
+
+
+def test_contingency_checklist_expected_counts_match_scipy():
+    t = [[2, 8, 1], [3, 9, 0], [10, 12, 2]]
+    r = c.post("/api/contingency", json={"table": t, "rows": ["a", "b", "c"], "cols": ["x", "y", "z"]}).json()
+    it = _items(r)
+    e = ss.chi2_contingency(np.array(t)).expected_freq
+    assert it["Expected counts"]["status"] == "warn"
+    assert f"{int((e < 5).sum())} of 9" in it["Expected counts"]["text"] and f"{e.min():.3g}" in it["Expected counts"]["text"]
+    # 2x2 uses Fisher: fine at any size
+    r = c.post("/api/contingency", json={"table": [[1, 4], [5, 1]], "rows": ["a", "b"], "cols": ["x", "y"]}).json()
+    assert _items(r)["Expected counts"]["status"] == "ok"
+    # rows adding to 100 look like percentages
+    r = c.post("/api/contingency", json={"table": [[30, 70], [45, 55]], "rows": ["a", "b"], "cols": ["x", "y"]}).json()
+    assert _items(r)["Counts, not percentages"]["status"] == "warn"
+    # k x 2 with order: trend hint
+    r = c.post("/api/contingency", json={"table": [[10, 40], [20, 30], [30, 20]], "rows": ["lo", "mid", "hi"], "cols": ["yes", "no"]}).json()
+    it = _items(r)
+    assert it["Expected counts"]["status"] == "ok" and "Order of rows" in it
+
+
+def test_mcnemar_and_gof_checklists():
+    r = c.post("/api/contingency", json={"table": [[20, 3], [2, 15]], "rows": ["+", "−"], "cols": ["+", "−"], "analysis": "mcnemar"}).json()
+    it = _items(r)
+    assert it["Discordant pairs"]["status"] == "warn" and "5 pairs" in it["Discordant pairs"]["text"]
+    r = c.post("/api/contingency", json={"table": [[3, 1], [10, 8], [7, 1]], "rows": ["AA", "Aa", "aa"], "cols": ["obs", "exp"], "analysis": "gof"}).json()
+    it = _items(r)
+    assert it["Expected counts"]["status"] == "warn" and "2 of 3 categories expect fewer than 5" in it["Expected counts"]["text"]
