@@ -545,7 +545,7 @@
     to.push(snap(s));
     const st = JSON.parse(from.pop());
     s.cols = st.cols; s.data = st.data;
-    groupOpen = false;
+    groupOpen = false; selA = selB = null;
     save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun(); updateUndoButtons();
   }
   function updateUndoButtons() {
