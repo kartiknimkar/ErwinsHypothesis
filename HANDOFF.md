@@ -72,7 +72,7 @@ Every session starts by reading it and ends by updating it (then committing).
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →
    (done) histograms + Q-Q plots (stats.frequency_distribution, /api/freq, ttest mode 'freq', drawFreq/renderFreq) →
    (done) ROUT (outliers.py; curvefit.rout_mask; /api/fit rout_q; /api/compare outlier_method) →
-   (done) violin, stacked/horizontal bars, on-graph text editing, text labels → NEXT: axis breaks, X tick control → Cox regression, nested ANOVA.
+   (done) violin, stacked/horizontal bars, on-graph text editing, text labels → (done) axis breaks, X ticks → NEXT: Cox regression, nested ANOVA.
 1. (done) Two-way ANOVA + RM one-way / Friedman / Wilcoxon (`backend/app/anova2.py`, no new dependencies)
    Two-way RM (mixed) done: anova2.two_way_rm, /api/twoway rm=true. Note: within effects use Type III (SPSS-style);
    pingouin weights unequal groups differently for the row main effect (documented in tests).

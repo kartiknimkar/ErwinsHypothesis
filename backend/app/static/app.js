@@ -52,6 +52,7 @@
   // a color picked by the user for a named series wins over the palette
   const color = (g, i, name) => (name != null && g.colors && g.colors[name]) || (PALETTES[g.palette] || PALETTES.vivid)[i % 8];
   const COMMON_GRAPH = {
+    tickAngle: "auto", minorTicks: false, breakFrom: "", breakTo: "", breakSize: 35,
     fontFamily: "Arial", textColor: "#1b2130", titleSize: "", tickSize: "",
     pointSymbol: "default", pointOpacity: 0.85, pointLine: 1, pointLineColor: "#ffffff",
     lineScale: 1, errWidth: 1.5, capWidth: 9, barOpacity: "", barLine: 1.6, pattern: "none",
@@ -126,6 +127,35 @@
       if (a.yanchor === "bottom") { delete a.yanchor; a.xanchor = "left"; a.xshift = 3; }
     });
   }
+  // Y axis break: the plot is split into a lower part [bottom, from] and an upper part [to, top];
+  // every trace is drawn on both, and labels/brackets above the break move to the upper part
+  function breakYAxis(data, layout, g) {
+    const from = num(g.breakFrom), to = num(g.breakTo);
+    if (from === null || to === null || to <= from || g.logY) return;
+    const ya = layout.yaxis || {};
+    let lo = Array.isArray(ya.range) ? ya.range[0] : null, hi = Array.isArray(ya.range) ? ya.range[1] : null;
+    if (lo === null || hi === null) {
+      const ys = data.flatMap(t => (Array.isArray(t.y) ? t.y : []).map((v, i) => Number(v) + ((t.error_y && t.error_y.array && t.error_y.array[i]) || 0))).filter(Number.isFinite);
+      if (!ys.length) return;
+      lo = lo ?? Math.min(0, ...ys); hi = hi ?? Math.max(...ys) * 1.05;
+    }
+    if (!(from > lo && to < hi)) return;
+    const frac = Math.min(0.8, Math.max(0.15, (Number(g.breakSize) || 35) / 100)), gap = 0.035;
+    layout.yaxis = { ...ya, range: [lo, from], domain: [0, frac], autorange: false, title: { text: "" } };
+    if (layout.yaxis.dtick === undefined && num(g.ytick) === null) layout.yaxis.nticks = 3;
+    layout.yaxis2 = { ...ya, range: [to, hi], domain: [frac + gap, 1], autorange: false, anchor: "x" };
+    const extra = data.map(t => ({ ...t, yaxis: "y2", showlegend: false }));
+    data.push(...extra);
+    (layout.shapes || []).forEach(sh => {
+      const ys = sh.path ? [...sh.path.matchAll(/[ML]\s*-?[\d.eE+-]+\s+(-?[\d.eE+-]+)/g)].map(m => Number(m[1])) : [sh.y0, sh.y1];
+      if (sh.yref !== "paper" && ys.every(v => v >= to)) sh.yref = "y2";
+    });
+    (layout.annotations || []).forEach(a => { if (a.yref !== "paper" && a.y >= to) a.yref = "y2"; });
+    // the break marks: two short slanted lines across the axis
+    const c = g.textColor || "#1b2130", w = Number(g.axisWidth) || 1.5;
+    layout.shapes = [...(layout.shapes || []),
+      ...[frac, frac + gap].map(y => ({ type: "line", xref: "paper", yref: "paper", x0: -0.018, x1: 0.018, y0: y - 0.012, y1: y + 0.012, line: { color: c, width: w } }))];
+  }
   function applyStyle(data, layout, g) {
     if (!g) return;
     if (g.horizontal && layout.meta === "flippable") flipLayout(data, layout);
@@ -150,6 +180,12 @@
     if (g.legendPos === "outside" && layout.showlegend) layout.margin = { ...(layout.margin || {}), r: 130 };
     if (g.legendPos === "hide" || g.legend === "hide") layout.showlegend = false;
     if (g.legendXY && layout.showlegend) layout.legend = { ...(layout.legend || {}), ...g.legendXY };
+    if (layout.xaxis && g.tickAngle !== undefined && g.tickAngle !== "auto") layout.xaxis.tickangle = Number(g.tickAngle);
+    if (g.minorTicks) Object.keys(layout).filter(k => /^[xy]axis\d*$/.test(k)).forEach(k => {
+      const a = layout[k];
+      if (a.showline && a.type !== "category" && !a.tickvals) a.minor = { ticks: g.tickDir === "none" ? "" : g.tickDir, ticklen: Math.max(2, Number(g.tickLen) / 2), tickwidth: Number(g.axisWidth) * 0.7, tickcolor: g.textColor };
+    });
+    if (!g.horizontal && layout.meta === "flippable") breakYAxis(data, layout, g);
     // text edited directly on the graph
     Object.entries(g.axisText || {}).forEach(([k, v]) => { if (layout[k]) layout[k].title = { ...(typeof layout[k].title === "object" ? layout[k].title : {}), text: esc(v) }; });
     data.forEach(t => {
@@ -477,7 +513,7 @@
       graphControls: s => [
         txt("xlabel", "X axis label", s.cols[0]), txt("ylabel", "Y axis label", s.cols[1]),
         ...(s.cols.length > 2 && s.options.yMode !== "datasets" ? [sel("repMode", "Replicates", [["mean", "Mean ± SD"], ["sem", "Mean ± SEM"], ["all", "All points"]])] : []),
-        txt("xmin", "X min", "auto"), txt("xmax", "X max", "auto"),
+        txt("xmin", "X min", "auto"), txt("xmax", "X max", "auto"), txt("xtick", "X tick every", "auto"),
         chk("logX", "Log X axis"), chk("band", "95% confidence band"), chk("showEq", "Show equation"),
       ],
       renderResults: (r, s) => r.multi ? renderMultiFit(r, s) : renderXYResults(r, s),
@@ -1403,7 +1439,10 @@
       head("Bars & fills"), sel("barOpacity", "Fill opacity", [["", "Automatic"], ["0", "0% (outline only)"], ["0.15", "15%"], ["0.3", "30%"], ["0.5", "50%"], ["0.75", "75%"], ["1", "100% (solid)"]]),
       rng("barLine", "Outline width", 0, 4, 0.25), sel("pattern", "Pattern", [["none", "None"], ["/", "Diagonal ////"], ["\\", "Diagonal \\\\"], ["x", "Cross-hatch"], [".", "Dots"], ["-", "Horizontal"], ["|", "Vertical"], ["vary", "Different per series"]]),
       head("Axes & background"), rng("axisWidth", "Axis thickness", 0.5, 4, 0.25), sel("tickDir", "Ticks", [["outside", "Outside"], ["inside", "Inside"], ["none", "None"]]),
-      rng("tickLen", "Tick length", 0, 12), chk("grid", "Gridlines"), sel("bg", "Background", [["white", "White"], ["transparent", "Transparent (for figures)"], ["light", "Light gray plot area"]]),
+      rng("tickLen", "Tick length", 0, 12), chk("minorTicks", "Minor ticks"), chk("grid", "Gridlines"),
+      sel("tickAngle", "X label angle", [["auto", "Automatic"], ["0", "Horizontal"], ["-30", "Slanted 30°"], ["-45", "Slanted 45°"], ["-90", "Vertical"]]),
+      ...(["ttest", "summary", "twoway", "contingency"].includes(s.type) ? [txt("breakFrom", "Break Y axis from", "none"), txt("breakTo", "… to", "none"),
+        rng("breakSize", "Lower part height %", 15, 80, 5)] : []), sel("bg", "Background", [["white", "White"], ["transparent", "Transparent (for figures)"], ["light", "Light gray plot area"]]),
       sel("legendPos", "Legend", [["auto", "Automatic"], ["tr", "Top right (inside)"], ["tl", "Top left (inside)"], ["outside", "Right (outside)"], ["top", "Above graph"], ["bottom", "Below graph"], ["hide", "Hide"]]),
       head("Text labels"), { kind: "notes" },
       head("Export"), sel("exportSize", "Size", Object.entries(EXPORT_SIZES).map(([k, v]) => [k, v[2]])),
@@ -2445,6 +2484,7 @@
     }
     const xa = axis(g, { title: { text: esc(g.xlabel || s.cols[0] || "X") } });
     if (g.logX) xa.type = "log";
+    else if (num(g.xtick) > 0) { xa.dtick = num(g.xtick); xa.tick0 = 0; }
     const xlo = num(g.xmin), xhi = num(g.xmax);
     if (xlo !== null && xhi !== null) xa.range = g.logX ? [Math.log10(Math.max(xlo, 1e-12)), Math.log10(Math.max(xhi, 1e-12))] : [xlo, xhi];
     styledReact(el, traces, { ...baseLayout(g), annotations, xaxis: xa, yaxis: yAxis(g, g.ylabel || s.cols[1] || "Y") }, PLOT_CONFIG);

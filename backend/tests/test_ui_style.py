@@ -113,5 +113,16 @@ def test_horizontal_stacked_labels_and_on_graph_edits(server):  # noqa: F811
         page.click("#btn-reset-edits")
         page.wait_for_timeout(500)
         assert "Renamed" not in page.evaluate("document.getElementById('plot').data.map(t => t.name)")
+        # broken Y axis: two stacked y axes, traces drawn on both
+        page.click("#sheet-list li:has-text('three groups')")
+        page.wait_for_timeout(500)
+        page.uncheck('#graph-format [data-g="horizontal"]')
+        page.select_option('#graph-format [data-g="style"]', "bars")
+        page.fill('#graph-format [data-g="breakFrom"]', "3")
+        page.fill('#graph-format [data-g="breakTo"]', "9")
+        page.check('#graph-format [data-g="minorTicks"]')
+        page.wait_for_timeout(500)
+        lay = page.evaluate("(() => { const l = document.getElementById('plot').layout; return [l.yaxis.range, l.yaxis2 && l.yaxis2.range]; })()")
+        assert lay[0][1] == 3 and lay[1][0] == 9
         assert errors == [], errors
         browser.close()

@@ -157,6 +157,7 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Edit on the graph: click titles, axis titles, legend entries to retype; drag legend; edits saved per graph
       (g.axisText, g.legendNames, g.legendXY) with "Reset graph edits"
 - [x] Free text labels (g.notes, paper coordinates, draggable, size); 119 tests
+- [x] Y axis break (breakYAxis: two stacked y axes, adjustable lower height), minor ticks, X label angle, X tick interval (XY)
 
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
