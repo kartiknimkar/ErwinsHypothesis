@@ -55,6 +55,12 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Area under the curve for XY data (trapezoid on mean Y, baseline, exact split at crossings)
 - [x] 75 tests
 
+## Phase 0.13: Multiple variables + diagnostics (done 2026-11-06)
+- [x] Correlation matrix (Pearson/Spearman, pairwise deletion, CIs) with heatmap
+- [x] ROC curve (AUC = Mann-Whitney, Hanley-McNeil SE, cutoff table, Youden best cutoff)
+- [x] Bland-Altman (bias, limits of agreement with CIs, proportional-bias check)
+- [x] 79 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

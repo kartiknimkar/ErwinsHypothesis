@@ -234,6 +234,52 @@
       renderResults: renderXYResults,
       draw: drawXY,
     },
+    // ---------------------------------------------------------------- multiple variables
+    multivar: {
+      label: "Multiple variables: correlation", newTitle: "Correlation matrix",
+      minCols: 2, maxCols: 20, fixedCols: 0, textCol: -1, addLabel: "+ Variable", minRows: 15,
+      colKind: j => `Variable ${j + 1}`, newColName: j => `Variable ${j + 1}`,
+      hint: "One column per variable (e.g. weight, glucose, insulin), one row per subject. Every pair of variables is correlated, using the rows where both have values.",
+      cols: ["Variable 1", "Variable 2", "Variable 3"],
+      options: { method: "pearson", alpha: 0.05 },
+      graph: { showValues: true },
+      examples: () => ({
+        cols: ["Age", "BMI", "Glucose", "Insulin", "Activity"],
+        rows: [[34, 22.1, 88, 6.2, 9.5], [45, 27.4, 101, 9.8, 6.1], [52, 31.2, 118, 14.3, 3.2], [29, 21.5, 84, 5.1, 10.2],
+          [61, 29.8, 112, 12.9, 4.0], [38, 24.6, 93, 7.7, 8.3], [47, 33.1, 126, 16.2, 2.5], [55, 26.0, 99, 8.9, 6.8],
+          [41, 23.3, 90, 6.6, 9.1], [66, 30.5, 121, 13.8, 3.6], [33, 25.8, 95, 8.1, 7.4], [58, 28.2, 108, 11.0, 5.0]],
+      }),
+      request: s => ["/api/multi", { columns: s.cols.map((_, j) => s.data.map(r => num(r[j]))), names: s.cols.map((c, j) => c || `Variable ${j + 1}`),
+        analysis: "correlation", method: s.options.method, alpha: s.options.alpha }],
+      renderOptions: s => `<div class="seg"><button data-set="method:pearson" class="${s.options.method === "pearson" ? "on" : ""}">Pearson (linear)</button><button data-set="method:spearman" class="${s.options.method === "spearman" ? "on" : ""}">Spearman (ranks, nonparametric)</button></div>${alphaSelect(s)}`,
+      graphControls: () => [chk("showValues", "Show r values")],
+      renderResults: renderCorrMatrix,
+      draw: drawCorrMatrix,
+    },
+    // ---------------------------------------------------------------- diagnostics
+    diagnostic: {
+      label: "ROC & method comparison", newTitle: "Diagnostic",
+      minCols: 2, maxCols: 2, fixedCols: 2, textCol: -1, addLabel: "+ Column", minRows: 15,
+      colKind: (j, s) => (s && s.options.analysis === "bland_altman") ? ["Method A", "Method B"][j] : ["Controls", "Patients"][j],
+      newColName: j => `Column ${j + 1}`,
+      hint: "ROC: the test's values for people without the condition (Controls) and with it (Patients). Bland-Altman: the same samples measured by two methods, one row per sample.",
+      cols: ["Controls", "Patients"],
+      options: { analysis: "roc", alpha: 0.05 },
+      graph: {},
+      examples: s => s.options.analysis === "bland_altman" ? {
+        cols: ["Lab analyzer", "Point-of-care"],
+        rows: [[5.1, 5.3], [6.8, 7.1], [4.4, 4.3], [9.2, 9.8], [7.5, 7.6], [5.9, 6.3], [8.1, 8.2], [10.4, 11.1], [6.2, 6.1], [7.0, 7.4], [4.9, 5.2], [8.8, 9.3]],
+      } : {
+        cols: ["Healthy", "Disease"],
+        rows: [[1.2, 2.9], [0.8, 3.6], [1.9, 1.7], [1.5, 4.2], [2.4, 2.8], [0.9, 3.1], [1.1, 5.0], [2.0, 2.2], [1.6, 3.9], [1.3, 2.6], [2.7, 4.4], [1.0, 3.3]],
+      },
+      request: s => ["/api/multi", { columns: [0, 1].map(j => s.data.map(r => num(r[j]))), names: s.cols.slice(0, 2), analysis: s.options.analysis, alpha: s.options.alpha }],
+      renderOptions: s => `<div class="seg"><button data-set="analysis:roc" class="${s.options.analysis === "roc" ? "on" : ""}">ROC curve</button><button data-set="analysis:bland_altman" class="${s.options.analysis === "bland_altman" ? "on" : ""}">Bland-Altman agreement</button></div>
+        <p class="hint">${s.options.analysis === "roc" ? "How well does the test separate patients from controls? Gives the area under the ROC curve and the best cutoff." : "Do two methods agree? Shows the average difference (bias) and the range where 95% of differences fall (limits of agreement)."}</p>${alphaSelect(s)}`,
+      graphControls: () => [],
+      renderResults: (r, s) => s.options.analysis === "roc" ? renderROC(r) : renderBA(r),
+      draw: (el, r, s) => s.options.analysis === "roc" ? drawROC(el, r, s) : drawBA(el, r, s),
+    },
     // ---------------------------------------------------------------- survival
     survival: {
       label: "Survival", newTitle: "Survival",
@@ -370,6 +416,9 @@
     add("regression", "Example: standard curve");
     add("survival", "Example: survival");
     add("contingency", "Example: contingency");
+    add("multivar", "Example: correlation matrix");
+    add("diagnostic", "Example: ROC curve");
+    add("diagnostic", "Example: Bland-Altman", s => { s.options.analysis = "bland_altman"; });
     project.activeId = first.id;
     return project;
   }
@@ -471,7 +520,7 @@
         <span class="badge t-${s.type}">${badgeText(s.type)}</span><span class="t">${esc(s.title)}</span></li>`).join("");
     $("sheet-list").querySelectorAll("li").forEach(li => li.onclick = () => { project.activeId = li.dataset.id; save(); renderAll(); });
   }
-  const badgeText = t => ({ ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#" }[t]);
+  const badgeText = t => ({ ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#", multivar: "MV", diagnostic: "Dx" }[t]);
 
   // ======================================================================
   // data grid
@@ -482,8 +531,8 @@
     const canRemove = j => j >= t.fixedCols && s.cols.length > t.minCols;
     let h = "<thead><tr><th class='rownum'></th>";
     s.cols.forEach((c, j) => {
-      h += `<th><div class="colkind">${esc(t.colKind(j))}${canRemove(j) ? `<button class="rm" data-rm="${j}" title="Remove this column">✕</button>` : ""}</div>
-        <div class="colhead"><input data-head="${j}" value="${esc(c)}" spellcheck="false" aria-label="${esc(t.colKind(j))} name"></div></th>`;
+      h += `<th><div class="colkind">${esc(t.colKind(j, s))}${canRemove(j) ? `<button class="rm" data-rm="${j}" title="Remove this column">✕</button>` : ""}</div>
+        <div class="colhead"><input data-head="${j}" value="${esc(c)}" spellcheck="false" aria-label="${esc(t.colKind(j, s))} name"></div></th>`;
     });
     h += "</tr></thead><tbody>";
     s.data.forEach((r, i) => {
@@ -500,6 +549,7 @@
     const add = $("btn-addcol");
     add.textContent = t.addLabel;
     add.disabled = s.cols.length >= t.maxCols;
+    add.hidden = t.minCols === t.maxCols;
   }
   const cellAt = (r, c) => $("grid").querySelector(`input[data-r="${r}"][data-c="${c}"]`);
 
@@ -616,6 +666,10 @@
     const s = active(), box = $("options");
     box.innerHTML = TYPES[s.type].renderOptions(s);
     box.querySelectorAll("input[type=radio]").forEach(r => r.onchange = () => { s.options[r.name] = r.value; save(); renderOptions(); scheduleRun(); });
+    box.querySelectorAll("[data-set]").forEach(b => b.onclick = () => {
+      const [k, v] = b.dataset.set.split(":");
+      s.options[k] = v; save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun();
+    });
     box.querySelectorAll("[data-design]").forEach(b => b.onclick = () => {
       s.options.design = b.dataset.design;
       if (s.options.design !== "repeated" && s.graph.style === "lines") s.graph.style = "dots";
@@ -651,6 +705,8 @@
   function seriesNames(s) {
     if (s.type === "ttest") return filledCols(s).map(j => s.cols[j] || `Group ${letter(j)}`);
     if (s.type === "regression") return ["Curve", ...(s.options.compare ? ["Comparison curve"] : []), "Unknowns"];
+    if (s.type === "multivar") return [];
+    if (s.type === "diagnostic") return s.options.analysis === "roc" ? ["Curve", "Best cutoff"] : ["Points"];
     return s.cols.slice(1).map((c, j) => c || (s.type === "contingency" ? `Outcome ${j + 1}` : `Group ${letter(j)}`));
   }
   const toHex = c => /^#[0-9a-f]{6}$/i.test(c) ? c : "#000000";
@@ -668,9 +724,9 @@
       if (c.kind === "check") return `<label class="check"><input type="checkbox" data-g="${c.k}" ${v ? "checked" : ""}> ${c.label}</label>`;
       if (c.kind === "range") return `<label>${c.label} <input type="range" data-g="${c.k}" min="${c.min}" max="${c.max}" value="${v}"></label>`;
       return `<label>${c.label}<input type="text" data-g="${c.k}" value="${esc(v ?? "")}" placeholder="${esc(c.ph || "")}"></label>`;
-    }).join("") + `<div class="wide colors"><span>Series colors</span>${seriesNames(s).map((n, i) =>
+    }).join("") + (!seriesNames(s).length ? "" : `<div class="wide colors"><span>Series colors</span>${seriesNames(s).map((n, i) =>
       `<label class="swatch" title="${esc(n)}"><input type="color" data-color="${esc(n)}" value="${toHex(color(g, i, n))}"><span>${esc(n)}</span></label>`).join("")}
-      ${g.colors && Object.keys(g.colors).length ? `<button class="ghost small" id="btn-reset-colors">Reset</button>` : ""}</div>`;
+      ${g.colors && Object.keys(g.colors).length ? `<button class="ghost small" id="btn-reset-colors">Reset</button>` : ""}</div>`);
     $("graph-format").querySelectorAll("[data-color]").forEach(el => {
       el.oninput = () => { g.colors = { ...(g.colors || {}), [el.dataset.color]: el.value }; save(); drawPlot(); };
       el.onchange = () => renderFormat();
@@ -916,6 +972,91 @@
     const fb = c.fit_b, key = fb && fb.derived && fb.derived[0];
     if (key && key.value != null) rows.push(T.row(`${esc(key.name)} from ${esc(c.name_b)}`, fmt(key.value)));
     return `<div class="summary ns" style="margin-top:10px">${verdict}</div>` + T.table(rows);
+  }
+
+  // ---------------------------------------------------------------- correlation matrix
+  function renderCorrMatrix(r) {
+    const pct = Math.round((1 - r.alpha) * 100);
+    const sig = r.pairs.filter(p => p.significant);
+    const top = r.pairs[0];
+    let h = T.summary(sig.length ? "sig" : "ns", sig.length
+      ? `<b>${sig.length} of ${r.pairs.length} pairs</b> are significantly correlated. Strongest: <b>${esc(top.a)}</b> and <b>${esc(top.b)}</b> (r = ${fmt(top.r, 3)}, ${fmtP(top.p)}).`
+      : `<b>No significant correlations</b> among the ${r.names.length} variables.`);
+    h += `<div class="opt-label">${esc(r.test_name)}: r</div>` + T.multi(["", ...r.names.map(esc)],
+      r.names.map((n, i) => [esc(n), ...r.names.map((_, j) => i === j ? "1" : r.r[i][j] == null ? "—" : `${fmt(r.r[i][j], 3)} ${st(stars(r.p[i][j]))}`)]));
+    h += `<div class="opt-label" style="margin-top:10px">All pairs, strongest first</div>` +
+      T.multi(["Pair", "r", r.method === "pearson" ? `${pct}% CI` : "", "P", "n", ""], r.pairs.map(p => ({ cls: p.significant ? "hl" : "",
+        cells: [`${esc(p.a)} vs ${esc(p.b)}`, fmt(p.r, 3), p.ci ? ci(p.ci[0], p.ci[1]) : "", pOnly(p.p), p.n, st(p.stars)] })));
+    h += `<div class="opt-label" style="margin-top:10px">Descriptive statistics</div>` +
+      T.multi(["", "n", "Mean", "SD"], r.describe.map(d => [esc(d.name), d.n, fmt(d.mean), fmt(d.sd)]));
+    h += `<p class="note">P values are not corrected for the number of pairs tested (${r.pairs.length}).</p>`;
+    return h;
+  }
+  function drawCorrMatrix(el, r, s) {
+    const g = s.graph, k = r.names.length;
+    const z = r.r.map(row => row.map(v => v == null ? null : v));
+    const annotations = [];
+    if (g.showValues) r.r.forEach((row, i) => row.forEach((v, j) => {
+      if (v == null) return;
+      annotations.push({ x: j, y: i, text: `${fmt(v, 2)}${i !== j && r.p[i][j] < r.alpha ? "<br>" + stars(r.p[i][j]) : ""}`, showarrow: false,
+        font: { size: Math.max(9, (g.fontSize || 13) - (k > 6 ? 3 : 1)), color: Math.abs(v) > 0.6 ? "#fff" : "#1b2130" } });
+    }));
+    Plotly.react(el, [{ type: "heatmap", z, x: r.names.map((_, j) => j), y: r.names.map((_, i) => i), zmin: -1, zmax: 1,
+      colorscale: [[0, "#2166ac"], [0.25, "#92c5de"], [0.5, "#f7f7f7"], [0.75, "#f4a582"], [1, "#b2182b"]],
+      colorbar: { title: { text: "r" }, thickness: 12 }, hovertemplate: "r = %{z:.3f}<extra></extra>", xgap: 2, ygap: 2 }],
+      { ...baseLayout(g), annotations, margin: { l: 90, r: 20, t: g.title ? 44 : 20, b: 80 },
+        xaxis: { tickvals: r.names.map((_, j) => j), ticktext: r.names.map(esc), showgrid: false, zeroline: false },
+        yaxis: { tickvals: r.names.map((_, i) => i), ticktext: r.names.map(esc), autorange: "reversed", showgrid: false, zeroline: false, scaleanchor: "x" } },
+      PLOT_CONFIG);
+  }
+
+  // ---------------------------------------------------------------- ROC & Bland-Altman
+  function renderROC(r) {
+    const pct = Math.round((1 - r.alpha) * 100);
+    const quality = r.auc >= 0.9 ? "excellent" : r.auc >= 0.8 ? "good" : r.auc >= 0.7 ? "fair" : r.auc >= 0.6 ? "poor" : "no better than chance";
+    let h = T.summary(r.p < r.alpha ? "sig" : "ns", `Area under the ROC curve = <b>${fmt(r.auc, 3)}</b> (${pct}% CI ${ci(...r.ci)}): <b>${quality}</b> separation of ${esc(r.names[1])} from ${esc(r.names[0])} (${fmtP(r.p)}). ` +
+      `Best cutoff: ${r.direction === "higher" ? "≥" : "≤"} <b>${fmt(r.best.cut)}</b> (sensitivity ${fmt(r.best.sens, 3)}%, specificity ${fmt(r.best.spec, 3)}%).`);
+    h += T.table([T.sec("Area under the ROC curve"), T.row("Area", fmt(r.auc, 4)), T.row("Std. error", fmt(r.se, 3)), T.row(`${pct}% CI`, ci(...r.ci)),
+      T.row("P value (vs 0.5)", `${pOnly(r.p)} ${st(r.stars)}`), T.row(`${esc(r.names[0])} (controls)`, r.n_controls), T.row(`${esc(r.names[1])} (patients)`, r.n_patients),
+      T.row("Patients have", `${r.direction} values`)]);
+    h += `<div class="opt-label" style="margin-top:10px">Cutoffs (patients if value ${r.direction === "higher" ? "≥" : "≤"} cutoff)</div>` +
+      T.multi(["Cutoff", "Sensitivity %", "Specificity %", "Likelihood ratio"], r.table.map(t => ({ cls: t === r.best || (t.cut === r.best.cut) ? "hl" : "",
+        cells: [fmt(t.cut), fmt(t.sens, 3), fmt(t.spec, 3), t.lr == null ? "—" : fmt(t.lr, 3)] })));
+    h += `<p class="note">Highlighted: the cutoff with the highest sensitivity + specificity (Youden index). SE by Hanley & McNeil.</p>`;
+    return h;
+  }
+  function drawROC(el, r, s) {
+    const g = s.graph, c = color(g, 0, "Curve");
+    Plotly.react(el, [
+      { x: [0, 100], y: [0, 100], mode: "lines", line: { color: "#9aa3b2", dash: "dot", width: 1.2 }, hoverinfo: "skip" },
+      { x: r.curve.map(p => p.fpr * 100), y: r.curve.map(p => p.tpr * 100), mode: "lines+markers", line: { color: c, width: 2.4, shape: "linear" },
+        marker: { size: Math.max(3, g.pointSize - 3), color: c }, customdata: r.curve.map(p => p.cut == null ? "" : fmt(p.cut)),
+        hovertemplate: "Cutoff %{customdata}: sensitivity %{y:.1f}%, 100% − specificity %{x:.1f}%<extra></extra>" },
+      { x: [100 - r.best.spec], y: [r.best.sens], mode: "markers", marker: { symbol: "star", size: g.pointSize + 8, color: color(g, 1, "Best cutoff") }, hoverinfo: "skip" },
+    ], { ...baseLayout(g), annotations: [{ xref: "paper", yref: "paper", x: 0.98, y: 0.04, xanchor: "right", showarrow: false, text: `AUC = ${fmt(r.auc, 3)}`, font: { size: (g.fontSize || 13) + 1 } }],
+      xaxis: axis(g, { title: { text: "100% − Specificity %" }, range: [-2, 102] }), yaxis: yAxis(g, "Sensitivity %", { range: [-2, 102] }) }, PLOT_CONFIG);
+  }
+  function renderBA(r) {
+    const pct = Math.round((1 - r.alpha) * 100);
+    let h = T.summary(r.p_bias < r.alpha ? "sig" : "ns", `On average <b>${esc(r.names[1])}</b> reads <b>${fmt(Math.abs(r.bias))} ${r.bias >= 0 ? "higher" : "lower"}</b> than <b>${esc(r.names[0])}</b> (bias${r.p_bias < r.alpha ? ", significantly different from 0" : ", not significantly different from 0"}, ${fmtP(r.p_bias)}). ` +
+      `95% of differences fall between <b>${fmt(r.loa[0])}</b> and <b>${fmt(r.loa[1])}</b>. Whether that range is acceptable is a clinical judgement.`);
+    h += T.table([T.sec(`Bland-Altman: ${esc(r.names[1])} − ${esc(r.names[0])}`), T.row("Bias (mean difference)", fmt(r.bias)), T.row(`${pct}% CI of bias`, ci(...r.bias_ci)),
+      T.row("SD of differences", fmt(r.sd)), T.row("95% limits of agreement", ci(...r.loa)),
+      T.row(`Lower limit ${pct}% CI`, ci(...r.loa_lo_ci)), T.row(`Upper limit ${pct}% CI`, ci(...r.loa_hi_ci)), T.row("Number of samples", r.n),
+      T.sec("Does the difference depend on the size of the value?"), T.row("Slope of difference vs average", fmt(r.trend_slope)), T.row("P value", pOnly(r.trend_p))]);
+    if (r.trend_p != null && r.trend_p < r.alpha) h += `<p class="note warn">⚠︎ The difference grows (or shrinks) with the size of the measurement, so a single bias doesn't describe the disagreement well. Consider analyzing ratios (log values).</p>`;
+    return h;
+  }
+  function drawBA(el, r, s) {
+    const g = s.graph, c = color(g, 0, "Points");
+    const xs = r.points.avg, lo = Math.min(...xs), hi = Math.max(...xs), pad = (hi - lo) * 0.05 || 1;
+    const line = (y, dash, col, label) => ({ x: [lo - pad, hi + pad], y: [y, y], mode: "lines", line: { color: col, width: 1.6, dash }, hoverinfo: "skip", name: label });
+    Plotly.react(el, [
+      line(0, "dot", "#9aa3b2"), line(r.bias, "solid", "#1b2130"), line(r.loa[0], "dash", "#d62728"), line(r.loa[1], "dash", "#d62728"),
+      { x: xs, y: r.points.diff, mode: "markers", marker: { color: c, size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: "Average %{x:.4g}, difference %{y:.4g}<extra></extra>" },
+    ], { ...baseLayout(g), annotations: [["Bias", r.bias], ["+95% LoA", r.loa[1]], ["−95% LoA", r.loa[0]]].map(([t, y]) => ({ x: 1, xref: "paper", xanchor: "right", y, yanchor: "bottom",
+        text: `${t} ${fmt(y, 3)}`, showarrow: false, font: { size: (g.fontSize || 13) - 2, color: "#6b7385" } })),
+      xaxis: axis(g, { title: { text: `Average of ${esc(r.names[0])} and ${esc(r.names[1])}` } }), yaxis: yAxis(g, `${esc(r.names[1])} − ${esc(r.names[0])}`) }, PLOT_CONFIG);
   }
 
   // ---------------------------------------------------------------- survival
