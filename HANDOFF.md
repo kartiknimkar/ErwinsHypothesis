@@ -79,6 +79,13 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (f) .pzfx nested table import
 - [x] (g) three-way ANOVA multiple comparisons
 - [x] (h) raster PDF export (Pillow)
+- [ ] (i) effect sizes: Cohen's d / Hedges' g (t tests), eta² / omega² (ANOVA)
+- [ ] (j) survival: pairwise log-rank comparisons for 3+ groups (Bonferroni/Holm-Šídák)
+- [ ] (k) row statistics (mean/SD/n across columns for each row) as a Compare-groups mode or transform
+- [ ] (l) grid conveniences: sort rows by a column, fill series (1, 2, 3… / dilution series)
+- [ ] (m) linear regression: force through origin, prediction bands
+- [ ] (n) power / sample size calculator (t test, ANOVA, proportions)
+- [ ] (o) two-way ANOVA with both factors repeated
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →
