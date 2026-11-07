@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import anova2, contingency, curvefit, importer, multivar, stats, storage, survival
+from . import outliers, anova2, contingency, curvefit, importer, multivar, stats, storage, survival
 
 STATIC = Path(__file__).parent / "static"
 PLOTLY_JS = STATIC / "vendor" / "plotly.min.js"  # plotly.js (MIT), bundled so the app works offline
@@ -43,7 +43,9 @@ class CompareRequest(BaseModel):
     names: list[str]
     kind: str = "unpaired"  # 2 groups: unpaired|welch|paired|mannwhitney; 3+: ordinary|welch|kruskal
     alpha: float = 0.05
-    outliers: bool = False  # also run Grubbs' outlier test on each group
+    outliers: bool = False  # also run an outlier test on each group
+    outlier_method: str = "grubbs"  # grubbs | rout
+    q: float = 0.01                 # ROUT's Q (maximum false discovery rate)
 
 
 class SummaryRequest(BaseModel):
@@ -142,7 +144,10 @@ def run_compare(req: CompareRequest):
             res = stats.one_way_anova(groups, names, kind=kind, alpha=req.alpha)
         res["n_groups"] = len(cols)
         if req.outliers:
-            res["outliers"] = [{"name": n, **stats.grubbs(g, alpha=0.05)} for n, g in zip(names, groups)]
+            if req.outlier_method == "rout":
+                res["outliers"] = [{"name": n, **outliers.rout_column(stats._clean(g).tolist(), req.q)} for n, g in zip(names, groups)]
+            else:
+                res["outliers"] = [{"name": n, "method": "grubbs", **stats.grubbs(g, alpha=0.05)} for n, g in zip(names, groups)]
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))
@@ -158,6 +163,7 @@ class FitRequest(BaseModel):
     initial: dict | None = None # starting values for a user-defined equation
     auc: bool = False           # also compute area under the curve of the data
     baseline: float = 0.0
+    rout_q: float | None = None  # remove ROUT outliers before fitting (Q, e.g. 0.01)
     x_is_log: bool = False
     alpha: float = 0.05
 
@@ -221,6 +227,11 @@ def _unknowns(x, ys):
 def run_fit(req: FitRequest):
     try:
         px, py = _flatten_xy(req.x, req.ys)
+        removed = []
+        if req.rout_q:
+            om = curvefit.rout_mask(px, py, req.model, req.x_is_log, req.fixed, req.equation, req.initial, req.rout_q)
+            removed = [{"x": a, "y": b} for a, b, o in zip(px, py, om) if o]
+            px = [a for a, o in zip(px, om) if not o]; py = [b for b, o in zip(py, om) if not o]
         if req.model == "linear":
             res = stats.linear_regression(px, py, alpha=req.alpha)
             res["model"] = "linear"
@@ -232,6 +243,8 @@ def run_fit(req: FitRequest):
                     res["comparison"] = curvefit.compare(px, py, req.model, req.compare, x_is_log=req.x_is_log, alpha=req.alpha, fixed=req.fixed)
                 except ValueError as e:
                     res["comparison"] = {"error": str(e)}
+        if req.rout_q:
+            res["outliers"], res["rout_q"] = removed, req.rout_q
         if req.auc:
             try:
                 res["auc"] = stats.area_under_curve(px, py, baseline=req.baseline)

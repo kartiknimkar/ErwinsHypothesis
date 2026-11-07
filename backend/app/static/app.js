@@ -212,7 +212,8 @@
           bin_width: isNum(s.options.binWidth) ? Number(s.options.binWidth) : null, bin_start: isNum(s.options.binStart) ? Number(s.options.binStart) : null }];
         if (s.options.mode === "describe") return ["/api/colstats", { groups, names, alpha: s.options.alpha,
           hypothetical: isNum(s.options.hypothetical) ? Number(s.options.hypothetical) : null }];
-        return ["/api/compare", { groups, names, kind: kindFor(s, filledCols(s).length), alpha: s.options.alpha, outliers: !!s.options.outliers }];
+        return ["/api/compare", { groups, names, kind: kindFor(s, filledCols(s).length), alpha: s.options.alpha, outliers: !!s.options.outliers,
+          outlier_method: s.options.outlierMethod || "rout", q: Number(s.options.routQ ?? 0.01) }];
       },
       renderOptions(s) {
         const n = filledCols(s).length, key = choiceKey(s, n), cur = kindFor(s, n);
@@ -233,7 +234,9 @@
           <div class="opt-label">${n >= 3 ? `${n} groups: compare all` : "2 groups"}</div>` +
           CHOICES[key].map(([k, name, d]) => `<label class="choice ${cur === k ? "on" : ""}"><input type="radio" name="kind${key}" value="${k}" ${cur === k ? "checked" : ""}><span><b>${name}</b><small>${d}</small></span></label>`).join("") +
           (n >= 3 ? "" : `<p class="hint">Have 3 or more groups? Click <b>+ Group</b> to add a column.</p>`) +
-          `<label class="check"><input type="checkbox" data-opt="outliers" ${s.options.outliers ? "checked" : ""}> Identify outliers (Grubbs' test, α = 0.05)</label>` + alphaSelect(s);
+          `<div class="row"><label class="check"><input type="checkbox" data-opt="outliers" ${s.options.outliers ? "checked" : ""}> Identify outliers</label>
+          ${s.options.outliers ? `<select id="opt-outmethod"><option value="rout" ${(s.options.outlierMethod || "rout") === "rout" ? "selected" : ""}>ROUT (finds one or several)</option><option value="grubbs" ${s.options.outlierMethod === "grubbs" ? "selected" : ""}>Grubbs' test (α = 0.05)</option></select>
+            ${(s.options.outlierMethod || "rout") === "rout" ? `<label for="opt-routq">Q</label>` + `<select id="opt-routq">${[["0.001", "0.1%"], ["0.01", "1% (recommended)"], ["0.05", "5%"], ["0.1", "10%"]].map(([v, l]) => `<option value="${v}" ${String(s.options.routQ ?? "0.01") === v ? "selected" : ""}>${l}</option>`).join("")}</select>` : ""}` : ""}</div>` + alphaSelect(s);
       },
       graphControls: s => s.options.mode === "freq" ? [
         sel("freqPlot", "Plot", [["hist", "Histogram (bars)"], ["poly", "Frequency polygon (lines)"], ["qq", "Normal Q-Q plot"]]),
@@ -362,6 +365,7 @@
           equation: s.options.model === "custom" ? (s.options.equation || "") : null,
           initial: s.options.model === "custom" ? Object.fromEntries(Object.entries(s.options.initial || {}).filter(([, v]) => isNum(v)).map(([k, v]) => [k, Number(v)])) : null,
           auc: !!s.options.auc, baseline: isNum(s.options.baseline) ? Number(s.options.baseline) : 0,
+          rout_q: s.options.rout ? Number(s.options.routQ ?? 0.01) : null,
           x_is_log: !!s.options.xIsLog, alpha: s.options.alpha }];
       },
       renderOptions(s) {
@@ -389,6 +393,8 @@
           </details>` : ""}
           ${m && m.log_x ? `<label class="check"><input type="checkbox" id="opt-xislog" ${s.options.xIsLog ? "checked" : ""}> X values are already log10(concentration)</label>
             <p class="hint">Otherwise X is concentration and the app takes the log for you (X = 0 is left out, as it has no log).</p>` : ""}
+          ${multi ? "" : `<div class="row"><label class="check"><input type="checkbox" data-opt="rout" ${s.options.rout ? "checked" : ""}> Remove outliers before fitting (ROUT)</label>
+            ${s.options.rout ? `<label for="opt-routq">Q</label>` + `<select id="opt-routq">${[["0.001", "0.1%"], ["0.01", "1% (recommended)"], ["0.05", "5%"], ["0.1", "10%"]].map(([v, l]) => `<option value="${v}" ${String(s.options.routQ ?? "0.01") === v ? "selected" : ""}>${l}</option>`).join("")}</select>` : ""}</div>`}
           ${multi ? "" : `<div class="row"><label class="check"><input type="checkbox" data-opt="auc" ${s.options.auc ? "checked" : ""}> Area under the curve</label>
             ${s.options.auc ? `<label>baseline Y =</label><input type="text" id="opt-baseline" value="${esc(s.options.baseline ?? "0")}" style="width:70px" inputmode="decimal">` : ""}</div>`}
           ${alphaSelect(s)}`;
@@ -1269,6 +1275,8 @@
     box.querySelectorAll("[data-num]").forEach(inp => inp.oninput = () => {
       const v = inp.value.trim(); s.options[inp.dataset.num] = v; inp.classList.toggle("bad", v !== "" && !isNum(v)); save(); scheduleRun();
     });
+    const om = $("opt-outmethod"); if (om) om.onchange = e => { s.options.outlierMethod = e.target.value; save(); renderOptions(); scheduleRun(); };
+    const rq = $("opt-routq"); if (rq) rq.onchange = e => { s.options.routQ = e.target.value; save(); scheduleRun(); };
     const hy = $("opt-hyp");
     if (hy) hy.oninput = () => { s.options.hypothetical = hy.value.trim(); hy.classList.toggle("bad", hy.value.trim() !== "" && !isNum(hy.value)); save(); scheduleRun(); };
     const bl = $("opt-baseline");
@@ -1384,6 +1392,8 @@
     if (nx) box.insertAdjacentHTML("afterbegin", `<p class="note warn" style="margin-top:0">${nx} excluded value${nx === 1 ? " is" : "s are"} not used (shown in <i>blue italics</i> in the table). Right-click to include again.</p>`);
     let rep = null;
     try { rep = reportText(lastResult, s); } catch { rep = null; }
+    if (rep && lastResult.rout_q) rep.methods += ` Outliers were identified with the ROUT method (Q = ${fmt(lastResult.rout_q * 100)}%; Motulsky & Brown, 2006) and ${(lastResult.outliers || []).length ? `${lastResult.outliers.length} point${lastResult.outliers.length > 1 ? "s were" : " was"} excluded from the fit` : "none were found"}.`;
+    else if (rep && lastResult.outliers && lastResult.outliers[0] && lastResult.outliers[0].method === "rout") rep.methods += ` Outliers were screened with the ROUT method (Q = ${fmt(lastResult.outliers[0].q * 100)}%; Motulsky & Brown, 2006).`;
     if (rep) {
       box.insertAdjacentHTML("beforeend", `<details class="report"><summary>Text for your paper</summary>
         <div class="report-block"><div class="opt-label">Methods</div><p id="rep-methods">${rep.methods}</p></div>
@@ -1565,7 +1575,8 @@
     }
     if (r.outliers) {
       const found = r.outliers.filter(o => o.outliers.length);
-      h += `<div class="opt-label" style="margin-top:10px">Outliers (Grubbs' test, α = 0.05)</div>` + (found.length
+      const rout = r.outliers[0] && r.outliers[0].method === "rout";
+      h += `<div class="opt-label" style="margin-top:10px">Outliers (${rout ? `ROUT, Q = ${fmt(r.outliers[0].q * 100)}%` : "Grubbs' test, α = 0.05"})</div>` + (found.length
         ? T.multi(["Group", "Suspected outliers", ""], r.outliers.map(o => [esc(o.name), o.outliers.length ? o.outliers.map(x => `<b>${fmt(x.value)}</b>`).join(", ") : "none", o.n < 3 ? `<span class="pd">needs 3+ values</span>` : ""]))
           + `<p class="note warn">Outliers are circled in red on the graph. The analysis above still includes them: only remove a value if you have a reason beyond the statistics (e.g. a known technical error).</p>`
         : `<p class="note">No outliers found in any group.</p>`);
@@ -1779,7 +1790,14 @@
 
   // ---------------------------------------------------------------- XY
   function renderXYResults(r, s) {
-    return renderXYCore(r, s) + (r.auc ? renderAUC(r.auc, s) : "") + (r.unknowns ? renderUnknowns(r, s) : "");
+    return renderXYCore(r, s) + (r.rout_q ? renderXYOutliers(r, s) : "") + (r.auc ? renderAUC(r.auc, s) : "") + (r.unknowns ? renderUnknowns(r, s) : "");
+  }
+  function renderXYOutliers(r, s) {
+    const o = r.outliers || [], q = `Q = ${fmt(r.rout_q * 100)}%`;
+    if (!o.length) return `<p class="note">ROUT (${q}) found no outliers, so all points were fitted.</p>`;
+    return `<div class="opt-label" style="margin-top:10px">Outliers removed before fitting (ROUT, ${q})</div>` +
+      T.multi([esc(s.cols[0] || "X"), "Y"], o.map(p => [fmt(p.x), `<b>${fmt(p.y)}</b>`])) +
+      `<p class="note warn">${o.length} point${o.length > 1 ? "s were" : " was"} left out of the fit (crossed out in red on the graph). The results above use the remaining ${r.n} points. Check for a technical reason before reporting.</p>`;
   }
   function renderAUC(a, s) {
     if (a.error) return `<p class="note warn">${esc(a.error)}</p>`;
@@ -2290,7 +2308,10 @@
     if (cmpFit) traces.push({ x: cmpFit.curve.x.map(tx), y: cmpFit.curve.y, mode: "lines", line: { color: color(g, 1, "Comparison curve"), width: 2, dash: "dash" },
       hovertemplate: `${esc(cmpFit.model_name)}: %{y:.4g}<extra></extra>` });
     if (reps) {
-      const stats = rows.map(p => {
+      // ROUT outliers are left out of the plotted mean ± SD too (they're shown separately as red crosses)
+      const left = {}; (r.outliers || []).forEach(o => { const k = `${o.x}|${o.y}`; left[k] = (left[k] || 0) + 1; });
+      const keep = (x, y) => { const k = `${x}|${y}`; if (left[k]) { left[k]--; return false; } return true; };
+      const stats = rows.map(p => ({ ...p, ys: p.ys.filter(y => keep(p.x, y)) })).filter(p => p.ys.length).map(p => {
         const n = p.ys.length, m = p.ys.reduce((a, b) => a + b, 0) / n;
         const sd = n > 1 ? Math.sqrt(p.ys.reduce((a, b) => a + (b - m) ** 2, 0) / (n - 1)) : 0;
         return { x: p.x, m, e: g.repMode === "sem" ? sd / Math.sqrt(n) : sd };
@@ -2303,6 +2324,8 @@
       traces.push({ x: pts.map(p => p[0]), y: pts.map(p => p[1]), mode: "markers",
         marker: { color: "#1b2130", size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: "(%{x}, %{y})<extra></extra>" });
     }
+    if ((r.outliers || []).length) traces.push({ x: r.outliers.map(p => p.x), y: r.outliers.map(p => p.y), mode: "markers", name: "Outliers",
+      marker: { symbol: "x-thin-open", color: "#d62728", size: g.pointSize + 8, line: { color: "#d62728", width: 2.2 } }, hovertemplate: "Outlier (not fitted): (%{x}, %{y})<extra></extra>" });
     const unk = (r.unknowns || []).filter(u => u.x != null);
     if (unk.length) traces.push({ x: unk.map(u => u.x), y: unk.map(u => u.y), mode: "markers", name: "Unknowns",
       marker: { symbol: "diamond", color: color(g, 1, "Unknowns"), size: g.pointSize + 3, line: { color: "#fff", width: 1 } },

@@ -143,6 +143,13 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
       normal curve overlay; overlapping / side-by-side / stacked columns
 - [x] Normal Q-Q plot (R qqnorm plotting positions) + Shapiro-Wilk and D'Agostino per column; guide entry; 111 tests
 
+## Phase 0.32: ROUT outliers (done 2026-11-06)
+- [x] ROUT (Motulsky & Brown 2006): Lorentzian robust fit with RSDR scale, FDR outlier test (Q), refit without outliers
+      (backend/app/outliers.py); FDR rule matches the dr4pl R implementation and Benjamini-Hochberg step-up
+- [x] Compare groups: identify outliers with ROUT (default, finds several) or Grubbs; choose Q
+- [x] XY fits (linear, all nonlinear models, custom equations): "Remove outliers before fitting"; red crosses on the
+      graph, removed-points table, paper text; 118 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

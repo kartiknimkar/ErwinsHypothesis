@@ -143,10 +143,16 @@ def custom_model(equation_text: str, initial: dict | None = None) -> dict:
 
 
 def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_points: int = 200,
-        fixed: dict | None = None, equation: str | None = None, initial: dict | None = None) -> dict:
+        fixed: dict | None = None, equation: str | None = None, initial: dict | None = None,
+        rout_q: float | None = None) -> dict:
     """Fit a model to (x, y) points. For dose-response models, X is concentration unless
     x_is_log is True (then X is already log10 of concentration).
     fixed: {parameter name: value} to hold parameters constant (constraints), e.g. {"Bottom": 0}."""
+    removed = []
+    if rout_q:
+        om = rout_mask(x, y, model, x_is_log, fixed, equation, initial, rout_q)
+        removed = [{"x": float(a), "y": float(b)} for a, b in zip(np.asarray(x, float)[om], np.asarray(y, float)[om])]
+        x, y = list(np.asarray(x, float)[~om]), list(np.asarray(y, float)[~om])
     if model == "custom":
         m = custom_model(equation or "", initial)
     elif model in MODELS:
@@ -257,6 +263,7 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
         "equation": m["equation"], "params": params, "derived": derived,
         "r_squared": 1 - ss_res / ss_tot if ss_tot > 0 else None,
         "sy_x": sy_x, "ss_res": ss_res, "df": df, "n": int(len(x)), "dropped": dropped,
+        **({"outliers": removed, "rout_q": rout_q} if rout_q else {}),
         "x_is_log": bool(m["log_x"]), "alpha": alpha, "fixed": fixed,
         "points": {"x": x.tolist(), "y": y.tolist()},
         "curve": {"x": xs.tolist(), "y": curve_y.tolist()},
@@ -353,6 +360,41 @@ def _model(model, equation=None, initial=None):
     if model in MODELS:
         return MODELS[model]
     raise ValueError(f"Unknown model: {model}")
+
+
+def rout_mask(x, y, model, x_is_log=False, fixed=None, equation=None, initial=None, q=0.01) -> np.ndarray:
+    """ROUT outliers (see outliers.py) for the points (x, y), as a boolean mask in input order.
+    Points the fit would drop anyway (missing, or X <= 0 for log-X models) are never outliers."""
+    from .outliers import robust_fit, fdr_outliers
+    m = _model(model, equation, initial)
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    use = np.isfinite(x) & np.isfinite(y)
+    if m["log_x"] and not x_is_log:
+        use &= np.where(np.isfinite(x), x, -1) > 0
+    mask = np.zeros(len(x), bool)
+    xx, yy = x[use], y[use]
+    if m["log_x"] and not x_is_log:
+        xx = np.log10(xx)
+    names = m["params"]
+    fixed = {k: float(v) for k, v in (fixed or {}).items() if k in names and v is not None and np.isfinite(float(v))}
+    free = [i for i, nm in enumerate(names) if nm not in fixed]
+    k = len(free)
+    if len(xx) <= k + 1 or not free:
+        return mask
+
+    def f_free(xv, *pf):
+        vals = [fixed.get(nm) for nm in names]
+        for i, v in zip(free, pf):
+            vals[i] = v
+        return m["f"](xv, *vals)
+
+    guess = m["guess"](xx, yy)
+    try:
+        _, resid, scale = robust_fit(f_free, [guess[i] for i in free], xx, yy)
+    except Exception:
+        return mask
+    mask[np.nonzero(use)[0]] = fdr_outliers(resid, k, q, scale)
+    return mask
 
 
 def _prep_xy(m, x, y, x_is_log):

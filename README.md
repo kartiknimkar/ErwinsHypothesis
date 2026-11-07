@@ -19,6 +19,7 @@ clean, modern interface. Everything runs on your own computer.
 - **Contingency tables:** Fisher's exact, chi-square, odds ratio, relative risk
 - **Multiple variables:** correlation matrix with heatmap, multiple linear regression, logistic regression, PCA
 - **Diagnostics:** ROC curves (AUC, best cutoff), Bland-Altman method comparison
+- ROUT outlier detection (groups and curve fits, removes outliers before fitting) and Grubbs' test
 - Frequency distributions (histograms, cumulative, normal curve) and normal Q-Q plots
 - Graphs export as PNG, TIFF or **editable SVG** (text and shapes stay editable in Illustrator, Inkscape or PowerPoint) at journal sizes and 150–600 DPI; combine graphs into multi-panel figures (A, B, C…)
 - Full graph styling: fonts, text sizes and color, point shape/size/opacity/outline, line and error-bar thickness, bar fill opacity and hatch patterns, axis thickness and ticks, gridlines, transparent background, legend position
