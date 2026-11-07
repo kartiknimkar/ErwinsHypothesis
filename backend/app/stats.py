@@ -55,6 +55,30 @@ def describe(values, name: str = "") -> dict:
     }
 
 
+def _effect_two(kind, xa, xb, res) -> dict | None:
+    """Effect sizes for two-group comparisons (difference is B − A)."""
+    n1, n2 = len(xa), len(xb)
+    out = {}
+    if kind in ("unpaired", "welch"):
+        sp = math.sqrt(((n1 - 1) * np.var(xa, ddof=1) + (n2 - 1) * np.var(xb, ddof=1)) / (n1 + n2 - 2))
+        if sp > 0:
+            d = (np.mean(xb) - np.mean(xa)) / sp
+            j = 1 - 3 / (4 * (n1 + n2) - 9)
+            se = math.sqrt((n1 + n2) / (n1 * n2) + d * d / (2 * (n1 + n2)))
+            out.update(cohens_d=float(d), hedges_g=float(d * j), d_ci=[float(d - 1.96 * se), float(d + 1.96 * se)])
+    elif kind in ("paired", "ratio_paired"):
+        diff = (np.log10(xb) - np.log10(xa)) if kind == "ratio_paired" else (xb - xa)
+        sd = np.std(diff, ddof=1)
+        if sd > 0:
+            out["cohens_dz"] = float(np.mean(diff) / sd)
+    elif kind == "mannwhitney":
+        out["rank_biserial"] = float(1 - 2 * res["statistic"] / (n1 * n2)) * (1 if np.median(xb) >= np.median(xa) else -1)
+    if res.get("statistic_name") == "t" and res.get("df"):
+        t, df = res["statistic"], res["df"]
+        out["r_squared"] = float(t * t / (t * t + df))
+    return out or None
+
+
 def t_test(a, b, kind: str = "unpaired", name_a: str = "A", name_b: str = "B",
            alpha: float = 0.05) -> dict:
     """Compare two groups.
@@ -194,6 +218,7 @@ def t_test(a, b, kind: str = "unpaired", name_a: str = "A", name_b: str = "B",
 
     result["stars"] = stars(result["p"])
     result["significant"] = result["p"] < alpha
+    result["effect"] = _effect_two(kind, xa, xb, result)
     if kind in ("paired", "wilcoxon"):
         result["normality"] = [normality(xb - xa)]
         result["normality_of"] = "differences"
@@ -367,6 +392,7 @@ def one_way_anova(groups, names=None, kind: str = "ordinary", alpha: float = 0.0
             compare_to = "all"
         if posthoc == "dunnett":
             compare_to = "control"
+        res["effect"] = {"eta_squared": ssb / (ssb + ssw), "omega_squared": max(0.0, (ssb - dfb * msw) / (ssb + ssw + msw))}
         res.update(test_name="Ordinary one-way ANOVA", posthoc_name=f"{POSTHOC_NAMES.get(posthoc, posthoc)} multiple comparisons" + (" vs control" if compare_to == "control" else ""),
                    F=F, df_between=dfb, df_within=dfw, p=p, r_squared=ssb / (ssb + ssw),
                    table=[{"source": "Between groups", "SS": ssb, "df": dfb, "MS": msb},
@@ -436,6 +462,7 @@ def one_way_anova(groups, names=None, kind: str = "ordinary", alpha: float = 0.0
         kw = stats.kruskal(*xs)
         res.update(test_name="Kruskal-Wallis test", posthoc_name="Dunn's multiple comparisons",
                    H=float(kw.statistic), df_between=k - 1, p=float(kw.pvalue))
+        res["effect"] = {"epsilon_squared": float(kw.statistic) / (N - 1)}
         allv = np.concatenate(xs)
         ranks = stats.rankdata(allv)
         _, counts = np.unique(allv, return_counts=True)

@@ -228,6 +228,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] PDF button: graph or figure layout as a PDF page at the chosen print size and DPI (Pillow, high-resolution
       image; SVG remains the vector/editable option); 163 tests
 
+## Phase 0.50: Effect sizes (done 2026-11-07)
+- [x] Cohen's d (+ CI), Hedges' g, paired d_z, rank-biserial r, R² for t tests; η², ω² (ANOVA), ε² (Kruskal-Wallis);
+      d in paper text; matches pingouin; 165 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

@@ -1745,9 +1745,10 @@
       const stat = r.df != null ? `${r.statistic_name}(${r2(r.df, Number.isInteger(r.df) ? 0 : 1)}) = ${r2(r.statistic)}` : `${r.statistic_name} = ${r2(r.statistic, 1)}`;
       const dir = r.difference > 0 ? "higher than" : "lower than";
       const what = np ? (r.kind === "wilcoxon" ? "median difference" : "median difference") : "mean difference";
+      const eff = r.effect && r.effect.cohens_d != null ? `, d = ${r2(r.effect.cohens_d)}` : r.effect && r.effect.cohens_dz != null ? `, d<sub>z</sub> = ${r2(r.effect.cohens_dz)}` : "";
       const results = r.significant
-        ? `${b} was significantly ${dir} ${a} (${what} ${r2(r.difference)}${r.ci_low != null ? `, ${pct}% CI ${r2(r.ci_low)} to ${r2(r.ci_high)}` : ""}; ${stat}, ${apaP(r.p)}).`
-        : `${b} and ${a} did not differ significantly (${what} ${r2(r.difference)}${r.ci_low != null ? `, ${pct}% CI ${r2(r.ci_low)} to ${r2(r.ci_high)}` : ""}; ${stat}, ${apaP(r.p)}).`;
+        ? `${b} was significantly ${dir} ${a} (${what} ${r2(r.difference)}${r.ci_low != null ? `, ${pct}% CI ${r2(r.ci_low)} to ${r2(r.ci_high)}` : ""}; ${stat}, ${apaP(r.p)}${eff}).`
+        : `${b} and ${a} did not differ significantly (${what} ${r2(r.difference)}${r.ci_low != null ? `, ${pct}% CI ${r2(r.ci_low)} to ${r2(r.ci_high)}` : ""}; ${stat}, ${apaP(r.p)}${eff}).`;
       return { methods, results };
     }
     if (s.type === "ttest") {
@@ -1850,6 +1851,19 @@
   }
 
   // ---------------------------------------------------------------- groups
+  function effectRows(r) {
+    const e = r.effect;
+    if (!e) return [];
+    const size = d => { const a = Math.abs(d); return a < 0.2 ? "negligible" : a < 0.5 ? "small" : a < 0.8 ? "medium" : "large"; };
+    const rows = [T.sec("Effect size")];
+    if (e.cohens_d != null) rows.push(T.row("Cohen's d", `${fmt(e.cohens_d, 3)} (${size(e.cohens_d)}; 95% CI ${ci(...e.d_ci)})`), T.row("Hedges' g (small-sample corrected)", fmt(e.hedges_g, 3)));
+    if (e.cohens_dz != null) rows.push(T.row("Cohen's d<sub>z</sub> (paired)", `${fmt(e.cohens_dz, 3)} (${size(e.cohens_dz)})`));
+    if (e.rank_biserial != null) rows.push(T.row("Rank-biserial correlation", fmt(e.rank_biserial, 3)));
+    if (e.r_squared != null) rows.push(T.row("R² (eta squared)", fmt(e.r_squared, 3)));
+    if (e.eta_squared != null) rows.push(T.row("η² (eta squared)", `${fmt(e.eta_squared, 3)} (${fmt(e.eta_squared * 100, 3)}% of the variation is between groups)`), T.row("ω² (omega squared, less biased)", fmt(e.omega_squared, 3)));
+    if (e.epsilon_squared != null) rows.push(T.row("ε² (epsilon squared)", fmt(e.epsilon_squared, 3)));
+    return rows.length > 1 ? rows : [];
+  }
   function normalityRows(r) {
     if (!r.normality) return [];
     const names = r.normality_of === "differences" ? ["Differences"] : r.normality_of === "log ratios" ? ["Log ratios"] : r.groups.map(g => g.name);
@@ -1985,7 +1999,7 @@
       h += T.table([T.sec(esc(r.test_name)), T.row("P value", pOnly(r.p)), T.row(`Significant? (α = ${r.alpha})`, `${r.significant ? "Yes" : "No"} ${st(r.stars)}`),
         T.row(`${r.statistic_name}${r.df != null ? ", df" : ""}`, `${r.statistic_name} = ${fmt(r.statistic)}${r.df != null ? `, df = ${fmt(r.df)}` : ""}`),
         T.row(esc(r.difference_label), fmt(r.difference)), r.ci_low != null ? T.row(`${pct}% CI of ${r.kind === "ratio_paired" ? "ratio" : "difference"}`, ci(r.ci_low, r.ci_high)) : "",
-        r.n_pairs ? T.row("Number of pairs", r.n_pairs) : "", ...normalityRows(r)]);
+        r.n_pairs ? T.row("Number of pairs", r.n_pairs) : "", ...effectRows(r), ...normalityRows(r)]);
       if (r.variance_check && r.variance_check.p < 0.05) h += `<p class="note warn">⚠︎ The groups' spreads differ (F test ${fmtP(r.variance_check.p)}). Welch's t test is safer.</p>`;
     } else {
       const sigPairs = r.comparisons.filter(c => c.significant).length;
@@ -2007,6 +2021,7 @@
         r.comparisons.map(c => ({ cls: c.significant ? "hl" : "", cells: [`${esc(c.a)} vs ${esc(c.b)}`, fmt(c.diff), rankBased ? "" : c.ci_low == null ? "—" : ci(c.ci_low, c.ci_high), pOnly(c.p), st(c.stars)] })));
       if (r.posthoc === "holm") h += `<p class="note">The Holm-Šídák method doesn't produce confidence intervals.</p>`;
       if (r.posthoc === "lsd") h += `<p class="note warn">Fisher's LSD doesn't correct for multiple comparisons, so with many pairs some "significant" results may be chance.</p>`;
+      if (r.effect) h += T.table(effectRows(r));
       if (r.normality) h += T.table(normalityRows(r));
       if (r.kind === "rm" || r.kind === "friedman") h += `<p class="note">Only rows with a value in every column are used (${r.n_subjects} subjects).</p>`;
       if (r.variance_check && r.variance_check.p < 0.05) h += `<p class="note warn">⚠︎ The groups' spreads differ (Brown-Forsythe ${fmtP(r.variance_check.p)}). Welch's ANOVA is safer.</p>`;
