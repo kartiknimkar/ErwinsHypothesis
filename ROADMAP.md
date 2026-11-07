@@ -329,6 +329,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Scatter dot plots: median with interquartile range, mean/median line color (black or group) and thickness
 - [x] XY replicates: mean ± SD with every point shown; 199 tests
 
+## Phase 0.76: Copy as table + grouped n (done 2026-11-07)
+- [x] Results "Copy" puts both tab-separated text and an HTML table on the clipboard (real tables in Word/PowerPoint)
+- [x] Grouped graphs: show n under row labels; 200 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

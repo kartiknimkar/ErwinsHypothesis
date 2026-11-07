@@ -424,3 +424,31 @@ def test_median_iqr_and_rep_points(server):  # noqa: F811
         assert page.evaluate("document.getElementById('plot').data.filter(t => t.mode === 'markers').length") >= 2
         assert errors == [], errors
         browser.close()
+
+
+def test_copy_results_as_table_and_twoway_n(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        ctx = browser.new_context(viewport={"width": 1400, "height": 900})
+        ctx.grant_permissions(["clipboard-read", "clipboard-write"])
+        page = ctx.new_page()
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('two-way AN')")
+        page.wait_for_timeout(600)
+        page.click("#btn-copy")
+        page.wait_for_timeout(300)
+        types = page.evaluate("navigator.clipboard.read().then(items => items.flatMap(i => i.types))")
+        assert "text/html" in types and "text/plain" in types
+        if page.is_hidden("#graph-format"):
+            page.click("#btn-format")
+        page.check('#graph-format [data-g="showN"]')
+        page.wait_for_timeout(400)
+        assert "n = " in page.inner_text("#plot")
+        assert errors == [], errors
+        browser.close()

@@ -533,7 +533,7 @@
         sel("style", "Style", [["bars", "Bars + dots"], ["stacked", "Stacked bars (means)"], ["dots", "Dots + mean"], ["lines", "Interaction plot (means)"]]),
         sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
         sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]),
-        txt("ylabel", "Y axis label"), chk("showPoints", "Show points"), chk("horizontal", "Horizontal (sideways)"),
+        txt("ylabel", "Y axis label"), chk("showPoints", "Show points"), chk("horizontal", "Horizontal (sideways)"), chk("showN", "Show n under labels"),
       ],
       renderResults: (r, s) => r.test_name === "Multiple t tests" ? renderMultiT(r) : renderTwoWayResults(r, s),
       draw: (el, r, s) => r.test_name === "Multiple t tests" ? drawVolcano(el, r, s) : drawTwoWay(el, r, s),
@@ -2430,7 +2430,9 @@
     const lo = g.style === "bars" ? Math.min(0, ymin) : ymin - span * 0.08;
     styledReact(el, traces, { ...baseLayout(g), shapes, annotations, showlegend: true, barmode: "overlay", meta: "flippable",
       legend: { orientation: "h", y: 1.1, x: 0 },
-      xaxis: axis(g, { tickvals: r.rows.map((_, i) => i), ticktext: r.rows.map(esc), range: [-0.6, nr - 0.4], title: { text: esc(s.cols[0] || "") } }),
+      xaxis: axis(g, { tickvals: r.rows.map((_, i) => i), ticktext: r.rows.map((rw, i) => esc(rw) + (g.showN ? (() => {
+        const ns = r.cells.filter(c => c.i === i).map(c => c.n), lo2 = Math.min(...ns), hi2 = Math.max(...ns);
+        return `<br><span style="font-size:0.8em">n = ${lo2 === hi2 ? lo2 : `${lo2}–${hi2}`}</span>`; })() : "")), range: [-0.6, nr - 0.4], title: { text: esc(s.cols[0] || "") } }),
       yaxis: yAxis(g, g.ylabel, { range: [lo, ymax + topExtra] }) }, PLOT_CONFIG);
   }
 
@@ -3343,8 +3345,16 @@
   }
   async function copyResults() {
     if (!$("results").textContent.trim()) return;
-    const text = [active().title, "", ...resultsRows().map(r => r.join("\t"))].join("\n");
-    try { await navigator.clipboard.writeText(text); }
+    const rows = resultsRows();
+    const text = [active().title, "", ...rows.map(r => r.join("\t"))].join("\n");
+    // also as an HTML table, so Word and PowerPoint paste real tables (Excel uses either)
+    const cell = c => `<td style="border:1px solid #ccc;padding:2px 6px">${esc(c)}</td>`;
+    const html = `<p><b>${esc(active().title)}</b></p><table style="border-collapse:collapse;font-family:Arial;font-size:10pt">` +
+      rows.filter(r => r.length).map(r => `<tr>${r.length === 1 ? `<td colspan="6" style="padding:6px 6px 2px"><b>${esc(r[0])}</b></td>` : r.map(cell).join("")}</tr>`).join("") + "</table>";
+    try {
+      if (window.ClipboardItem) await navigator.clipboard.write([new ClipboardItem({ "text/plain": new Blob([text], { type: "text/plain" }), "text/html": new Blob([html], { type: "text/html" }) })]);
+      else await navigator.clipboard.writeText(text);
+    }
     catch {
       const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
       document.execCommand("copy"); ta.remove();
