@@ -338,3 +338,117 @@ def interpolate(res: dict, ys, equation: str | None = None, initial: dict | None
         x = 10 ** root if res.get("x_is_log") and mdl["log_x"] and not res.get("x_was_log") else root
         out.append({"y": y, "x": float(x), "note": note})
     return out
+
+
+LINE = {"name": "Straight line", "short": "", "equation": "Y = Slope·X + Intercept", "params": ["Slope", "Intercept"],
+        "f": lambda x, m, b: m * x + b,
+        "guess": lambda x, y: list(np.polyfit(x, y, 1)) if np.ptp(x) > 0 else [0.0, float(np.mean(y))], "log_x": False}
+
+
+def _model(model, equation=None, initial=None):
+    if model == "linear":
+        return LINE
+    if model == "custom":
+        return custom_model(equation or "", initial)
+    if model in MODELS:
+        return MODELS[model]
+    raise ValueError(f"Unknown model: {model}")
+
+
+def _prep_xy(m, x, y, x_is_log):
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    ok = np.isfinite(x) & np.isfinite(y)
+    x, y = x[ok], y[ok]
+    if m["log_x"] and not x_is_log:
+        pos = x > 0
+        x, y = np.log10(x[pos]), y[pos]
+    return x, y
+
+
+def _global_fit(m, data, shared_names, fixed, p0_sets):
+    """Fit all datasets together. Parameters in shared_names take one value for all datasets;
+    the others are fitted separately per dataset. Returns (SS, df, per-dataset parameter values)."""
+    names = m["params"]
+    free = [n for n in names if n not in fixed]
+    shared = [n for n in free if n in shared_names]
+    local = [n for n in free if n not in shared_names]
+    k = len(data)
+    X = np.concatenate([d[0] for d in data]); Y = np.concatenate([d[1] for d in data])
+    idx = np.concatenate([np.full(len(d[0]), i) for i, d in enumerate(data)])
+
+    def unpack(theta):
+        sv = dict(zip(shared, theta[:len(shared)]))
+        rest = theta[len(shared):]
+        sets = []
+        for i in range(k):
+            lv = dict(zip(local, rest[i * len(local):(i + 1) * len(local)]))
+            sets.append([fixed.get(n, sv.get(n, lv.get(n))) for n in names])
+        return sets
+
+    def f(_, *theta):
+        sets = unpack(np.array(theta))
+        out = np.empty_like(Y)
+        for i in range(k):
+            sel = idx == i
+            out[sel] = m["f"](X[sel], *sets[i])
+        return out
+
+    p0 = [np.mean([p[names.index(n)] for p in p0_sets]) for n in shared]
+    for i in range(k):
+        p0 += [p0_sets[i][names.index(n)] for n in local]
+    theta, _ = optimize.curve_fit(f, X, Y, p0=p0, maxfev=40000)
+    ss = float(np.sum((Y - f(X, *theta)) ** 2))
+    df = len(Y) - len(theta)
+    return ss, df, unpack(theta)
+
+
+def fit_multi(x, ys, names, model, x_is_log=False, alpha=0.05, fixed=None, compare=None,
+              equation=None, initial=None) -> dict:
+    """Fit one curve per dataset (each Y column is a separate dataset).
+    compare: a parameter name ("is it different between datasets?") or "all" (one curve fits all?)."""
+    m = _model(model, equation, initial)
+    fixed = {k: float(v) for k, v in (fixed or {}).items() if k in m["params"] and v is not None}
+    fits, data, used = [], [], []
+    for name, y in zip(names, ys):
+        xx = [a for a, b in zip(x, y) if a is not None and b is not None]
+        yy = [b for a, b in zip(x, y) if a is not None and b is not None]
+        if len(xx) < 2:
+            continue
+        try:
+            if model == "linear":
+                from .stats import linear_regression
+                r = linear_regression(xx, yy, alpha=alpha)
+                r["params"] = [{"name": "Slope", "value": r["slope"], "se": r["slope_se"], "ci": r["slope_ci"], "fixed": False},
+                               {"name": "Intercept", "value": r["intercept"], "se": r["intercept_se"], "ci": r["intercept_ci"], "fixed": False}]
+                r["derived"] = []; r["ss_res"] = r["sy_x"] ** 2 * r["df"]; r["model"] = "linear"
+                r["curve"] = r["line"]
+            else:
+                r = fit(xx, yy, model, x_is_log=x_is_log, alpha=alpha, fixed=fixed, equation=equation, initial=initial)
+        except ValueError as e:
+            fits.append({"name": name, "error": str(e)}); continue
+        r["name"] = name
+        fits.append(r); data.append(_prep_xy(m, xx, yy, x_is_log)); used.append(r)
+    if not used:
+        raise ValueError("Enter X values and at least one Y column with 3 or more points per curve.")
+    res = {"test_name": "Curve comparison" if len(used) > 1 else "Nonlinear regression", "multi": True, "model": model,
+           "model_name": m["name"], "equation": m["equation"], "fits": fits, "alpha": alpha,
+           "x_is_log": bool(m["log_x"]), "param_names": m["params"]}
+    if compare and len(used) >= 2:
+        p0_sets = [[p["value"] for p in r["params"]] for r in used]
+        ss_sep = float(sum(r["ss_res"] for r in used)); df_sep = int(sum(r["df"] for r in used))
+        free = [n for n in m["params"] if n not in fixed]
+        shared = free if compare == "all" else [compare]
+        if compare != "all" and compare not in free:
+            raise ValueError(f"{compare} isn't a fitted parameter of this model.")
+        try:
+            ss_sh, df_sh, sets = _global_fit(m, data, shared, fixed, p0_sets)
+        except (RuntimeError, ValueError):
+            res["comparison"] = {"error": "The shared fit didn't converge."}
+            return res
+        ddf = df_sh - df_sep
+        F = ((ss_sh - ss_sep) / ddf) / (ss_sep / df_sep) if ddf > 0 and ss_sep > 0 else None
+        p = float(stats.f.sf(max(F, 0.0), ddf, df_sep)) if F is not None else None
+        res["comparison"] = {"param": compare, "F": F, "dfn": ddf, "dfd": df_sep, "p": p,
+                             "ss_separate": ss_sep, "ss_shared": ss_sh, "different": p is not None and p < alpha,
+                             "shared_value": sets[0][m["params"].index(compare)] if compare != "all" else None}
+    return res

@@ -213,6 +213,32 @@ def run_fit(req: FitRequest):
     return JSONResponse(_json_safe(res))
 
 
+class FitMultiRequest(BaseModel):
+    x: list
+    ys: list
+    names: list[str]
+    model: str = "linear"
+    x_is_log: bool = False
+    alpha: float = 0.05
+    fixed: dict | None = None
+    compare: str | None = None   # parameter name or "all"
+    equation: str | None = None
+    initial: dict | None = None
+
+
+@app.post("/api/fitmulti")
+def run_fitmulti(req: FitMultiRequest):
+    try:
+        clean = lambda v: None if v is None or str(v).strip() == "" else float(v)  # noqa: E731
+        x = [clean(v) for v in req.x]
+        ys = [[clean(v) for v in col] for col in req.ys]
+        res = curvefit.fit_multi(x, ys, req.names, req.model, x_is_log=req.x_is_log, alpha=req.alpha, fixed=req.fixed,
+                                 compare=req.compare, equation=req.equation, initial=req.initial)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(_json_safe(res))
+
+
 class TwoWayRequest(BaseModel):
     rows: list               # row-factor label for each data row (repeat a label for replicates)
     columns: list            # one list of values per column-factor level
