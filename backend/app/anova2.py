@@ -251,3 +251,114 @@ def multiple_t(row_labels, col_a, col_b, names=("A", "B"), kind: str = "welch", 
         r["stars"] = stars(r["p"])
     return {"test_name": "Multiple t tests", "kind": kind, "names": list(names), "q_level": q, "items": results,
             "skipped": skipped, "n_discoveries": sum(r["discovery"] for r in results), "p": min(r["q"] for r in results)}
+
+
+def two_way_rm(row_labels, columns, col_names, alpha: float = 0.05) -> dict:
+    """Mixed (split-plot) two-way ANOVA: rows = repeated factor (e.g. time) measured on the same
+    subjects; columns = between-subjects groups. Subject k of a column = the k-th value under each
+    row name in that column. Subjects missing any time point are left out."""
+    rows = list(dict.fromkeys(str(l).strip() for l in row_labels if str(l or "").strip()))
+    a = len(rows)
+    if a < 2:
+        raise ValueError("Repeated measures need at least 2 row names (e.g. time points).")
+    subjects, groups_used = [], []  # each subject: (group index, [value per row level])
+    for j, col in enumerate(columns):
+        occ = {r: [] for r in rows}
+        for lab, v in zip(row_labels, col):
+            lab = str(lab or "").strip()
+            if lab in occ:
+                occ[lab].append(_num(v))
+        k = max((len(v) for v in occ.values()), default=0)
+        got = 0
+        for s in range(k):
+            vals = [occ[r][s] if s < len(occ[r]) else None for r in rows]
+            if all(v is not None for v in vals):
+                subjects.append((j, vals)); got += 1
+        if got:
+            groups_used.append(j)
+    if len(groups_used) < 2:
+        raise ValueError("Need at least 2 columns (groups), each with at least one subject measured at every row name.")
+    gmap = {j: i for i, j in enumerate(groups_used)}
+    names = [col_names[j] for j in groups_used]
+    b = len(groups_used)
+    G = np.array([gmap[s[0]] for s in subjects])
+    Y = np.array([s[1] for s in subjects], float)          # subjects x a
+    S = len(Y)
+    if S - b < 1:
+        raise ValueError("Need more than one subject in at least one group.")
+    # between subjects: one-way ANOVA on subject means (x a)
+    sm = Y.mean(axis=1)
+    grand = Y.mean()
+    ss_g = float(sum(a * np.sum(G == g) * (sm[G == g].mean() - grand) ** 2 for g in range(b)))
+    ss_subj = float(a * sum(np.sum((sm[G == g] - sm[G == g].mean()) ** 2) for g in range(b)))
+    df_g, df_subj = b - 1, S - b
+    # within subjects via model comparison, subjects as fixed blocks (effect coding)
+    y = Y.ravel()
+    subj = np.repeat(np.arange(S), a)
+    tidx = np.tile(np.arange(a), S)
+    gidx = np.repeat(G, a)
+    XS = np.zeros((S * a, S)); XS[np.arange(S * a), subj] = 1
+    XT = _effect_cols(tidx, a)
+    XG = _effect_cols(gidx, b)
+    XTG = np.column_stack([XT[:, i] * XG[:, k] for i in range(a - 1) for k in range(b - 1)])
+    full = np.column_stack([XS, XT, XTG])
+    rss_full = _rss(full, y)
+    df_err = (a - 1) * (S - b)
+    ss_t = _rss(np.column_stack([XS, XTG]), y) - rss_full
+    ss_tg = _rss(np.column_stack([XS, XT]), y) - rss_full
+    ms_err, ms_subj = rss_full / df_err, ss_subj / df_subj
+    # Geisser-Greenhouse epsilon from the pooled within-group covariance of the repeated measures
+    resid = np.vstack([Y[G == g] - Y[G == g].mean(axis=0) for g in range(b)])
+    Sp = resid.T @ resid / df_subj
+    C = np.eye(a) - np.ones((a, a)) / a
+    Sc = C @ Sp @ C
+    eps = float(np.trace(Sc) ** 2 / ((a - 1) * np.sum(Sc ** 2))) if a > 2 and np.sum(Sc ** 2) > 0 else 1.0
+    eps = min(1.0, max(1 / (a - 1), eps))
+    ss_tot = float(np.sum((Y - grand) ** 2))
+
+    def term(name, ss, df, msd, dfd, gg=False):
+        F = (ss / df) / msd if msd > 0 else float("inf")
+        p = float(stats.f.sf(F, df * eps, dfd * eps)) if gg else float(stats.f.sf(F, df, dfd))
+        return {"source": name, "SS": ss, "df": df, "MS": ss / df, "F": F, "dfd": dfd, "p": p,
+                "p_uncorrected": float(stats.f.sf(F, df, dfd)), "pct": 100 * ss / ss_tot, "stars": stars(p)}
+
+    table = [term("Interaction", ss_tg, (a - 1) * (b - 1), ms_err, df_err, gg=True),
+             term("Row factor", ss_t, a - 1, ms_err, df_err, gg=True),
+             term("Column factor", ss_g, df_g, ms_subj, df_subj),
+             {"source": "Subjects (within groups)", "SS": ss_subj, "df": df_subj, "MS": ms_subj, "F": None, "p": None, "pct": 100 * ss_subj / ss_tot},
+             {"source": "Residual", "SS": rss_full, "df": df_err, "MS": ms_err, "F": None, "p": None, "pct": None}]
+    cells = []
+    for i in range(a):
+        for g in range(b):
+            d = describe(Y[G == g, i], f"{rows[i]} · {names[g]}")
+            d.update(row=rows[i], col=names[g], i=i, j=g)
+            cells.append(d)
+    # simple effects: compare groups at each row level, error from that level's one-way ANOVA
+    comps = []
+    pairs = [(g1, g2) for g1 in range(b) for g2 in range(g1 + 1, b)]
+    method = ("Šídák's multiple comparisons" if b == 2 else "Tukey's multiple comparisons") + " (columns at each row; separate error per row)"
+    for i in range(a):
+        col_i = [Y[G == g, i] for g in range(b)]
+        ns = [len(c) for c in col_i]
+        dfw = sum(ns) - b
+        if dfw < 1:
+            continue
+        msw = sum(float(np.sum((c - c.mean()) ** 2)) for c in col_i) / dfw
+        for g1, g2 in pairs:
+            diff = float(col_i[g1].mean() - col_i[g2].mean())
+            se = math.sqrt(msw * (1 / ns[g1] + 1 / ns[g2]))
+            if b == 2:
+                p_raw = 2 * stats.t.sf(abs(diff) / se, dfw) if se > 0 else 0.0
+                p = 1 - (1 - p_raw) ** a
+                half = stats.t.ppf(1 - (1 - (1 - alpha) ** (1 / a)) / 2, dfw) * se
+            else:
+                p = float(stats.studentized_range.sf(abs(diff) / (se / math.sqrt(2)), b, dfw)) if se > 0 else 0.0
+                half = stats.studentized_range.ppf(1 - alpha, b, dfw) * se / math.sqrt(2)
+            p = float(min(1.0, max(0.0, p)))
+            comps.append({"row": rows[i], "a": names[g1], "b": names[g2], "i": i, "j1": g1, "j2": g2, "diff": diff,
+                          "ci_low": diff - half, "ci_high": diff + half, "p": p, "stars": stars(p), "significant": p < alpha})
+    subj_out = [{"group": names[G[s]], "values": Y[s].tolist()} for s in range(S)]
+    return {"test_name": "Two-way repeated-measures ANOVA", "rm": True, "rows": rows, "cols": names, "alpha": alpha,
+            "table": table, "cells": cells, "comparisons": comps, "posthoc_name": method, "epsilon": eps,
+            "p": table[0]["p"], "n": int(S * a), "n_subjects": S, "subjects": subj_out,
+            "subjects_per_group": [int(np.sum(G == g)) for g in range(b)], "balanced": len(set(np.bincount(G))) == 1}

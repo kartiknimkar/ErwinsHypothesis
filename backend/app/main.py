@@ -218,12 +218,14 @@ class TwoWayRequest(BaseModel):
     columns: list            # one list of values per column-factor level
     names: list[str]
     alpha: float = 0.05
+    rm: bool = False         # repeated measures across rows (same subjects at every row name)
 
 
 @app.post("/api/twoway")
 def run_twoway(req: TwoWayRequest):
     try:
-        res = anova2.two_way(req.rows, req.columns, req.names, alpha=req.alpha)
+        fn = anova2.two_way_rm if req.rm else anova2.two_way
+        res = fn(req.rows, req.columns, req.names, alpha=req.alpha)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))
