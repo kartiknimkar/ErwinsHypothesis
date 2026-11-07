@@ -300,6 +300,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Each project keeps its last 5 earlier versions (at most one per 10 minutes) in projects/.backups/<name>/;
       Projects → Versions → Restore (the current version is backed up first); path-safe; 191 tests
 
+## Phase 0.69: More comparisons + README (done 2026-11-07)
+- [x] One-way ANOVA test for linear trend (= regression on column number); two-way "every cell vs every other" (Tukey);
+      XY multi-curve graphs: different symbol per data set; README feature list rewritten; 193 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

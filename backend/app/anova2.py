@@ -73,6 +73,12 @@ def _two_way_comparisons(compare, rows, names, mean, counts, ms_res, df_res, alp
         fam = [(names[j], [(rows[i1], rows[i2], mean[(i1, j)] - mean[(i2, j)], math.sqrt(ms_res * (1 / counts[i1, j] + 1 / counts[i2, j])),
                             {"kind": "within_cols", "j": j, "i1": i1, "i2": i2}) for i1 in range(a) for i2 in range(i1 + 1, a)]) for j in range(b)]
         return _family(fam, a, ms_res, df_res, alpha), f"{tk(a)} multiple comparisons (rows within each column)"
+    if compare == "all_cells":
+        cells_ = [(i, j) for i in range(a) for j in range(b)]
+        lab = lambda c: f"{rows[c[0]]} · {names[c[1]]}"  # noqa: E731
+        fam = [("Every cell", [(lab(c1), lab(c2), mean[c1] - mean[c2], math.sqrt(ms_res * (1 / counts[c1] + 1 / counts[c2])), {"kind": "all_cells"})
+                               for x, c1 in enumerate(cells_) for c2 in cells_[x + 1:]])]
+        return _family(fam, a * b, ms_res, df_res, alpha), "Tukey's multiple comparisons (every cell mean with every other)"
     if compare == "col_means":
         mm = [np.mean([mean[(i, j)] for i in range(a)]) for j in range(b)]
         fam = [("All rows (main effect)", [(names[j1], names[j2], mm[j1] - mm[j2],

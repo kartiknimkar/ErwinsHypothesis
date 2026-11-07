@@ -521,7 +521,7 @@
           ${s.options.rm ? `<label class="check"><input type="checkbox" data-opt="rmBoth" ${s.options.rmBoth ? "checked" : ""}> The same subjects in every column too (both factors repeated)</label>
             <p class="hint">${s.options.rmBoth ? "Subject 1 = the 1st value under each row name in <b>every</b> column, subject 2 = the 2nd, and so on." : "Enter each subject in the same position under every row name: the 1st value under each time point in a column is subject 1, the 2nd is subject 2, and so on."} Subjects missing a value are left out.</p>`
             : `<div class="row"><label for="opt-twcmp">Multiple comparisons</label><select id="opt-twcmp">${[["within_rows", `Compare columns within each ${esc(s.cols[0] || "row")}`], ["within_cols", `Compare ${esc(s.cols[0] || "row")} levels within each column`],
-              ["col_means", "Compare column means (main effect)"], ["row_means", `Compare ${esc(s.cols[0] || "row")} means (main effect)`]].map(([v, l]) => `<option value="${v}" ${(s.options.twCompare || "within_rows") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>`}${alphaSelect(s)}`),
+              ["col_means", "Compare column means (main effect)"], ["all_cells", "Compare every cell mean with every other"], ["row_means", `Compare ${esc(s.cols[0] || "row")} means (main effect)`]].map(([v, l]) => `<option value="${v}" ${(s.options.twCompare || "within_rows") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>`}${alphaSelect(s)}`),
       graphControls: () => [
         sel("style", "Style", [["bars", "Bars + dots"], ["stacked", "Stacked bars (means)"], ["dots", "Dots + mean"], ["lines", "Interaction plot (means)"]]),
         sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
@@ -609,7 +609,7 @@
         ...(s.cols.length > 2 && s.options.yMode !== "datasets" ? [sel("repMode", "Replicates", [["mean", "Mean ± SD"], ["sem", "Mean ± SEM"], ["all", "All points"]])] : []),
         txt("xmin", "X min", "auto"), txt("xmax", "X max", "auto"), txt("xtick", "X tick every", "auto"),
         chk("logX", "Log X axis"), chk("band", "95% confidence band"), ...(s.options.model === "linear" && s.options.yMode !== "datasets" ? [chk("predBand", "95% prediction band")] : []), chk("showEq", "Show equation"),
-        ...(s.options.yMode === "datasets" ? [] : [sel("xyPlot", "Plot", [["fit", "Data + fitted curve"], ["resid", "Residual plot"]])]),
+        ...(s.options.yMode === "datasets" ? [chk("symbolPerSet", "Different symbol for each data set")] : [sel("xyPlot", "Plot", [["fit", "Data + fitted curve"], ["resid", "Residual plot"]])]),
       ],
       renderResults: (r, s) => r.multi ? renderMultiFit(r, s) : renderXYResults(r, s),
       draw: (el, r, s) => r.multi ? drawMultiFit(el, r, s) : drawXY(el, r, s),
@@ -1931,7 +1931,7 @@
       const t = Object.fromEntries(r.table.map(x => [x.source, x]));
       const rowF = esc(s.cols[0] || "row factor");
       const f = x => `F(${x.df}, ${x.dfd ?? t.Residual.df}) = ${r2(x.F)}, ${apaP(x.p)}`;
-      return { methods: `Data were analyzed by ${r.rm_both ? `two-way repeated-measures ANOVA with both factors within subjects and the Geisser-Greenhouse correction` : r.rm ? `two-way repeated-measures (mixed) ANOVA with ${rowF} as the within-subject factor and the Geisser-Greenhouse correction` : "two-way ANOVA"}, followed by ${esc(r.posthoc_name.split(" (")[0])} ${{ within_cols: `comparing levels of ${rowF} within each group`, col_means: "comparing group means averaged over " + rowF, row_means: `comparing ${rowF} means averaged over groups` }[r.compare] || `comparing groups at each level of ${rowF}`}. Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+      return { methods: `Data were analyzed by ${r.rm_both ? `two-way repeated-measures ANOVA with both factors within subjects and the Geisser-Greenhouse correction` : r.rm ? `two-way repeated-measures (mixed) ANOVA with ${rowF} as the within-subject factor and the Geisser-Greenhouse correction` : "two-way ANOVA"}, followed by ${esc(r.posthoc_name.split(" (")[0])} ${{ within_cols: `comparing levels of ${rowF} within each group`, col_means: "comparing group means averaged over " + rowF, all_cells: "comparing every cell mean with every other", row_means: `comparing ${rowF} means averaged over groups` }[r.compare] || `comparing groups at each level of ${rowF}`}. Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
         results: `There was ${t.Interaction.p < r.alpha ? "a significant" : "no significant"} interaction between group and ${rowF} (${f(t.Interaction)}). The main effect of group was ${t["Column factor"].p < r.alpha ? "" : "not "}significant (${f(t["Column factor"])}), and the main effect of ${rowF} was ${t["Row factor"].p < r.alpha ? "" : "not "}significant (${f(t["Row factor"])}).` };
     }
     if (s.type === "regression" && r.multi) {
@@ -2183,6 +2183,9 @@
       if (r.posthoc === "holm") h += `<p class="note">The Holm-Šídák method doesn't produce confidence intervals.</p>`;
       if (r.posthoc === "lsd") h += `<p class="note warn">Fisher's LSD doesn't correct for multiple comparisons, so with many pairs some "significant" results may be chance.</p>`;
       if (r.effect) h += T.table(effectRows(r));
+      if (r.trend) h += T.table([T.sec("Test for linear trend (columns in order, left to right)"), T.row("Slope (change in mean per column)", fmt(r.trend.slope)),
+        T.row(`F (1, ${r.trend.df[1]})`, fmt(r.trend.F)), T.row("P value", `${pOnly(r.trend.p)} ${st(stars(r.trend.p))}`), T.row("R² (linear trend)", fmt(r.trend.r_squared, 3)),
+        ...(r.trend.nonlinear_p != null ? [T.row("Remaining non-linear variation", `F (${r.trend.nonlinear_df.join(", ")}) = ${fmt(r.trend.nonlinear_F)}, P ${pOnly(r.trend.nonlinear_p)}`)] : [])]);
       if (r.normality) h += T.table(normalityRows(r));
       if (r.kind === "rm" || r.kind === "friedman") h += `<p class="note">Only rows with a value in every column are used (${r.n_subjects} subjects).</p>`;
       if (r.variance_check && r.variance_check.p < 0.05) h += `<p class="note warn">⚠︎ The groups' spreads differ (Brown-Forsythe ${fmtP(r.variance_check.p)}). Welch's ANOVA is safer.</p>`;
@@ -2318,7 +2321,7 @@
     else if (r.rm) h += `<p class="note">Repeated measures: ${r.n_subjects} subjects (${r.subjects_per_group.map((n, i) => `${esc(r.cols[i])}: ${n}`).join(", ")}). Row factor and interaction P values use the Geisser-Greenhouse correction (ε = ${fmt(r.epsilon, 3)}); the column factor is tested against variation between subjects.</p>`;
     h += T.multi(["ANOVA table", "SS", "DF", "MS"], r.table.map(x => [x.source === "Row factor" ? rowF : x.source, fmt(x.SS), x.df, fmt(x.MS)]));
     h += `<div class="opt-label" style="margin-top:10px">${esc(r.posthoc_name)}</div>`;
-    const famHead = { within_cols: "Column", col_means: "", row_means: "" }[r.compare] ?? rowF;
+    const famHead = { within_cols: "Column", col_means: "", row_means: "", all_cells: "" }[r.compare] ?? rowF;
     if (r.compare === "col_means" || r.compare === "row_means") h += `<p class="note">Main-effect comparisons use the unweighted means of the cell means (as Prism does), so every ${r.compare === "col_means" ? "row" : "column"} counts equally. ${r.table.find(x => x.source === "Interaction").p < r.alpha ? "⚠︎ The interaction is significant, so main effects can be misleading; look at the comparisons within each row or column too." : ""}</p>`;
     h += T.multi([famHead, "Comparison", "Mean diff.", `${pct}% CI`, "Adj. P", ""], r.comparisons.map(c => ({ cls: c.significant ? "hl" : "",
       cells: [esc(c.row), `${esc(c.a)} vs ${esc(c.b)}`, fmt(c.diff), ci(c.ci_low, c.ci_high), pOnly(c.p), st(c.stars)] })));
@@ -2474,6 +2477,7 @@
     h += `<p class="note">${esc(r.model_name)}: ${esc(r.equation)}. "±" values are standard errors.</p>`;
     return h;
   }
+  const SET_SYMBOLS = ["circle", "square", "triangle-up", "diamond", "triangle-down", "x", "star", "hexagon"];
   function drawMultiFit(el, r, s) {
     const g = s.graph, traces = [];
     const logFit = r.x_is_log && !s.options.xIsLog && r.model !== "linear";
@@ -2483,7 +2487,8 @@
       const col = color(g, i, f.name), j = s.cols.indexOf(f.name, 1);
       const pts = s.data.map(row => [num(row[0]), num(row[j])]).filter(p => p[0] !== null && p[1] !== null && (!logFit || p[0] > 0));
       traces.push({ x: pts.map(p => p[0]), y: pts.map(p => p[1]), mode: "markers", name: esc(f.name), showlegend: false,
-        marker: { color: col, size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: `${esc(f.name)}: (%{x}, %{y})<extra></extra>` });
+        marker: { color: col, size: g.pointSize, line: { color: "#fff", width: 1 }, ...(g.symbolPerSet ? { symbol: SET_SYMBOLS[i % SET_SYMBOLS.length] } : {}) },
+        hovertemplate: `${esc(f.name)}: (%{x}, %{y})<extra></extra>` });
       traces.push({ x: f.curve.x.map(tx), y: f.curve.y, mode: "lines", name: esc(f.name), line: { color: col, width: 2.4 }, showlegend: true,
         hovertemplate: `${esc(f.name)} fit: %{y:.4g}<extra></extra>` });
     });

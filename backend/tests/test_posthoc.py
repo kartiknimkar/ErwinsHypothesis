@@ -45,3 +45,14 @@ def test_default_still_tukey_and_dunn_control():
     assert r["posthoc_name"].startswith("Tukey") and len(r["comparisons"]) == 6
     k = stats.one_way_anova(G, N, kind="kruskal", compare_to="control")
     assert len(k["comparisons"]) == 3 and "vs control" in k["posthoc_name"]
+
+
+def test_linear_trend_equals_regression_on_column_number():
+    r = stats.one_way_anova(G, N)
+    y = np.concatenate([np.array(g, float) for g in G])
+    x = np.concatenate([np.full(len(g), i + 1.0) for i, g in enumerate(G)])
+    lr = ss.linregress(x, y)
+    ss_tot = np.sum((y - y.mean()) ** 2)
+    msw = sum(np.sum((np.array(g) - np.mean(g)) ** 2) for g in G) / (len(y) - len(G))
+    assert np.isclose(r["trend"]["F"], lr.rvalue ** 2 * ss_tot / msw)
+    assert np.isclose(r["trend"]["slope"], lr.slope) and r["trend"]["df"] == [1, len(y) - len(G)]

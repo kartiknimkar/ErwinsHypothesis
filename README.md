@@ -4,32 +4,44 @@ A local statistics and scientific graphing application: data tables,
 statistical analyses, curve fitting and publication-quality graphs, with a
 clean, modern interface. Everything runs on your own computer.
 
-**Status:** early preview. Available today:
+**Status:** preview (not yet checked against Prism on real lab data). Available today:
 
-- **Compare groups:** t tests (unpaired, Welch, paired), Mann-Whitney, one-way ANOVA + Tukey,
-  Welch's ANOVA + Games-Howell, Kruskal-Wallis + Dunn's, normality tests, column statistics with one-sample tests; for the same subjects
-  measured repeatedly: paired t, Wilcoxon, repeated-measures ANOVA, Friedman
-- **Summary data:** compare groups from mean, SD (or SEM) and n, e.g. from a paper
-- **Grouped (two factors):** two-way ANOVA (also repeated measures / time courses) with multiple comparisons; multiple t tests with FDR + volcano plot
-- **XY:** linear regression & correlation; curve fitting: dose-response (IC50/EC50),
-  standard-slope dose-response, Michaelis-Menten, exponential growth/decay (one & two phase),
-  one-phase association, Gaussian, Boltzmann; compare two models (F test / AICc); fit several curves
-  and test whether e.g. the IC50 or slope differs between them
-- **Survival:** Kaplan-Meier curves, log-rank test, hazard ratio, median survival
-- **Contingency tables:** Fisher's exact, chi-square, odds ratio, relative risk
-- **Multiple variables:** correlation matrix with heatmap, multiple linear regression, logistic regression, PCA
-- **Diagnostics:** ROC curves (AUC, best cutoff), Bland-Altman method comparison
-- Nested t test and nested one-way ANOVA (several measurements per subject, mixed-effects model)
-- Power and sample size calculator (t tests, ANOVA, proportions)
-- Cox proportional hazards regression (hazard ratios, forest plot)
-- ROUT outlier detection (groups and curve fits, removes outliers before fitting) and Grubbs' test
-- Frequency distributions (histograms, cumulative, normal curve) and normal Q-Q plots
-- Automatic backups: the last 5 versions of each project can be restored from the Projects dialog
-- One-click project report (HTML with every graph, result and paper text)
-- Graphs export as PNG, TIFF, PDF or **editable SVG** (text and shapes stay editable in Illustrator, Inkscape or PowerPoint) at journal sizes and 150–600 DPI; combine graphs into multi-panel figures (A, B, C…)
-- Edit directly on the graph (titles, axis titles, legend text), add text labels, horizontal and stacked bars, violin plots
-- Full graph styling: fonts, text sizes and color, point shape/size/opacity/outline, line and error-bar thickness, bar fill opacity and hatch patterns, axis thickness and ticks, gridlines, transparent background, legend position
-- Also: standard-curve interpolation, area under the curve, Grubbs' outlier test, normalize/transform data
+**Analyses**
+- **Compare groups:** unpaired / Welch / paired / ratio paired t tests, Mann-Whitney and Wilcoxon (with Hodges-Lehmann
+  estimates), Kolmogorov-Smirnov; one-way ANOVA with Tukey, Dunnett (vs control), Holm-Šídák, Šídák, Bonferroni or
+  Fisher's LSD, test for linear trend; Welch's ANOVA with Games-Howell or Dunnett's T3; Kruskal-Wallis + Dunn's;
+  repeated-measures ANOVA (Geisser-Greenhouse), Friedman; effect sizes (Cohen's d, Hedges' g, η², ω²)
+- **Describe and check data:** column statistics, one-sample tests, normality (Shapiro-Wilk, D'Agostino, Anderson-Darling,
+  Kolmogorov-Smirnov), frequency distributions and Q-Q plots, ROUT and Grubbs outliers
+- **Summary data:** compare groups from mean, SD (or SEM) and n
+- **Two and three factors:** two-way ANOVA (ordinary, repeated on one or both factors) with comparisons within rows,
+  within columns, main effects or every cell; three-way ANOVA with simple-effect comparisons; multiple t tests with
+  FDR (Benjamini-Hochberg or two-stage BKY), Holm-Šídák or Bonferroni, volcano plot
+- **Nested data:** nested t test / nested one-way ANOVA (mixed-effects model) for replicates within subjects
+- **XY:** linear regression (also through the origin, prediction bands), 11 curve models + your own equations,
+  constraints, weighting (1/Y, 1/Y², 1/X, 1/X²), model comparison (F test / AICc), compare curves (shared-parameter
+  global fits), standard curves (X from Y and Y from X), runs test, residual plots, ROUT outlier removal, area under curve
+- **Survival:** Kaplan-Meier, log-rank, Gehan-Breslow-Wilcoxon, trend test, pairwise comparisons, hazard ratio,
+  number-at-risk table; Cox proportional hazards regression with forest plot
+- **Counts:** Fisher's exact, chi-square, chi-square for trend, McNemar (paired), goodness of fit, odds ratio, relative risk
+- **Multiple variables:** correlation matrix, multiple linear regression (VIF, standardized β), logistic regression
+  (odds ratios, ROC, Hosmer-Lemeshow, classification table), PCA
+- **Method comparison & diagnostics:** ROC curves, Bland-Altman (difference, % difference, ratio), Deming regression
+- **Planning:** power and sample size (t tests, ANOVA, proportions)
+
+**Graphs**
+- Dots, bars, box and violin plots, horizontal or stacked bars, broken Y axes, significance brackets, error bars
+  (both ways or above only), survival curves (survival or death), histograms, Q-Q, forest, volcano and more
+- Full styling: fonts, sizes, colors, point shape/opacity/outline, line and error-bar thickness, bar opacity and hatch
+  patterns, axes, ticks, gridlines, legend position, transparent background; edit titles and legend text right on the graph
+- Export PNG, TIFF, PDF or **editable SVG** at journal sizes and 150–600 DPI; multi-panel figure layouts (A, B, C…)
+
+**Working with data and results**
+- Type or paste from Excel; import .xlsx / .csv or GraphPad Prism projects (.pzfx); sort rows, fill series, exclude values,
+  transforms (normalize, log, baseline, percent of total, Z scores, transpose, row statistics); large tables stay fast
+- **Help me choose** recommends and sets up the right analysis; **Text for your paper** writes methods and results sentences
+- Undo/redo for data, options and formatting; automatic saving and backups (restore earlier versions)
+- **Report** (one HTML file with every analysis) and **All to Excel** (one workbook); press **?** for quick help
 
 Data can be typed, pasted from Excel, or imported from .xlsx / .csv files, or from GraphPad Prism
 projects (.pzfx). Not sure which test to use?

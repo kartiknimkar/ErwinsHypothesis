@@ -42,3 +42,14 @@ def test_marginal_means_and_families():
     assert len(w["comparisons"]) == 3 and all(c["kind"] == "within_cols" for c in w["comparisons"]) and "Šídák" in w["posthoc_name"]
     d = anova2.two_way(rows, cols, ["A", "B", "C"])
     assert len(d["comparisons"]) == 6 and d["compare"] == "within_rows"
+
+
+def test_all_cells_tukey():
+    from scipy import stats as ss
+    rows, cols = _data()
+    r = anova2.two_way(rows, cols, ["A", "B", "C"], compare="all_cells")
+    assert len(r["comparisons"]) == 15 and "every cell" in r["posthoc_name"]
+    c = r["comparisons"][0]
+    ms, df = r["table"][-1]["MS"], r["table"][-1]["df"]
+    q = abs(c["diff"]) / np.sqrt(ms * (1 / 6 + 1 / 6) / 2)
+    assert np.isclose(c["p"], ss.studentized_range.sf(q, 6, df))

@@ -458,6 +458,19 @@ def one_way_anova(groups, names=None, kind: str = "ordinary", alpha: float = 0.0
         if posthoc == "dunnett":
             compare_to = "control"
         res["effect"] = {"eta_squared": ssb / (ssb + ssw), "omega_squared": max(0.0, (ssb - dfb * msw) / (ssb + ssw + msw))}
+        # post test for linear trend: do the means rise or fall steadily with column order?
+        sc = np.arange(1, k + 1, dtype=float)
+        sbar = np.sum(ns * sc) / N
+        c = sc - sbar
+        ss_lin = float(np.sum(ns * c * means) ** 2 / np.sum(ns * c * c))
+        slope = float(np.sum(ns * c * means) / np.sum(ns * c * c))
+        f_lin = ss_lin / msw if msw > 0 else float("inf")
+        ss_nl = max(0.0, ssb - ss_lin)
+        f_nl = (ss_nl / (k - 2)) / msw if msw > 0 and k > 2 else None
+        res["trend"] = {"slope": slope, "F": f_lin, "df": [1, dfw], "p": float(stats.f.sf(f_lin, 1, dfw)),
+                        "r_squared": ss_lin / (ssb + ssw) if ssb + ssw > 0 else None,
+                        "nonlinear_F": f_nl, "nonlinear_df": [k - 2, dfw] if k > 2 else None,
+                        "nonlinear_p": float(stats.f.sf(f_nl, k - 2, dfw)) if f_nl is not None else None}
         res.update(test_name="Ordinary one-way ANOVA", posthoc_name=f"{POSTHOC_NAMES.get(posthoc, posthoc)} multiple comparisons" + (" vs control" if compare_to == "control" else ""),
                    F=F, df_between=dfb, df_within=dfw, p=p, r_squared=ssb / (ssb + ssw),
                    table=[{"source": "Between groups", "SS": ssb, "df": dfb, "MS": msb},
