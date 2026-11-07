@@ -363,6 +363,34 @@
       renderResults: (r, s) => r.kind === "freq" ? renderFreq(r) : r.kind === "describe" ? renderColStats(r) : renderGroupResults(r, s),
       draw: drawGroups,
     },
+    // ---------------------------------------------------------------- nested (subjects with replicates)
+    nested: {
+      label: "Nested (subjects with replicates)", newTitle: "Nested",
+      minCols: 3, maxCols: 13, fixedCols: 1, textCol: 0, addLabel: "+ Replicate", minRows: 15,
+      colKind: j => j === 0 ? "Group" : `Rep ${j}`, newColName: j => `Rep ${j}`,
+      hint: "One row per subject (e.g. one animal or one culture): its group name in the first column, then its replicate measurements (e.g. several cells) to the right. Repeat the group name for every subject in that group.",
+      cols: ["Group", "Rep 1", "Rep 2", "Rep 3"],
+      options: { alpha: 0.05 },
+      graph: { ylabel: "Response", err: "sd", brackets: "sig", showPoints: true },
+      examples: () => ({
+        cols: ["Group", "Cell 1", "Cell 2", "Cell 3", "Cell 4", "Cell 5"],
+        rows: [["Control", 10.2, 11.1, 9.6, 10.8, ""], ["Control", 12.4, 11.9, 13.1, "", ""], ["Control", 9.1, 9.9, 8.7, 9.5, 10.0], ["Control", 11.3, 10.6, 11.8, 11.0, ""],
+          ["Drug A", 13.8, 14.6, 13.1, 14.0, ""], ["Drug A", 12.2, 12.9, 13.5, "", ""], ["Drug A", 15.1, 14.4, 15.8, 14.9, 15.3], ["Drug A", 13.0, 13.7, 12.6, 13.3, ""],
+          ["Drug B", 11.5, 12.0, 11.1, 12.4, ""], ["Drug B", 13.2, 12.7, 13.6, "", ""], ["Drug B", 10.8, 11.4, 10.5, 11.0, 11.7], ["Drug B", 12.1, 11.6, 12.6, 12.3, ""]],
+      }),
+      request: s => {
+        const rows = s.data.filter(r => String(r[0] ?? "").trim() !== "" && r.slice(1).some(isNum));
+        return ["/api/nested", { groups: rows.map(r => String(r[0]).trim()), values: rows.map(r => r.slice(1).map(num).filter(v => v !== null)), alpha: s.options.alpha }];
+      },
+      renderOptions: s => `<p class="hint">Each subject's replicates are <b>not</b> independent, so treating every cell as its own data point would exaggerate the evidence. The nested test (a mixed-effects model) compares the groups using the variation <b>between subjects</b>, while still using every replicate.</p>${alphaSelect(s)}`,
+      graphControls: () => [
+        sel("err", "Error bars", [["sd", "Mean ± SD of subject means"], ["sem", "Mean ± SEM (model)"], ["none", "None"]]),
+        sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]),
+        txt("ylabel", "Y axis label"), chk("showPoints", "Show every replicate"), chk("horizontal", "Horizontal (sideways)"),
+      ],
+      renderResults: (r, s) => renderNested(r, s),
+      draw: drawNested,
+    },
     // ---------------------------------------------------------------- summary data
     summary: {
       label: "Compare groups (mean, SD, n)", newTitle: "Summary data",
@@ -767,6 +795,7 @@
     add("ttest", "Example: distribution (histogram, Q-Q)", s => {
       s.options.mode = "freq"; s.graph.normalCurve = true; s.graph.ylabel = "Cell size (µm)"; });
     add("ttest", "Example: column statistics", s => { s.cols = ["A", "B", "C"]; s.options.mode = "describe"; s.options.hypothetical = "12"; });
+    add("nested", "Example: nested (cells within animals)");
     add("twoway", "Example: two-way ANOVA");
     add("twoway", "Example: multiple t tests", s => { s.options.analysis = "multit"; });
     add("twoway", "Example: time course (repeated measures)", s => { s.options.rm = true; s.graph.style = "lines"; s.graph.err = "sem"; });
@@ -916,7 +945,7 @@
       };
     });
   }
-  const badgeText = t => ({ layout: "▦", summary: "Σ", ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#", multivar: "MV", diagnostic: "Dx" }[t]);
+  const badgeText = t => ({ nested: "N", layout: "▦", summary: "Σ", ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#", multivar: "MV", diagnostic: "Dx" }[t]);
 
   // ======================================================================
   // data grid
@@ -1173,6 +1202,7 @@
         ["No: every value is a different subject", "", rec("Two-way ANOVA", "Tests both factors and their interaction, then compares groups within each row.", "twoway", s => {})],
         ["Yes: e.g. each animal measured on several days", "", rec("Two-way repeated-measures ANOVA", "Mixed ANOVA for time courses: put time points as row names and groups as columns.", "twoway", s => { s.options.rm = true; s.graph.style = "lines"; s.graph.err = "sem"; })] ] }],
       ["Many separate items (genes, proteins…)", "the same two groups compared for each item", rec("Multiple t tests with FDR", "One test per item with false-discovery-rate correction and a volcano plot.", "twoway", s => { s.options.analysis = "multit"; s.cols = ["Gene", "Control", "Treated"]; })] ] }],
+    ["Compare groups with several measurements per subject", "e.g. many cells from each animal (technical replicates)", rec("Nested t test / nested ANOVA", "Uses every replicate but compares groups by subject-to-subject variation, so replicates aren't treated as independent.", "nested", s => {})],
     ["Compare groups from published means", "I only have mean, SD (or SEM) and n for each group", rec("Compare groups (mean, SD, n)", "Exact t tests and ANOVA from summary statistics: one row per group.", "summary", s => {})],
     ["See how my values are distributed", "histogram, Q-Q plot, is it normal?", rec("Frequency distribution + Q-Q plot", "Histogram of each column with a normal curve, a normal Q-Q plot and normality tests. Switch the plot under Format.", "ttest", s => { s.options.mode = "freq"; s.graph.normalCurve = true; })],
     ["Describe my data", "mean, SD, median, normality; or compare to a known value", rec("Column statistics", "Full descriptive statistics for each column; enter a hypothetical value to test against it.", "ttest", s => { s.options.mode = "describe"; })],
@@ -1301,7 +1331,7 @@
     ["linear", "Y × K + C", "Multiply and/or add a constant (e.g. unit conversion)."],
   ];
   // which columns hold Y values (numbers to transform) for each analysis type
-  const yCols = s => s.type === "regression" || s.type === "survival" || s.type === "twoway" || s.type === "contingency"
+  const yCols = s => s.type === "regression" || s.type === "survival" || s.type === "twoway" || s.type === "contingency" || s.type === "nested"
     ? s.cols.map((_, j) => j).slice(1) : s.cols.map((_, j) => j);
   function showTransform() {
     const s = active();
@@ -1423,6 +1453,7 @@
     if (s.type === "regression") return ["Curve", ...(s.options.compare ? ["Comparison curve"] : []), "Unknowns"];
     if (s.type === "layout") return [];
     if (s.type === "summary") return s.data.filter(r => isNum(r[1])).map((r, i) => String(r[0] || `Group ${i + 1}`));
+    if (s.type === "nested") return [...new Set(s.data.map(r => String(r[0] ?? "").trim()).filter(Boolean))];
     if (s.type === "multivar") return (s.options.analysis || "correlation") === "correlation" ? [] : s.options.analysis === "logistic" ? ["Curve"] : s.options.analysis === "pca" ? ["Points", "Loadings"] : ["Points"];
     if (s.type === "twoway" && s.options.analysis === "multit") return ["Discoveries"];
     if (s.type === "diagnostic") return s.options.analysis === "roc" ? ["Curve", "Best cutoff"] : ["Points"];
@@ -1451,7 +1482,7 @@
       head("Axes & background"), rng("axisWidth", "Axis thickness", 0.5, 4, 0.25), sel("tickDir", "Ticks", [["outside", "Outside"], ["inside", "Inside"], ["none", "None"]]),
       rng("tickLen", "Tick length", 0, 12), chk("minorTicks", "Minor ticks"), chk("grid", "Gridlines"),
       sel("tickAngle", "X label angle", [["auto", "Automatic"], ["0", "Horizontal"], ["-30", "Slanted 30°"], ["-45", "Slanted 45°"], ["-90", "Vertical"]]),
-      ...(["ttest", "summary", "twoway", "contingency"].includes(s.type) ? [txt("breakFrom", "Break Y axis from", "none"), txt("breakTo", "… to", "none"),
+      ...(["ttest", "summary", "twoway", "contingency", "nested"].includes(s.type) ? [txt("breakFrom", "Break Y axis from", "none"), txt("breakTo", "… to", "none"),
         rng("breakSize", "Lower part height %", 15, 80, 5)] : []), sel("bg", "Background", [["white", "White"], ["transparent", "Transparent (for figures)"], ["light", "Light gray plot area"]]),
       sel("legendPos", "Legend", [["auto", "Automatic"], ["tr", "Top right (inside)"], ["tl", "Top left (inside)"], ["outside", "Right (outside)"], ["top", "Above graph"], ["bottom", "Below graph"], ["hide", "Hide"]]),
       head("Text labels"), { kind: "notes" },
@@ -1568,6 +1599,12 @@
       const res = r.groups.map(g => `${esc(g.name)}: ${r2(g.mean)} ± ${r2(g.sd)} (mean ± SD, n = ${g.n})${g.one_sample_t ? `, t(${g.one_sample_t.df}) = ${r2(g.one_sample_t.t)}, ${apaP(g.one_sample_t.p)}` : ""}`).join("; ") + ".";
       return { methods: m, results: res };
     }
+    if (s.type === "nested") {
+      const two = r.n_groups === 2, c = r.comparisons[0];
+      return { methods: `Because several replicate measurements were made on each subject, groups were compared with a ${two ? "nested t test" : "nested one-way ANOVA"} (linear mixed-effects model with subject as a random effect, REML; denominator degrees of freedom = subjects − groups)${two ? "" : ", followed by Tukey's multiple comparisons"}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+        results: two ? `${esc(c.b)} differed ${c.p < r.alpha ? "significantly" : "not significantly"} from ${esc(c.a)} (difference ${r2(c.diff)}, 95% CI ${r2(c.ci[0])} to ${r2(c.ci[1])}; t(${r.df_d}) = ${r2(Math.abs(c.t))}, ${apaP(c.p)}; ${r.n_subjects} subjects, ${r.n_values} measurements).`
+          : `Group means differed ${r.p < r.alpha ? "significantly" : "not significantly"} (F(${r.df_n}, ${r.df_d}) = ${r2(r.F)}, ${apaP(r.p)}; ${r.n_subjects} subjects, ${r.n_values} measurements).${r.comparisons.filter(x => x.significant).length ? ` Tukey's test: ${r.comparisons.filter(x => x.significant).map(x => `${esc(x.b)} vs ${esc(x.a)}, ${apaP(x.p)}`).join("; ")}.` : ""}` };
+    }
     if (s.type === "summary") s = { ...s, type: "ttest" };
     if (s.type === "ttest" && r.n_groups === 2) {
       const [a, b] = r.groups.map(g => esc(g.name));
@@ -1672,6 +1709,69 @@
     const names = r.normality_of === "differences" ? ["Differences"] : r.groups.map(g => g.name);
     return [T.sec("Normality (Shapiro-Wilk)"), ...r.normality.map((n, i) => T.row(esc(names[i]),
       n ? `W = ${fmt(n.W, 3)}, P = ${fmt(n.p, 3)} · ${n.normal ? "passed" : "<b>not normal</b>"}` : "needs 3+ values"))];
+  }
+  function renderNested(r, s) {
+    const pct = Math.round((1 - r.alpha) * 100), two = r.n_groups === 2;
+    let h;
+    if (two) {
+      const c = r.comparisons[0];
+      h = T.summary(c.significant ? "sig" : "ns", `${c.significant ? "<b>Significant difference</b>" : "No significant difference"} (${fmtP(c.p)}${c.significant ? `, ${c.stars}` : ""}). The mean of <b>${esc(c.b)}</b> is ${fmt(Math.abs(c.diff))} ${c.diff >= 0 ? "higher" : "lower"} than <b>${esc(c.a)}</b> (${pct}% CI of the difference: ${ci(...c.ci)}).`);
+      h += T.table([T.sec("Nested t test"), T.row("t, df", `t = ${fmt(Math.abs(c.t), 4)}, df = ${r.df_d}`), T.row("P value", `${pOnly(c.p)} ${st(c.stars)}`),
+        T.row(`Difference (${esc(c.b)} − ${esc(c.a)})`, `${fmt(c.diff)} ± ${fmt(c.se, 3)}`), T.row(`${pct}% CI of difference`, ci(...c.ci))]);
+    } else {
+      h = T.summary(r.significant ? "sig" : "ns", `${r.significant ? "<b>The groups differ</b>" : "No significant difference among the groups"} (${fmtP(r.p)}${r.significant ? `, ${r.stars}` : ""}).`);
+      h += T.table([T.sec("Nested one-way ANOVA"), T.row("F (DFn, DFd)", `F(${r.df_n}, ${r.df_d}) = ${fmt(r.F, 4)}`), T.row("P value", `${pOnly(r.p)} ${st(r.stars)}`)]);
+      h += `<div class="opt-label" style="margin-top:10px">Tukey's multiple comparisons</div>` + T.multi(["Comparison", "Difference", `${pct}% CI`, "Adjusted P", ""],
+        r.comparisons.map(c => ({ cls: c.significant ? "hl" : "", cells: [`${esc(c.b)} − ${esc(c.a)}`, fmt(c.diff), ci(...c.ci), pOnly(c.p), st(c.stars)] })));
+    }
+    h += T.table([T.sec("Variation"), T.row("Between subjects (within groups), variance", fmt(r.var_subject)), T.row("Between replicates (within subjects), variance", fmt(r.var_residual)),
+      T.row("Intraclass correlation", r.icc == null ? "—" : `${fmt(r.icc, 3)} (${fmt(r.icc * 100, 3)}% of the variation is between subjects)`),
+      T.row("Do subjects differ within groups?", `F(${r.subjects_df[0]}, ${r.subjects_df[1]}) = ${fmt(r.subjects_F, 4)}, P ${pOnly(r.subjects_p)}${r.subjects_p < r.alpha ? " (yes: nesting matters)" : ""}`)]);
+    h += T.multi(["", ...r.groups.map(g => esc(g.name))], [
+      ["Subjects", ...r.groups.map(g => g.n_subjects)], ["Measurements", ...r.groups.map(g => g.n_values)],
+      ["Mean (model)", ...r.groups.map(g => fmt(g.mean))], ["SEM (model)", ...r.groups.map(g => fmt(g.se, 3))],
+      [`${pct}% CI of mean`, ...r.groups.map(g => ci(...g.ci))], ["SD of subject means", ...r.groups.map(g => g.sd_of_subject_means == null ? "—" : fmt(g.sd_of_subject_means))]]);
+    h += `<p class="note">Mixed-effects model (REML) with subject as a random effect; denominator df = subjects − groups. With equal numbers of replicates and subjects this equals ${two ? "a t test" : "one-way ANOVA"} on the subject means.</p>`;
+    return h;
+  }
+  function drawNested(el, r, s) {
+    const g = s.graph, traces = [], shapes = [], annotations = [];
+    const rows = s.data.filter(x => String(x[0] ?? "").trim() !== "" && x.slice(1).some(isNum));
+    let ymax = -Infinity, ymin = Infinity;
+    r.groups.forEach((gr, i) => {
+      const c = color(g, i, gr.name), subs = rows.filter(x => String(x[0]).trim() === gr.name);
+      const ns = subs.length, w = Math.min(0.7, 0.14 * ns);
+      const sx = [], sy = [];
+      subs.forEach((row, k) => {
+        const x0 = i + (ns > 1 ? -w / 2 + w * k / (ns - 1) : 0), vals = row.slice(1).map(num).filter(v => v !== null);
+        const m = vals.reduce((a, b) => a + b, 0) / vals.length;
+        vals.forEach(v => { ymax = Math.max(ymax, v); ymin = Math.min(ymin, v); });
+        sx.push(x0); sy.push(m);
+        if (g.showPoints) traces.push({ type: "scatter", mode: "markers", x: vals.map((_, q) => x0 + ((q * 0.618) % 1 - 0.5) * 0.05), y: vals, showlegend: false,
+          marker: { color: c, size: Math.max(3, g.pointSize * 0.55), opacity: 0.45 }, hovertemplate: `${esc(gr.name)}, subject ${k + 1}: %{y}<extra></extra>` });
+      });
+      traces.push({ type: "scatter", mode: "markers", x: sx, y: sy, showlegend: false, marker: { color: c, size: g.pointSize + 2, line: { color: "#fff", width: 1 } },
+        hovertemplate: `${esc(gr.name)} subject mean: %{y:.4g}<extra></extra>` });
+      const err = g.err === "sem" ? gr.se : g.err === "sd" ? (gr.sd_of_subject_means || 0) : 0;
+      ymax = Math.max(ymax, gr.mean + err);
+      traces.push({ type: "scatter", mode: "markers", x: [i], y: [gr.mean], showlegend: false, marker: { symbol: "line-ew", size: 44, line: { width: 3, color: "#1b2130" } },
+        error_y: { type: "data", array: [err], visible: g.err !== "none", color: "#1b2130", thickness: 1.5, width: 11 }, hovertemplate: `Mean ${fmt(gr.mean)}<extra></extra>` });
+    });
+    const span = (ymax - ymin) || 1;
+    let topExtra = span * 0.06;
+    if (g.brackets !== "none") {
+      const show = r.comparisons.filter(c => g.brackets === "all" || c.significant);
+      const { items, height } = bracketLayout(show, ymax, span);
+      const tick = span * 0.025;
+      items.forEach(p => {
+        shapes.push({ type: "path", path: `M ${p.i + 0.04} ${p.y - tick} L ${p.i + 0.04} ${p.y} L ${p.j - 0.04} ${p.y} L ${p.j - 0.04} ${p.y - tick}`, line: { color: "#1b2130", width: 1.3 } });
+        annotations.push({ x: (p.i + p.j) / 2, y: p.y, text: p.stars, showarrow: false, yanchor: "bottom", font: { size: p.stars === "ns" ? 11 : 16 } });
+      });
+      topExtra = Math.max(topExtra, height + span * 0.04);
+    }
+    styledReact(el, traces, { ...baseLayout(g), shapes, annotations, meta: "flippable",
+      xaxis: axis(g, { tickvals: r.groups.map((_, i) => i), ticktext: r.groups.map(x => esc(x.name)), range: [-0.6, r.groups.length - 0.4] }),
+      yaxis: yAxis(g, g.ylabel, { range: [ymin - span * 0.08, ymax + topExtra] }) }, PLOT_CONFIG);
   }
   function descTable(groups) {
     const keys = [["n", "n"], ["Mean", "mean"], ["SD", "sd"], ["SEM", "sem"], ["95% CI of mean", "ci95"], ["Median", "median"], ["Min", "min"], ["Max", "max"]];

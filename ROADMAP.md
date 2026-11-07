@@ -163,6 +163,12 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Multiple variables → Cox proportional hazards (Efron ties): hazard ratios + CIs, LR / Wald / score tests,
       Harrell's C, forest plot; matches lifelines (incl. tied times); guide branch; 122 tests
 
+## Phase 0.35: Nested t test / nested ANOVA (done 2026-11-06)
+- [x] New "Nested" type: one row per subject (group name + replicates); REML mixed model (random subject),
+      Wald F with containment df, Tukey for 3+ groups, variance components + ICC, subjects-within-groups F test
+- [x] Balanced data = ANOVA/t test on subject means (tested); unbalanced REML matches statsmodels MixedLM
+- [x] Graph: replicates (small), subject means, group mean ± SD; guide entry; example; 125 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

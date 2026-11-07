@@ -19,6 +19,7 @@ clean, modern interface. Everything runs on your own computer.
 - **Contingency tables:** Fisher's exact, chi-square, odds ratio, relative risk
 - **Multiple variables:** correlation matrix with heatmap, multiple linear regression, logistic regression, PCA
 - **Diagnostics:** ROC curves (AUC, best cutoff), Bland-Altman method comparison
+- Nested t test and nested one-way ANOVA (several measurements per subject, mixed-effects model)
 - Cox proportional hazards regression (hazard ratios, forest plot)
 - ROUT outlier detection (groups and curve fits, removes outliers before fitting) and Grubbs' test
 - Frequency distributions (histograms, cumulative, normal curve) and normal Q-Q plots

@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import outliers, anova2, contingency, curvefit, importer, multivar, stats, storage, survival
+from . import outliers, nested, anova2, contingency, curvefit, importer, multivar, stats, storage, survival
 
 STATIC = Path(__file__).parent / "static"
 PLOTLY_JS = STATIC / "vendor" / "plotly.min.js"  # plotly.js (MIT), bundled so the app works offline
@@ -98,6 +98,30 @@ class FreqRequest(BaseModel):
 def run_freq(req: FreqRequest):
     try:
         res = stats.frequency_distribution(req.groups, req.names, req.bin_width, req.bin_start, req.y, req.cumulative)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(_json_safe(res))
+
+
+class NestedRequest(BaseModel):
+    groups: list[str]          # group name of each subject (one row per subject)
+    values: list[list]         # replicate values of each subject
+    alpha: float = 0.05
+
+
+@app.post("/api/nested")
+def run_nested(req: NestedRequest):
+    try:
+        order: list[str] = []
+        for gname in req.groups:
+            if gname not in order:
+                order.append(gname)
+        vals = [[float(v) for v in row if v is not None and str(v).strip() != "" and math.isfinite(float(v))] for row in req.values]
+        keep = [i for i, v in enumerate(vals) if v and str(req.groups[i]).strip()]
+        if not keep:
+            raise ValueError("Enter one row per subject: its group name, then its replicate values.")
+        order = [o for o in order if any(req.groups[i] == o for i in keep)]
+        res = nested.nested([order.index(req.groups[i]) for i in keep], [vals[i] for i in keep], order, req.alpha)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))
