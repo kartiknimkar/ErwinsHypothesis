@@ -545,7 +545,7 @@
     regression: {
       label: "XY: curves & regression", newTitle: "XY analysis",
       minCols: 2, maxCols: 13, fixedCols: 1, textCol: -1, addLabel: "+ Replicate", minRows: 15,
-      colKind: j => j === 0 ? "X" : `Y${j}`, newColName: j => `Y${j}`,
+      colKind: (j, s) => s && s.options.yMode === "meansd" ? (["X", "Mean", "SD", "n"][j] || "(not used)") : j === 0 ? "X" : `Y${j}`, newColName: j => `Y${j}`,
       hint: "X in the first column; Y values to the right. Add Y columns for replicates. Unknown samples: leave X blank and enter their Y; the app reads their X off the fitted curve (standard-curve interpolation). To predict Y, enter an X and leave Y blank.",
       cols: ["X", "Y"],
       options: { model: "linear", xIsLog: false, alpha: 0.05 },
@@ -570,7 +570,7 @@
             compare: s.options.cmpParam || null, equation: s.options.model === "custom" ? (s.options.equation || "") : null,
             initial: s.options.model === "custom" ? Object.fromEntries(Object.entries(s.options.initial || {}).filter(([, v]) => isNum(v)).map(([k, v]) => [k, Number(v)])) : null }];
         }
-        return ["/api/fit", { x: s.data.map(r => num(r[0])), ys: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
+        return ["/api/fit", { x: s.data.map(r => num(r[0])), ys: s.options.yMode === "meansd" ? [s.data.map(r => num(r[1]))] : s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
           model: s.options.model, compare: s.options.model !== "linear" ? (s.options.compare || null) : null,
           fixed: Object.fromEntries(Object.entries((s.options.fixed || {})[s.options.model] || {}).filter(([, v]) => isNum(v)).map(([k, v]) => [k, Number(v)])),
           equation: s.options.model === "custom" ? (s.options.equation || "") : null,
@@ -585,7 +585,8 @@
         const m = custom ? null : modelInfo(s.options.model);
         const multi = s.options.yMode === "datasets";
         const pnames = s.options.model === "linear" ? ["Slope", "Intercept"] : custom ? (s.options.eqParams || []) : (m && m.params) || [];
-        const ySeg = `<div class="seg"><button data-set="yMode:replicates" class="${multi ? "" : "on"}">Y columns = replicates of one curve</button><button data-set="yMode:datasets" class="${multi ? "on" : ""}">Each Y column = its own curve</button></div>`;
+        const ySeg = `<div class="seg"><button data-set="yMode:replicates" class="${multi ? "" : "on"}">Y columns = replicates of one curve</button><button data-set="yMode:datasets" class="${multi ? "on" : ""}">Each Y column = its own curve</button><button data-set="yMode:meansd" class="${s.options.yMode === "meansd" ? "on" : ""}">Mean, SD, n</button></div>
+          ${s.options.yMode === "meansd" ? `<p class="hint">Columns: X, mean Y, SD and n (e.g. from a paper or another program). The curve is fitted to the means; the graph shows the SD (or SEM) as error bars.</p>` : ""}`;
         const cmpSel = multi ? `<div class="row"><label for="opt-cmpparam">Compare curves</label><select id="opt-cmpparam"><option value="">No comparison</option>${pnames
           .map(pn => `<option value="${esc(pn)}" ${s.options.cmpParam === pn ? "selected" : ""}>Is ${esc(pn)} different between curves?</option>`).join("")}<option value="all" ${s.options.cmpParam === "all" ? "selected" : ""}>Do the curves differ at all?</option></select></div>` : "";
         return ySeg + `<div class="opt-label">Fit</div>
@@ -616,7 +617,8 @@
       },
       graphControls: s => [
         txt("xlabel", "X axis label", s.cols[0]), txt("ylabel", "Y axis label", s.cols[1]),
-        ...(s.cols.length > 2 && s.options.yMode !== "datasets" ? [sel("repMode", "Replicates", [["mean", "Mean ± SD"], ["sem", "Mean ± SEM"], ["meanpts", "Mean ± SD with every point"], ["all", "All points"]])] : []),
+        ...(s.options.yMode === "meansd" ? [sel("repMode", "Error bars", [["mean", "SD"], ["sem", "SEM (from SD and n)"]])] : []),
+        ...(s.cols.length > 2 && !["datasets", "meansd"].includes(s.options.yMode) ? [sel("repMode", "Replicates", [["mean", "Mean ± SD"], ["sem", "Mean ± SEM"], ["meanpts", "Mean ± SD with every point"], ["all", "All points"]])] : []),
         txt("xmin", "X min", "auto"), txt("xmax", "X max", "auto"), txt("xtick", "X tick every", "auto"),
         chk("logX", "Log X axis"), chk("connect", "Connect the points (means)"), chk("hideFit", "Hide the fitted curve"), chk("band", "95% confidence band"), ...(s.options.model === "linear" && s.options.yMode !== "datasets" ? [chk("predBand", "95% prediction band")] : []), chk("showEq", "Show equation"), ...(s.options.model !== "linear" ? [chk("eqParams", "…with every parameter value")] : []),
         ...(s.options.yMode === "datasets" ? [chk("symbolPerSet", "Different symbol for each data set")] : [sel("xyPlot", "Plot", [["fit", "Data + fitted curve"], ["resid", "Residual plot"]])]),
@@ -815,7 +817,8 @@
         return ["/api/survival", { times: s.data.map(r => num(r[0])), groups: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
           names: s.cols.slice(1).map((c, j) => c || `Group ${letter(j)}`), alpha: s.options.alpha }];
       },
-      renderOptions: s => `<p class="hint">Kaplan-Meier survival curves for each group. With 2 or more groups, the log-rank (Mantel-Cox) test compares them; with 2 groups you also get the hazard ratio.</p>${alphaSelect(s)}`,
+      renderOptions: s => `<p class="hint">Kaplan-Meier survival curves for each group. With 2 or more groups, the log-rank (Mantel-Cox) test compares them; with 2 groups you also get the hazard ratio.</p>
+        <p class="hint">Data in 3 columns instead (time, event 1/0, group name)? Paste it, then <button class="ghost small" id="surv-long">Convert to one column per group</button></p>${alphaSelect(s)}`,
       graphControls: s => [txt("xlabel", "X axis label", s.cols[0]), txt("ylabel", "Y axis label"),
         chk("showCensor", "Mark censored"), chk("showCI", "95% confidence bands"), chk("riskTable", "Number at risk table"),
         sel("survMode", "Show", [["survival", "Percent survival"], ["death", "Percent death (100 − survival)"]]), chk("medianLines", "Median survival lines")],
@@ -1687,7 +1690,9 @@
     box.querySelectorAll("input[type=radio]").forEach(r => r.onchange = () => { s.options[r.name] = r.value; save(); renderOptions(); scheduleRun(); });
     box.querySelectorAll("[data-set]").forEach(b => b.onclick = () => {
       const [k, v] = b.dataset.set.split(":");
-      s.options[k] = v; save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun();
+      s.options[k] = v;
+      if (s.type === "regression" && k === "yMode" && v === "meansd")
+        while (s.cols.length < 4) { s.cols.push(["X", "Mean", "SD", "n"][s.cols.length]); s.data.forEach(r => r.push("")); } save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun();
     });
     box.querySelectorAll("[data-design]").forEach(b => b.onclick = () => {
       s.options.design = b.dataset.design;
@@ -1727,6 +1732,19 @@
     const mm = $("opt-mtmethod"); if (mm) mm.onchange = e => { s.options.mtMethod = e.target.value; save(); renderOptions(); scheduleRun(); };
     const twm = $("opt-twmethod"); if (twm) twm.onchange = e => { s.options.twMethod = e.target.value; save(); scheduleRun(); };
     const tw = $("opt-twcmp"); if (tw) tw.onchange = e => { s.options.twCompare = e.target.value; save(); scheduleRun(); };
+    const sl = $("surv-long");
+    if (sl) sl.onclick = () => {
+      const rows = s.data.filter(r => isNum(r[0]) && (isNum(r[1]) || String(r[1] ?? "").trim() === "") && String(r[2] ?? "").trim() !== "");
+      if (!rows.length) { toast("Put time in column 1, the event (1 = event, 0 = censored) in column 2 and the group name in column 3."); return; }
+      const groups = [...new Set(rows.map(r => String(r[2]).trim()))];
+      if (groups.length > TYPES.survival.maxCols - 1) { toast(`Too many groups (${groups.length}).`); return; }
+      recordUndo(true);
+      const tname = s.cols[0] || "Time";
+      s.cols = [tname, ...groups];
+      s.data = rows.map(r => [String(r[0]), ...groups.map(g => String(r[2]).trim() === g ? String(num(r[1]) ?? 1) : "")]);
+      s.excluded = []; padRows(s); save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun();
+      toast(`Converted: ${rows.length} subjects in ${groups.length} groups.`);
+    };
     const pd = $("pw-design"); if (pd) pd.onchange = e => { s.options.design = e.target.value; save(); renderOptions(); scheduleRun(); };
     const c3 = $("opt-3cmp"); if (c3) c3.onchange = e => { s.options.threeCompare = e.target.value; save(); scheduleRun(); };
     const wph = $("opt-wph"); if (wph) wph.onchange = e => { s.options.welchPosthoc = e.target.value; save(); renderOptions(); scheduleRun(); };
@@ -3146,9 +3164,11 @@
     const logFit = r.model !== "linear" && r.x_is_log && !s.options.xIsLog;
     const tx = x => (logFit ? Math.pow(10, x) : x);
     // data points (raw sheet values so the axis shows real concentrations)
-    const rows = s.data.map(row => ({ x: num(row[0]), ys: s.cols.slice(1).map((_, j) => num(row[j + 1])).filter(v => v !== null) }))
+    const meansd = s.options.yMode === "meansd";
+    const rows = s.data.map(row => ({ x: num(row[0]), ys: (meansd ? [num(row[1])] : s.cols.slice(1).map((_, j) => num(row[j + 1]))).filter(v => v !== null),
+      sd: meansd ? num(row[2]) : null, n: meansd ? num(row[3]) : null }))
       .filter(p => p.x !== null && p.ys.length && (!logFit || p.x > 0));
-    const reps = s.cols.length > 2 && g.repMode !== "all";
+    const reps = !meansd && s.cols.length > 2 && g.repMode !== "all";
     if (g.predBand && r.line && r.line.pred_low) {
       traces.push({ x: r.line.x, y: r.line.pred_low, mode: "lines", line: { color: c0, width: 1, dash: "dot" }, hoverinfo: "skip" });
       traces.push({ x: r.line.x, y: r.line.pred_high, mode: "lines", line: { color: c0, width: 1, dash: "dot" }, hoverinfo: "skip" });
@@ -3183,6 +3203,11 @@
       traces.push({ x: stats.map(p => p.x), y: stats.map(p => p.m), mode: "markers",
         marker: { color: "#1b2130", size: g.pointSize, line: { color: "#fff", width: 1 } },
         error_y: { type: "data", array: stats.map(p => p.e), color: "#1b2130", thickness: 1.4, width: 5 }, hovertemplate: "(%{x}, %{y:.4g})<extra></extra>" });
+    } else if (meansd) {
+      traces.push({ x: rows.map(p => p.x), y: rows.map(p => p.ys[0]), mode: "markers",
+        marker: { color: "#1b2130", size: g.pointSize, line: { color: "#fff", width: 1 } },
+        error_y: { type: "data", array: rows.map(p => p.sd == null ? 0 : g.repMode === "sem" && p.n > 0 ? p.sd / Math.sqrt(p.n) : p.sd), color: "#1b2130", thickness: 1.4, width: 5 },
+        hovertemplate: "(%{x}, %{y:.4g})<extra></extra>" });
     } else {
       const pts = rows.flatMap(p => p.ys.map(y => [p.x, y]));
       traces.push({ x: pts.map(p => p[0]), y: pts.map(p => p[1]), mode: "markers",

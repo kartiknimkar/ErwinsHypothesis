@@ -538,3 +538,55 @@ def test_analyze_another_way_and_curve_table(server):  # noqa: F811
         assert "points along the curve" in page.inner_text("#toast")
         assert errors == [], errors
         browser.close()
+
+
+def test_survival_long_format_convert(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#btn-new"); page.click('#new-menu button[data-type="survival"]')
+        page.wait_for_timeout(400)
+        tsv = "\n".join(["5\t1\tDrug", "8\t0\tDrug", "12\t1\tDrug", "3\t1\tPlacebo", "4\t1\tPlacebo", "9\t0\tPlacebo"])
+        page.evaluate("""(tsv) => { const el = document.querySelector('#grid input[data-r="0"][data-c="0"]'); el.focus();
+          const dt = new DataTransfer(); dt.setData('text/plain', tsv); el.dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true})); }""", tsv)
+        page.wait_for_timeout(400)
+        page.click("#surv-long")
+        page.wait_for_timeout(800)
+        heads = page.eval_on_selector_all("#grid thead input[data-head]", "els => els.map(e => e.value)")
+        assert heads[1:] == ["Drug", "Placebo"]
+        page.wait_for_function("document.querySelector('#results').textContent.includes('Log-rank')", timeout=10000)
+        assert errors == [], errors
+        browser.close()
+
+
+def test_xy_mean_sd_n_mode(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#btn-new"); page.click('#new-menu button[data-type="regression"]')
+        page.wait_for_timeout(400)
+        page.click('#options button[data-set="yMode:meansd"]')
+        page.wait_for_timeout(300)
+        tsv = "\n".join(["1\t2.1\t0.3\t4", "2\t3.9\t0.4\t4", "3\t6.2\t0.5\t4", "4\t8.1\t0.4\t4", "5\t9.8\t0.6\t4"])
+        page.evaluate("""(tsv) => { const el = document.querySelector('#grid input[data-r="0"][data-c="0"]'); el.focus();
+          const dt = new DataTransfer(); dt.setData('text/plain', tsv); el.dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true})); }""", tsv)
+        page.wait_for_function("document.querySelector('#results').textContent.includes('Slope')", timeout=10000)
+        assert "Number of points" in page.inner_text("#results")
+        err = page.evaluate("document.getElementById('plot').data.filter(t => t.error_y).map(t => t.error_y.array)")
+        assert err and err[0][:2] == [0.3, 0.4]
+        assert errors == [], errors
+        browser.close()

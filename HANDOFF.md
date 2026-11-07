@@ -60,7 +60,7 @@ Every session starts by reading it and ends by updating it (then committing).
 - Sizes measured: ~266 MB (system Python), ~410 MB (private Python).
 
 ## Current state
-- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 207 tests pass (incl. tests/test_ui_smoke.py: Playwright opens all 28 examples and walks every branch of the 'Help me choose' guide (GUIDE tree in app.js) and checks 'Text for your paper' (reportText in app.js); run it after UI changes). Multiple variables type also does multiple linear + logistic regression (multivar.py). 8 analysis types (+ nested): ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
+- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 209 tests pass (incl. tests/test_ui_smoke.py: Playwright opens all 28 examples and walks every branch of the 'Help me choose' guide (GUIDE tree in app.js) and checks 'Text for your paper' (reportText in app.js); run it after UI changes). Multiple variables type also does multiple linear + logistic regression (multivar.py). 8 analysis types (+ nested): ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
 - [x] User confirmed the app runs on their Windows PC (C: drive, private Python fallback)
 - [x] Interface rewritten around a TYPES registry in `static/app.js` (each type: data layout,
       options, request, results renderer, graph drawer, format controls). Add new modules there.
@@ -133,8 +133,10 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (bg) XY: interpolation table export of the fitted curve (X, Y pairs at chosen spacing) for other software
 - [x] (bh) accessibility pass: keyboard focus outlines, aria labels on icon buttons, sufficient contrast in dark mode
 - [x] (bi) startup check: if the app folder isn't writable, show a clear message instead of failing silently
-- [ ] (bj) Kaplan-Meier: allow entering data as one time column + group label column (long format) via a toggle, auto-converted
-- [ ] (bk) XY: Y error from SD/SEM columns entered by the user (mean, SD, n format like Prism XY tables)
+- [x] (bj) Kaplan-Meier: allow entering data as one time column + group label column (long format) via a toggle, auto-converted
+- [x] (bk) XY: Y error from SD/SEM columns entered by the user (mean, SD, n format like Prism XY tables)
+- [ ] (bl) grouped (two-way) data entered as mean, SD, n per cell → two-way ANOVA from summary data
+- [ ] (bm) graph gallery: a "Style presets" dropdown (Prism classic, minimal, journal black & white, presentation large text)
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →

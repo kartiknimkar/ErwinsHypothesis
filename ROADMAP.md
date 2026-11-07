@@ -354,6 +354,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 ## Phase 0.82: Accessibility + folder check (done 2026-11-07)
 - [x] Labels for icon buttons, visible keyboard focus ring; startup warns clearly if the app folder isn't writable; 207 tests
 
+## Phase 0.83: Data entry formats (done 2026-11-07)
+- [x] Survival: paste time / event / group columns and convert to one column per group (undoable)
+- [x] XY: "Mean, SD, n" entry (fit to the means, SD or SEM error bars); 209 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
