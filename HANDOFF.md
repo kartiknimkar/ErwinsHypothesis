@@ -81,7 +81,7 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (h) raster PDF export (Pillow)
 - [x] (i) effect sizes: Cohen's d / Hedges' g (t tests), eta² / omega² (ANOVA)
 - [x] (j) survival: pairwise log-rank comparisons for 3+ groups (Bonferroni/Holm-Šídák)
-- [ ] (k) row statistics (mean/SD/n across columns for each row) as a Compare-groups mode or transform
+- [x] (k) row statistics (mean/SD/n across columns for each row) as a Compare-groups mode or transform
 - [ ] (l) grid conveniences: sort rows by a column, fill series (1, 2, 3… / dilution series)
 - [ ] (m) linear regression: force through origin, prediction bands
 - [ ] (n) power / sample size calculator (t test, ANOVA, proportions)

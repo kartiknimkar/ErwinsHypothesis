@@ -1418,6 +1418,7 @@
     ["fraction", "Percent of column total", "Each value ÷ its column's sum × 100."],
     ["zscore", "Z scores", "(value − column mean) ÷ column SD."],
     ["transpose", "Transpose (swap rows and columns)", "Each column becomes a row. Column and multiple-variable tables only."],
+    ["rowstats", "Row statistics (mean, SD, n of each row)", "One row per data row, ready to compare as summary data (e.g. means of replicates)."],
   ];
   // which columns hold Y values (numbers to transform) for each analysis type
   const yCols = s => s.type === "threeway" ? [3] : s.type === "regression" || s.type === "survival" || s.type === "twoway" || s.type === "contingency" || s.type === "nested"
@@ -1447,6 +1448,25 @@
     if (k === "linear" && (a === null || b === null)) { toast("Enter numbers for K and C."); return; }
     if (onX && k === "transpose") { toast("Transpose applies to the whole table, not X."); return; }
     if (k === "transpose" && !["ttest", "multivar"].includes(s.type)) { toast("Transpose works for column (Compare groups) and multiple-variable tables."); return; }
+    if (k === "rowstats") {
+      if (onX) { toast("Row statistics use the Y values."); return; }
+      const lab = s.type === "regression" || s.type === "twoway" || s.type === "contingency" || s.type === "nested" ? 0 : null;
+      const rows = s.data.map((r, i) => {
+        const v = yCols(s).map(j => isExcluded(s, i, j) ? null : num(r[j])).filter(x => x !== null);
+        if (!v.length) return null;
+        const m = v.reduce((a2, b2) => a2 + b2, 0) / v.length, sd = v.length > 1 ? Math.sqrt(v.reduce((a2, b2) => a2 + (b2 - m) ** 2, 0) / (v.length - 1)) : 0;
+        const name = lab !== null && String(r[lab] ?? "").trim() ? String(r[lab]).trim() : `Row ${i + 1}`;
+        return [name, String(Number(m.toPrecision(10))), String(Number(sd.toPrecision(10))), String(v.length)];
+      }).filter(Boolean);
+      if (!rows.length) { toast("No rows with values."); return; }
+      const sh = newSheet("summary");
+      sh.title = `${s.title} (row statistics)`; sh.cols = ["Row", "Mean", "SD", "n"]; sh.data = rows; padRows(sh);
+      const idx = project.sheets.findIndex(x => x.id === s.id);
+      project.sheets.splice(idx + 1, 0, sh); project.activeId = sh.id; s._tf = k;
+      $("transform-backdrop").hidden = true; save(); renderAll();
+      toast(`Created <b>${esc(sh.title)}</b>: mean, SD and n of each row`);
+      return;
+    }
     const cols = onX ? [0] : yCols(s);
     const copy = JSON.parse(JSON.stringify(s));
     copy.id = uid();

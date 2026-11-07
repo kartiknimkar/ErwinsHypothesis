@@ -255,3 +255,6 @@ table.res .pd { color: var(--muted); font-size: 11.5px; font-weight: 400; }
 .graph-format .note-row input { border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font-size: 12.5px; color: var(--ink); background: var(--panel); }
 /* editable graphs: don't show Plotly's "Click to enter … title" placeholders */
 .plot .js-placeholder, .layout-plot .js-placeholder { display: none; }
+/* long dialogs (transform list): keep the buttons on screen and scroll the choices */
+#transform-backdrop .dialog { max-height: 90vh; display: flex; flex-direction: column; }
+#tf-body { overflow-y: auto; min-height: 0; }

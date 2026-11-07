@@ -235,6 +235,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 ## Phase 0.51: Pairwise survival comparisons (done 2026-11-07)
 - [x] 3+ survival curves: every pair compared by log-rank, Holm-Šídák adjusted (matches lifelines per pair); 166 tests
 
+## Phase 0.52: Row statistics (done 2026-11-07)
+- [x] Transform → "Row statistics": mean, SD, n of each row as a new summary-data analysis (excluded values left out);
+      transform dialog scrolls so its button stays visible; 166 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

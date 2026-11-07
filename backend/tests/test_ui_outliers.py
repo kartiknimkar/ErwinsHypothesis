@@ -141,7 +141,8 @@ def test_new_transforms(server):  # noqa: F811
                           ("fraction", lambda: abs(sum(float(cell(r, 0)) for r in range(8)) - 100) < 1e-6),
                           ("subcol", lambda: page.eval_on_selector_all("#grid thead th", "e => e.length") >= 2 and abs(float(cell(0, 0)) - 1.9) < 1e-9),
                           ("zscore", lambda: abs(sum(float(cell(r, 0)) for r in range(8))) < 1e-6),
-                          ("transpose", lambda: cell(1, 0) == "6.1")):
+                          ("transpose", lambda: cell(1, 0) == "6.1"),
+                          ("rowstats", lambda: cell(0, 0) == "Row 1" and cell(0, 3) == "2" and abs(float(cell(0, 1)) - 5.15) < 1e-9)):
             page.click("#sheet-list li:has-text('Example: two groups')")
             page.wait_for_timeout(300)
             page.click("#btn-transform")
