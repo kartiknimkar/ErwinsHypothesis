@@ -486,6 +486,8 @@ def linear_regression(x, y, alpha: float = 0.05, band_points: int = 100) -> dict
     return {
         "test_name": "Simple linear regression",
         "n": n,
+        "residuals": {"x": xs.tolist(), "y": resid.tolist()},
+        "runs_test": runs_test(xs, resid),
         "slope": float(r.slope),
         "slope_se": float(r.stderr),
         "slope_ci": [float(r.slope - tcrit * r.stderr), float(r.slope + tcrit * r.stderr)],
@@ -509,6 +511,36 @@ def linear_regression(x, y, alpha: float = 0.05, band_points: int = 100) -> dict
         "line": {"x": grid.tolist(), "y": fit.tolist(),
                  "low": (fit - half).tolist(), "high": (fit + half).tolist()},
     }
+
+
+def _runs_cdf(r: int, n1: int, n2: int) -> float:
+    """Exact P(number of runs <= r) for n1 positives and n2 negatives in random order."""
+    total = math.comb(n1 + n2, n1)
+    p = 0
+    for runs in range(2, r + 1):
+        k = runs // 2
+        if runs % 2 == 0:
+            p += 2 * math.comb(n1 - 1, k - 1) * math.comb(n2 - 1, k - 1)
+        else:
+            p += math.comb(n1 - 1, k - 1) * math.comb(n2 - 1, k) + math.comb(n1 - 1, k) * math.comb(n2 - 1, k - 1)
+    return p / total
+
+
+def runs_test(x, resid) -> dict | None:
+    """Runs test: do the points sit on the curve in long runs on one side (the model doesn't fit the shape)?
+    Residuals are averaged at each X (replicates), ordered by X; zeros are skipped. One-tailed P for too few runs."""
+    x, resid = np.asarray(x, float), np.asarray(resid, float)
+    xs = np.unique(x)
+    m = np.array([resid[x == v].mean() for v in xs])
+    sign = np.sign(m[np.abs(m) > 1e-12 * max(1.0, float(np.max(np.abs(m))) if len(m) else 1.0)])
+    n1, n2 = int(np.sum(sign > 0)), int(np.sum(sign < 0))
+    if n1 == 0 or n2 == 0:
+        return None
+    runs = 1 + int(np.sum(sign[1:] != sign[:-1]))
+    n = n1 + n2
+    expected = 2 * n1 * n2 / n + 1
+    p = _runs_cdf(runs, n1, n2)
+    return {"runs": runs, "expected": float(expected), "n_points": n, "p": float(min(1.0, p)), "deviates": bool(p < 0.05)}
 
 
 def grubbs(values, alpha: float = 0.05) -> dict:

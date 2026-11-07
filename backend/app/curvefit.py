@@ -202,6 +202,9 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
         raise ValueError("The fitted curve isn't defined at some X values (e.g. log of a negative number). "
                          "Check the equation or the starting values.")
     resid = y - m["f"](x, *popt)
+    from .stats import runs_test
+    x_user = 10 ** x if (m["log_x"] and not x_is_log) else x  # residual plot uses the X the user entered
+    resid_out = {"residuals": {"x": x_user.tolist(), "y": resid.tolist()}, "runs_test": runs_test(x, resid)}
     ss_res = float(np.sum(resid ** 2))
     ss_tot = float(np.sum((y - y.mean()) ** 2))
     df = len(x) - p
@@ -264,6 +267,7 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
         "r_squared": 1 - ss_res / ss_tot if ss_tot > 0 else None,
         "sy_x": sy_x, "ss_res": ss_res, "df": df, "n": int(len(x)), "dropped": dropped,
         **({"outliers": removed, "rout_q": rout_q} if rout_q else {}),
+        **resid_out,
         "x_is_log": bool(m["log_x"]), "alpha": alpha, "fixed": fixed,
         "points": {"x": x.tolist(), "y": y.tolist()},
         "curve": {"x": xs.tolist(), "y": curve_y.tolist()},

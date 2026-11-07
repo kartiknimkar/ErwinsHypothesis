@@ -586,6 +586,7 @@
         ...(s.cols.length > 2 && s.options.yMode !== "datasets" ? [sel("repMode", "Replicates", [["mean", "Mean ± SD"], ["sem", "Mean ± SEM"], ["all", "All points"]])] : []),
         txt("xmin", "X min", "auto"), txt("xmax", "X max", "auto"), txt("xtick", "X tick every", "auto"),
         chk("logX", "Log X axis"), chk("band", "95% confidence band"), chk("showEq", "Show equation"),
+        ...(s.options.yMode === "datasets" ? [] : [sel("xyPlot", "Plot", [["fit", "Data + fitted curve"], ["resid", "Residual plot"]])]),
       ],
       renderResults: (r, s) => r.multi ? renderMultiFit(r, s) : renderXYResults(r, s),
       draw: (el, r, s) => r.multi ? drawMultiFit(el, r, s) : drawXY(el, r, s),
@@ -2204,7 +2205,14 @@
 
   // ---------------------------------------------------------------- XY
   function renderXYResults(r, s) {
-    return renderXYCore(r, s) + (r.rout_q ? renderXYOutliers(r, s) : "") + (r.auc ? renderAUC(r.auc, s) : "") + (r.unknowns ? renderUnknowns(r, s) : "");
+    return renderXYCore(r, s) + renderRuns(r) + (r.rout_q ? renderXYOutliers(r, s) : "") + (r.auc ? renderAUC(r.auc, s) : "") + (r.unknowns ? renderUnknowns(r, s) : "");
+  }
+  function renderRuns(r) {
+    const t = r.runs_test;
+    if (!t) return "";
+    return T.table([T.sec("Runs test (does the curve follow the data's shape?)"), T.row("Runs (expected)", `${t.runs} (${fmt(t.expected, 3)})`),
+      T.row("P value", `${pOnly(t.p)}${t.deviates ? " · <b>the data deviate systematically from the curve</b>: consider another model" : " · no significant deviation"}`)]) +
+      `<p class="note">Too few runs (stretches of points on the same side of the curve) mean the model misses the data's shape. Switch the graph to <b>Residual plot</b> under Format to see it.</p>`;
   }
   function renderXYOutliers(r, s) {
     const o = r.outliers || [], q = `Q = ${fmt(r.rout_q * 100)}%`;
@@ -2792,6 +2800,15 @@
 
   function drawXY(el, r, s) {
     const g = s.graph, c0 = color(g, 0, "Curve"), traces = [];
+    if (g.xyPlot === "resid" && r.residuals) {
+      const rx = r.residuals.x, lo = Math.min(...rx), hi = Math.max(...rx);
+      const xa = axis(g, { title: { text: esc(g.xlabel || s.cols[0] || "X") } });
+      if (g.logX) xa.type = "log";
+      return styledReact(el, [
+        { x: [lo, hi], y: [0, 0], mode: "lines", line: { color: "#8a93a3", width: 1.3, dash: "dash" }, hoverinfo: "skip" },
+        { x: rx, y: r.residuals.y, mode: "markers", marker: { color: c0, size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: "X = %{x}<br>Residual %{y:.4g}<extra></extra>" }],
+        { ...baseLayout(g), xaxis: xa, yaxis: yAxis(g, "Residual (Y − fit)") }, PLOT_CONFIG);
+    }
     const logFit = r.model !== "linear" && r.x_is_log && !s.options.xIsLog;
     const tx = x => (logFit ? Math.pow(10, x) : x);
     // data points (raw sheet values so the axis shows real concentrations)

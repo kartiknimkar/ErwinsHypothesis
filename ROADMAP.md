@@ -200,6 +200,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Column statistics: Anderson-Darling (D'Agostino-Stephens P) and Kolmogorov-Smirnov/Lilliefors (Dallal-Wilkinson P),
       both matching statsmodels; Kolmogorov-Smirnov two-sample test; ratio paired t test (geometric mean ratio + CI); 150 tests
 
+## Phase 0.43: Residuals + runs test (done 2026-11-07)
+- [x] Linear and nonlinear fits return residuals; exact runs test (one-tailed, replicates averaged per X);
+      "Residual plot" option in Format; 154 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
