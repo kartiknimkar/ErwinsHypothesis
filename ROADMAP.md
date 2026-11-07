@@ -259,6 +259,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Mann-Whitney and Wilcoxon report the Hodges-Lehmann estimate with an exact (small n) or approximate CI;
       null distributions checked by enumeration, coverage by simulation; 177 tests
 
+## Phase 0.58: Project report (done 2026-11-07)
+- [x] "Report" button: one self-contained HTML file in exports with every analysis (inline editable SVG graph,
+      results tables, text for your paper); 178 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

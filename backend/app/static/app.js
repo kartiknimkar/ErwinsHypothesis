@@ -3088,6 +3088,57 @@
       xaxis: axis(g), yaxis: yAxis(g, g.ylabel || (g.mode === "count" ? "Count" : "Percent of row")) }, PLOT_CONFIG);
   }
 
+  // one self-contained HTML file with every analysis: graph (inline, editable SVG), results and paper text
+  async function exportReport() {
+    const btn = $("btn-report");
+    btn.disabled = true; const label = btn.textContent; btn.textContent = "Building report…";
+    const holder = document.createElement("div");
+    holder.style.cssText = "position:fixed;left:-10000px;top:0;width:720px;height:460px";
+    document.body.appendChild(holder);
+    const parts = [];
+    try {
+      for (const sh0 of project.sheets) {
+        const sh = masked(sh0), t = TYPES[sh.type];
+        if (!t || t.runCustom) continue;  // figure layouts repeat other analyses
+        let r = null, err = null;
+        try {
+          const [url, body] = t.request(sh);
+          const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          const json = await res.json();
+          if (res.ok) r = json; else err = json.detail || "Not enough data.";
+        } catch (e) { err = "Couldn't run this analysis."; }
+        let svg = "", results = "", paper = null;
+        if (r) {
+          try { results = t.renderResults(r, sh); } catch { results = "<p class='note'>(results could not be shown)</p>"; }
+          try {
+            const div = document.createElement("div"); div.style.cssText = "width:720px;height:460px"; holder.appendChild(div);
+            styleCtx = sh.graph; t.draw(div, r, sh);
+            const url = await Plotly.toImage(div, { format: "svg", width: 720, height: 460 });
+            svg = decodeURIComponent(url.replace(/^data:image\/svg\+xml,/, ""));
+            Plotly.purge(div); div.remove();
+          } catch { svg = ""; }
+          try { paper = reportText(r, sh); } catch { paper = null; }
+        }
+        parts.push(`<section><h2>${esc(sh.title)} <small>${esc(t.label)}</small></h2>
+          ${err ? `<p class="note warn">${esc(err)}</p>` : ""}${svg ? `<div class="graph">${svg}</div>` : ""}<div class="results">${results}</div>
+          ${paper ? `<div class="paper"><h3>Text for your paper</h3><p><b>Methods.</b> ${paper.methods}</p><p><b>Results.</b> ${paper.results}</p></div>` : ""}</section>`);
+      }
+      const css = `body{font-family:Arial,Helvetica,sans-serif;color:#1b2130;max-width:900px;margin:32px auto;padding:0 20px;line-height:1.45}
+        h1{font-size:24px;margin-bottom:4px} h2{font-size:18px;border-top:2px solid #e3e6eb;padding-top:18px;margin-top:34px} h2 small{font-weight:400;color:#6b7385;font-size:13px}
+        h3{font-size:14px;margin:14px 0 4px} .graph svg{max-width:100%;height:auto} table.res{border-collapse:collapse;width:100%;margin:8px 0;font-size:13px}
+        table.res td,table.res th{border-bottom:1px solid #e3e6eb;padding:4px 8px;text-align:right} table.res td:first-child,table.res th:first-child{text-align:left}
+        tr.sec td{font-weight:700;text-transform:uppercase;font-size:11px;color:#6b7385;padding-top:12px} tr.hl td{background:#eef7f1}
+        .summary{background:#f3f5f8;border-left:4px solid #2f5bea;padding:8px 12px;margin:8px 0}.summary.sig{border-color:#2b9348}
+        .note{color:#6b7385;font-size:12px}.warn{color:#9a3412}.pd{color:#6b7385}.opt-label{font-weight:700;margin-top:10px}
+        .paper{background:#fafbfc;border:1px solid #e3e6eb;padding:8px 14px;border-radius:8px} details,button{display:none}`;
+      const when = new Date().toLocaleString();
+      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(projectName)}: report</title><style>${css}</style></head>
+        <body><h1>${esc(projectName)}</h1><p class="note">Report from ${SW}, ${esc(when)}. ${parts.length} analyses. Graphs are SVG: copy them into Illustrator, Inkscape or PowerPoint to edit.</p>${parts.join("")}</body></html>`;
+      const res = await api("/api/exports/report", { method: "POST", body: JSON.stringify({ filename: `${projectName} - report`, html }) });
+      toast(`Saved <b>${esc(res.file)}</b> (open it in any browser) to the exports folder`, "exports");
+    } catch (e) { toast(esc(e.message || "The report couldn't be built.")); }
+    finally { holder.remove(); btn.disabled = false; btn.textContent = label; drawPlot(); }
+  }
   async function exportPlot(format, convert) {
     if (!lastResult) { toast("Add some data first, then export the graph."); return; }
     if (active().type === "layout") return exportLayout(format === "png" ? (convert || "png") : null);
@@ -3301,6 +3352,7 @@
   });
 
   $("btn-projects").onclick = showProjects;
+  $("btn-report").onclick = exportReport;
   $("dlg-close").onclick = hideProjects;
   $("dialog-backdrop").onclick = e => { if (e.target.id === "dialog-backdrop") hideProjects(); };
   const doCreate = async () => {

@@ -581,6 +581,19 @@ def export_save(body: ExportBody):
         raise HTTPException(400, str(e))
 
 
+class ReportBody(BaseModel):
+    filename: str
+    html: str
+
+
+@app.post("/api/exports/report")
+def export_report(body: ReportBody):
+    try:
+        return {"file": storage.save_report(body.filename, body.html), "folder": str(storage.exports_dir())}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 class XlsxExportBody(BaseModel):
     filename: str
     title: str

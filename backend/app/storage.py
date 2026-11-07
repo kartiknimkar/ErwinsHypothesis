@@ -205,6 +205,21 @@ def _number_or_text(v: str):
     return s
 
 
+def save_report(filename: str, html: str) -> str:
+    """Write a project report (self-contained HTML) to the exports folder; never overwrites."""
+    if len(html) > 60_000_000:
+        raise ValueError("The report is too large.")
+    base = safe_name(filename, "Report")
+    d = exports_dir()
+    path = d / f"{base}.html"
+    i = 2
+    while path.exists():
+        path = d / f"{base} ({i}).html"
+        i += 1
+    _inside(path, d).write_text(html, encoding="utf-8")
+    return path.name
+
+
 def save_results_xlsx(filename: str, title: str, results: list[list[str]], data_cols: list[str],
                       data_rows: list[list[str]]) -> str:
     """Write an analysis to <exports>/<filename>.xlsx with a Results sheet and a Data sheet."""

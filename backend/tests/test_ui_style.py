@@ -126,3 +126,30 @@ def test_horizontal_stacked_labels_and_on_graph_edits(server):  # noqa: F811
         assert lay[0][1] == 3 and lay[1][0] == 9
         assert errors == [], errors
         browser.close()
+
+
+def test_project_report(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        n = page.eval_on_selector_all("#sheet-list li .t", "els => els.filter(e => !/figure layout/i.test(e.textContent)).length")
+        exports = os.path.join(os.environ["EH_HOME"], "exports")
+        before = set(glob.glob(os.path.join(exports, "*.html")))
+        page.click("#btn-report")
+        page.wait_for_function("!document.getElementById('btn-report').disabled", timeout=120000)
+        page.wait_for_timeout(500)
+        new = set(glob.glob(os.path.join(exports, "*.html"))) - before
+        assert new, "no report written"
+        html = open(new.pop(), encoding="utf-8").read()
+        assert html.count("<section>") == n and html.count("<svg") >= n - 2 and "Text for your paper" in html
+        bad = [m.start() for m in __import__("re").finditer(r"(?<!legend)undefined|NaN", html)]
+        assert not bad, [html[max(0, i - 150):i + 40] for i in bad[:3]]
+        assert errors == [], errors
+        browser.close()

@@ -24,6 +24,7 @@ clean, modern interface. Everything runs on your own computer.
 - Cox proportional hazards regression (hazard ratios, forest plot)
 - ROUT outlier detection (groups and curve fits, removes outliers before fitting) and Grubbs' test
 - Frequency distributions (histograms, cumulative, normal curve) and normal Q-Q plots
+- One-click project report (HTML with every graph, result and paper text)
 - Graphs export as PNG, TIFF, PDF or **editable SVG** (text and shapes stay editable in Illustrator, Inkscape or PowerPoint) at journal sizes and 150–600 DPI; combine graphs into multi-panel figures (A, B, C…)
 - Edit directly on the graph (titles, axis titles, legend text), add text labels, horizontal and stacked bars, violin plots
 - Full graph styling: fonts, text sizes and color, point shape/size/opacity/outline, line and error-bar thickness, bar fill opacity and hatch patterns, axis thickness and ticks, gridlines, transparent background, legend position
