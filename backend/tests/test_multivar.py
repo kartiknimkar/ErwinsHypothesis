@@ -53,3 +53,17 @@ def test_endpoint():
     assert c.post("/api/multi", json={"columns": [list(A), list(B)], "names": ["A", "B"]}).status_code == 200
     assert c.post("/api/multi", json={"columns": [[1, 2, 3], [4, 5, 6]], "names": ["c", "p"], "analysis": "roc"}).json()["auc"] == 1.0
     assert c.post("/api/multi", json={"columns": [[1, 2]], "names": ["a"], "analysis": "bland_altman"}).status_code == 400
+
+
+def test_bland_altman_pct_and_ratio():
+    import numpy as np
+    from app import multivar
+    a = [5.1, 6.8, 4.4, 9.2, 7.5, 5.9, 8.1, 10.4]
+    b = [5.3, 7.1, 4.3, 9.8, 7.6, 6.3, 8.2, 11.1]
+    p = multivar.bland_altman(a, b, kind="pct")
+    pct = 100 * (np.array(b) - np.array(a)) / ((np.array(a) + np.array(b)) / 2)
+    assert np.isclose(p["bias"], pct.mean())
+    r = multivar.bland_altman(a, b, kind="ratio")
+    lr = np.log(np.array(b) / np.array(a))
+    assert np.isclose(r["bias"], np.exp(lr.mean())) and np.isclose(r["loa"][1], np.exp(lr.mean() + 1.959964 * lr.std(ddof=1)), rtol=1e-5)
+    assert np.isclose(r["points"]["diff"][0], b[0] / a[0])

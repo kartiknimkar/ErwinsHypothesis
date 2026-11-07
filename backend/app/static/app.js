@@ -678,11 +678,12 @@
         rows: [[1.2, 2.9], [0.8, 3.6], [1.9, 1.7], [1.5, 4.2], [2.4, 2.8], [0.9, 3.1], [1.1, 5.0], [2.0, 2.2], [1.6, 3.9], [1.3, 2.6], [2.7, 4.4], [1.0, 3.3]],
       },
       request: s => ["/api/multi", { columns: [0, 1].map(j => s.data.map(r => num(r[j]))), names: s.cols.slice(0, 2), analysis: s.options.analysis, alpha: s.options.alpha,
-        sd_ratio: s.options.analysis === "deming" && isNum(s.options.sdRatio) ? Number(s.options.sdRatio) : null }],
+        sd_ratio: s.options.analysis === "deming" && isNum(s.options.sdRatio) ? Number(s.options.sdRatio) : null, ba_kind: s.options.baKind || "diff" }],
       renderOptions: s => `<div class="seg"><button data-set="analysis:roc" class="${s.options.analysis === "roc" ? "on" : ""}">ROC curve</button><button data-set="analysis:bland_altman" class="${s.options.analysis === "bland_altman" ? "on" : ""}">Bland-Altman agreement</button><button data-set="analysis:deming" class="${s.options.analysis === "deming" ? "on" : ""}">Deming regression</button></div>
         <p class="hint">${s.options.analysis === "roc" ? "How well does the test separate patients from controls? Gives the area under the ROC curve and the best cutoff."
           : s.options.analysis === "deming" ? "Fits a line through two methods' results when <b>both</b> have measurement error (ordinary regression assumes X is exact). A slope of 1 and intercept of 0 mean the methods agree."
           : "Do two methods agree? Shows the average difference (bias) and the range where 95% of differences fall (limits of agreement)."}</p>
+        ${s.options.analysis === "bland_altman" ? `<div class="seg">${[["diff", "Difference"], ["pct", "% difference"], ["ratio", "Ratio"]].map(([v, l]) => `<button data-set="baKind:${v}" class="${(s.options.baKind || "diff") === v ? "on" : ""}">${l}</button>`).join("")}</div>` : ""}
         ${s.options.analysis === "deming" ? `<div class="row"><label for="opt-sdr">Error SD of B ÷ error SD of A</label><input type="text" id="opt-sdr" data-num="sdRatio" value="${esc(s.options.sdRatio ?? "")}" placeholder="1 (equal)" style="width:90px" inputmode="decimal"></div>` : ""}${alphaSelect(s)}`,
       graphControls: () => [],
       renderResults: (r, s) => r.kind === "deming" ? renderDeming(r) : s.options.analysis === "roc" ? renderROC(r) : renderBA(r),
@@ -1993,8 +1994,12 @@
       return { methods: `Diagnostic performance was evaluated by receiver operating characteristic (ROC) analysis; the standard error of the area under the curve was calculated by the Hanley-McNeil method and the optimal cutoff by the Youden index. Analyses were performed in ${SW}.`,
         results: `The area under the ROC curve was ${r2(r.auc, 3)} (${pct}% CI ${r2(r.ci[0], 3)} to ${r2(r.ci[1], 3)}, ${apaP(r.p)}). At a cutoff of ${r.direction === "higher" ? "≥" : "≤"} ${fmt(r.best.cut)}, sensitivity was ${r2(r.best.sens, 1)}% and specificity ${r2(r.best.spec, 1)}% (${r.n_patients} ${esc(r.names[1]).toLowerCase()}, ${r.n_controls} ${esc(r.names[0]).toLowerCase()}).` };
     }
+    if (s.type === "diagnostic" && r.kind === "ratio") {
+      return { methods: `Agreement between ${esc(r.names[0])} and ${esc(r.names[1])} was assessed by Bland-Altman analysis of ratios (log-transformed, then back-transformed). Analyses were performed in ${SW}.`,
+        results: `The geometric mean ratio (${esc(r.names[1])} / ${esc(r.names[0])}) was ${r2(r.bias, 3)} (${pct}% CI ${r2(r.bias_ci[0], 3)} to ${r2(r.bias_ci[1], 3)}), with 95% limits of agreement from ${r2(r.loa[0], 3)} to ${r2(r.loa[1], 3)} (n = ${r.n}).` };
+    }
     if (s.type === "diagnostic") {
-      return { methods: `Agreement between ${esc(r.names[0])} and ${esc(r.names[1])} was assessed by Bland-Altman analysis (bias and 95% limits of agreement). Analyses were performed in ${SW}.`,
+      return { methods: `Agreement between ${esc(r.names[0])} and ${esc(r.names[1])} was assessed by Bland-Altman analysis (bias and 95% limits of agreement${r.kind === "pct" ? ", using percent differences" : ""}). Analyses were performed in ${SW}.`,
         results: `The mean difference (${esc(r.names[1])} − ${esc(r.names[0])}) was ${r2(r.bias, 3)} (${pct}% CI ${r2(r.bias_ci[0], 3)} to ${r2(r.bias_ci[1], 3)}), with 95% limits of agreement from ${r2(r.loa[0], 3)} to ${r2(r.loa[1], 3)} (n = ${r.n}).` };
     }
     return null;
@@ -2717,13 +2722,22 @@
   }
   function renderBA(r) {
     const pct = Math.round((1 - r.alpha) * 100);
+    if (r.kind === "ratio") {
+      let h = T.summary(r.p_bias < r.alpha ? "sig" : "ns", `On average <b>${esc(r.names[1])}</b> reads <b>${fmt(r.bias, 4)}</b> times <b>${esc(r.names[0])}</b> (geometric mean ratio${r.p_bias < r.alpha ? ", significantly different from 1" : ""}, ${fmtP(r.p_bias)}). ` +
+        `95% of ratios fall between <b>${fmt(r.loa[0], 4)}</b> and <b>${fmt(r.loa[1], 4)}</b>.`);
+      h += T.table([T.sec(`Bland-Altman: ${esc(r.names[1])} / ${esc(r.names[0])}`), T.row("Geometric mean ratio", fmt(r.bias, 4)), T.row(`${pct}% CI`, ci(...r.bias_ci)),
+        T.row("95% limits of agreement (ratios)", ci(...r.loa)), T.row(`Lower limit ${pct}% CI`, ci(...r.loa_lo_ci)), T.row(`Upper limit ${pct}% CI`, ci(...r.loa_hi_ci)),
+        T.row("SD of log ratios", fmt(r.sd_log, 4)), T.row("Number of samples", r.n)]);
+      return h + `<p class="note">Ratios are analyzed as logarithms and converted back, as Bland & Altman recommend when differences grow with the size of the measurement.</p>`;
+    }
+    const unit = r.kind === "pct" ? "%" : "";
     let h = T.summary(r.p_bias < r.alpha ? "sig" : "ns", `On average <b>${esc(r.names[1])}</b> reads <b>${fmt(Math.abs(r.bias))} ${r.bias >= 0 ? "higher" : "lower"}</b> than <b>${esc(r.names[0])}</b> (bias${r.p_bias < r.alpha ? ", significantly different from 0" : ", not significantly different from 0"}, ${fmtP(r.p_bias)}). ` +
       `95% of differences fall between <b>${fmt(r.loa[0])}</b> and <b>${fmt(r.loa[1])}</b>. Whether that range is acceptable is a clinical judgement.`);
-    h += T.table([T.sec(`Bland-Altman: ${esc(r.names[1])} − ${esc(r.names[0])}`), T.row("Bias (mean difference)", fmt(r.bias)), T.row(`${pct}% CI of bias`, ci(...r.bias_ci)),
+    h += T.table([T.sec(`Bland-Altman: ${r.kind === "pct" ? "% difference, 100 × (" : ""}${esc(r.names[1])} − ${esc(r.names[0])}${r.kind === "pct" ? ") / average" : ""}`), T.row(`Bias (mean ${r.kind === "pct" ? "% " : ""}difference)`, fmt(r.bias) + unit), T.row(`${pct}% CI of bias`, ci(...r.bias_ci)),
       T.row("SD of differences", fmt(r.sd)), T.row("95% limits of agreement", ci(...r.loa)),
       T.row(`Lower limit ${pct}% CI`, ci(...r.loa_lo_ci)), T.row(`Upper limit ${pct}% CI`, ci(...r.loa_hi_ci)), T.row("Number of samples", r.n),
       T.sec("Does the difference depend on the size of the value?"), T.row("Slope of difference vs average", fmt(r.trend_slope)), T.row("P value", pOnly(r.trend_p))]);
-    if (r.trend_p != null && r.trend_p < r.alpha) h += `<p class="note warn">⚠︎ The difference grows (or shrinks) with the size of the measurement, so a single bias doesn't describe the disagreement well. Consider analyzing ratios (log values).</p>`;
+    if (r.trend_p != null && r.trend_p < r.alpha) h += `<p class="note warn">⚠︎ The difference grows (or shrinks) with the size of the measurement, so a single bias doesn't describe the disagreement well. Try the <b>Ratio</b> or <b>% difference</b> option above.</p>`;
     return h;
   }
   function renderDeming(r) {
@@ -2750,13 +2764,15 @@
   function drawBA(el, r, s) {
     const g = s.graph, c = color(g, 0, "Points");
     const xs = r.points.avg, lo = Math.min(...xs), hi = Math.max(...xs), pad = (hi - lo) * 0.05 || 1;
+    const zero = r.kind === "ratio" ? 1 : 0;
+    const yTitle = r.kind === "ratio" ? `${esc(r.names[1])} / ${esc(r.names[0])}` : r.kind === "pct" ? `% difference (${esc(r.names[1])} − ${esc(r.names[0])}) / average` : `${esc(r.names[1])} − ${esc(r.names[0])}`;
     const line = (y, dash, col, label) => ({ x: [lo - pad, hi + pad], y: [y, y], mode: "lines", line: { color: col, width: 1.6, dash }, hoverinfo: "skip", name: label });
     styledReact(el, [
-      line(0, "dot", "#9aa3b2"), line(r.bias, "solid", "#1b2130"), line(r.loa[0], "dash", "#d62728"), line(r.loa[1], "dash", "#d62728"),
+      line(zero, "dot", "#9aa3b2"), line(r.bias, "solid", "#1b2130"), line(r.loa[0], "dash", "#d62728"), line(r.loa[1], "dash", "#d62728"),
       { x: xs, y: r.points.diff, mode: "markers", marker: { color: c, size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: "Average %{x:.4g}, difference %{y:.4g}<extra></extra>" },
     ], { ...baseLayout(g), annotations: [["Bias", r.bias], ["+95% LoA", r.loa[1]], ["−95% LoA", r.loa[0]]].map(([t, y]) => ({ x: 1, xref: "paper", xanchor: "right", y, yanchor: "bottom",
         text: `${t} ${fmt(y, 3)}`, showarrow: false, font: { size: (g.fontSize || 13) - 2, color: "#6b7385" } })),
-      xaxis: axis(g, { title: { text: `Average of ${esc(r.names[0])} and ${esc(r.names[1])}` } }), yaxis: yAxis(g, `${esc(r.names[1])} − ${esc(r.names[0])}`) }, PLOT_CONFIG);
+      xaxis: axis(g, { title: { text: `Average of ${esc(r.names[0])} and ${esc(r.names[1])}` } }), yaxis: yAxis(g, yTitle) }, PLOT_CONFIG);
   }
 
   // ---------------------------------------------------------------- figure layout

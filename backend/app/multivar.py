@@ -97,14 +97,25 @@ def roc(controls, patients, names=("Controls", "Patients"), alpha: float = 0.05)
             "best": best, "alpha": alpha}
 
 
-def bland_altman(a, b, names=("Method A", "Method B"), alpha: float = 0.05) -> dict:
-    """Agreement between two methods measuring the same samples (each row = one sample)."""
+def bland_altman(a, b, names=("Method A", "Method B"), alpha: float = 0.05, kind: str = "diff") -> dict:
+    """Agreement between two methods measuring the same samples (each row = one sample).
+    kind: diff (B − A), pct (100·(B − A)/mean of the two), ratio (B/A; analyzed as log ratios and back-transformed,
+    as Bland & Altman recommend when the differences grow with the size of the measurement)."""
     pairs = [(x, y) for x, y in zip(map(_num, a), map(_num, b)) if x is not None and y is not None]
     if len(pairs) < 3:
         raise ValueError("Enter at least 3 samples measured by both methods (one row per sample).")
     x = np.array([p[0] for p in pairs]); y = np.array([p[1] for p in pairs])
-    diff = y - x
     avg = (x + y) / 2
+    if kind == "pct":
+        if np.any(avg == 0):
+            raise ValueError("Percent differences need averages that aren't 0.")
+        diff = 100 * (y - x) / avg
+    elif kind == "ratio":
+        if np.any(x <= 0) or np.any(y <= 0):
+            raise ValueError("Ratios need all values greater than 0.")
+        diff = np.log(y / x)
+    else:
+        diff = y - x
     n = len(diff)
     bias, sd = float(diff.mean()), float(diff.std(ddof=1))
     z = stats.norm.ppf(1 - alpha / 2)
@@ -113,7 +124,16 @@ def bland_altman(a, b, names=("Method A", "Method B"), alpha: float = 0.05) -> d
     se_loa = math.sqrt(3 * sd ** 2 / n)  # Bland & Altman (1986)
     lo, hi = bias - z * sd, bias + z * sd
     trend = stats.linregress(avg, diff) if np.ptp(avg) > 0 else None
-    return {"test_name": "Bland-Altman", "n": n, "names": list(names), "bias": bias, "sd": sd,
+    if kind == "ratio":  # back to the ratio scale: geometric mean ratio and limits as ratios
+        e = np.exp
+        out = {"bias": float(e(bias)), "bias_ci": [float(e(bias - t * se_bias)), float(e(bias + t * se_bias))],
+               "loa": [float(e(lo)), float(e(hi))], "loa_lo_ci": [float(e(lo - t * se_loa)), float(e(lo + t * se_loa))],
+               "loa_hi_ci": [float(e(hi - t * se_loa)), float(e(hi + t * se_loa))], "sd_log": sd}
+        return {"test_name": "Bland-Altman", "kind": "ratio", "n": n, "names": list(names), "sd": sd, **out,
+                "p_bias": float(stats.ttest_1samp(diff, 0).pvalue),
+                "trend_p": float(trend.pvalue) if trend else None, "trend_slope": float(trend.slope) if trend else None,
+                "points": {"avg": avg.tolist(), "diff": np.exp(diff).tolist()}, "alpha": alpha}
+    return {"test_name": "Bland-Altman", "kind": kind, "n": n, "names": list(names), "bias": bias, "sd": sd,
             "bias_ci": [bias - t * se_bias, bias + t * se_bias],
             "loa": [lo, hi], "loa_lo_ci": [lo - t * se_loa, lo + t * se_loa], "loa_hi_ci": [hi - t * se_loa, hi + t * se_loa],
             "p_bias": float(stats.ttest_1samp(diff, 0).pvalue),

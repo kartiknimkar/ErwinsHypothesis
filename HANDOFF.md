@@ -59,7 +59,7 @@ Every session starts by reading it and ends by updating it (then committing).
 - Sizes measured: ~266 MB (system Python), ~410 MB (private Python).
 
 ## Current state
-- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 185 tests pass (incl. tests/test_ui_smoke.py: Playwright opens all 28 examples and walks every branch of the 'Help me choose' guide (GUIDE tree in app.js) and checks 'Text for your paper' (reportText in app.js); run it after UI changes). Multiple variables type also does multiple linear + logistic regression (multivar.py). 8 analysis types (+ nested): ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
+- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 186 tests pass (incl. tests/test_ui_smoke.py: Playwright opens all 28 examples and walks every branch of the 'Help me choose' guide (GUIDE tree in app.js) and checks 'Text for your paper' (reportText in app.js); run it after UI changes). Multiple variables type also does multiple linear + logistic regression (multivar.py). 8 analysis types (+ nested): ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
 - [x] User confirmed the app runs on their Windows PC (C: drive, private Python fallback)
 - [x] Interface rewritten around a TYPES registry in `static/app.js` (each type: data layout,
       options, request, results renderer, graph drawer, format controls). Add new modules there.
@@ -96,7 +96,7 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (w) dark mode check of newer UI (help, menus, format panel, report buttons)
 - [x] (x) XY: predict Y for rows that have X but no Y (interpolation both ways)
 - [x] (y) multiple t tests: two-stage step-up FDR (Benjamini-Krieger-Yekutieli, Prism's default), Holm-Šídák, Bonferroni
-- [ ] (z) Bland-Altman: percent difference and ratio options
+- [x] (z) Bland-Altman: percent difference and ratio options
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →

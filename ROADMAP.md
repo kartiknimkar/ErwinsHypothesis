@@ -285,6 +285,9 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 ## Phase 0.64: Multiple t test corrections (done 2026-11-07)
 - [x] Benjamini-Hochberg, two-stage step-up BKY (Prism's default), Holm-Šídák, Bonferroni or none; matches statsmodels; 185 tests
 
+## Phase 0.65: Bland-Altman options (done 2026-11-07)
+- [x] Difference, % difference (of the average), or ratio (log-based geometric mean ratio and limits); 186 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
