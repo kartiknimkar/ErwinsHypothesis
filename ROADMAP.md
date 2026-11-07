@@ -108,6 +108,9 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Block selection (drag, Shift+click, Shift+arrows, row numbers), copy/cut as TSV, Delete clears, undoable
 - [x] Right-click row number: insert row above/below, delete row(s); 96 tests
 
+## Phase 0.25: Polish pack (done 2026-11-06)
+- [x] Dark mode (saved in projects/.prefs.json via /api/prefs), duplicate analysis, drag-to-reorder sidebar
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

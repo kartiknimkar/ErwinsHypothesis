@@ -608,9 +608,23 @@
   // ======================================================================
   function renderSidebar() {
     $("sheet-list").innerHTML = project.sheets.map(s =>
-      `<li data-id="${s.id}" class="${s.id === project.activeId ? "active" : ""}" title="${esc(TYPES[s.type].label)}">
+      `<li data-id="${s.id}" draggable="true" class="${s.id === project.activeId ? "active" : ""}" title="${esc(TYPES[s.type].label)}. Drag to reorder.">
         <span class="badge t-${s.type}">${badgeText(s.type)}</span><span class="t">${esc(s.title)}</span></li>`).join("");
-    $("sheet-list").querySelectorAll("li").forEach(li => li.onclick = () => { project.activeId = li.dataset.id; save(); renderAll(); });
+    $("sheet-list").querySelectorAll("li").forEach(li => {
+      li.onclick = () => { project.activeId = li.dataset.id; save(); renderAll(); };
+      li.ondragstart = e => { e.dataTransfer.setData("text/plain", li.dataset.id); e.dataTransfer.effectAllowed = "move"; };
+      li.ondragover = e => { e.preventDefault(); li.classList.add("drag-over"); };
+      li.ondragleave = () => li.classList.remove("drag-over");
+      li.ondrop = e => {
+        e.preventDefault(); li.classList.remove("drag-over");
+        const from = project.sheets.findIndex(x => x.id === e.dataTransfer.getData("text/plain"));
+        const to = project.sheets.findIndex(x => x.id === li.dataset.id);
+        if (from < 0 || to < 0 || from === to) return;
+        const [moved] = project.sheets.splice(from, 1);
+        project.sheets.splice(to, 0, moved);
+        save(); renderSidebar();
+      };
+    });
   }
   const badgeText = t => ({ layout: "▦", ttest: "G", twoway: "2W", regression: "XY", survival: "S", contingency: "#", multivar: "MV", diagnostic: "Dx" }[t]);
 
@@ -2110,6 +2124,23 @@
     s.data = blankRows(TYPES[s.type].minRows, s.cols.length); save(); renderGrid(); scheduleRun();
     toast("Data cleared. Press Ctrl+Z to undo.");
   };
+  $("btn-dup").onclick = () => {
+    const s = active(), copy = JSON.parse(JSON.stringify(s));
+    copy.id = uid(); copy.title = `${s.title} (copy)`;
+    project.sheets.splice(project.sheets.findIndex(x => x.id === s.id) + 1, 0, copy);
+    project.activeId = copy.id; save(); renderAll();
+    toast(`Duplicated as <b>${esc(copy.title)}</b>`);
+  };
+  function applyTheme(t) {
+    document.documentElement.dataset.theme = t === "dark" ? "dark" : "light";
+    $("btn-theme").textContent = t === "dark" ? "☀" : "☾";
+  }
+  $("btn-theme").onclick = () => {
+    const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    applyTheme(t);
+    api("/api/prefs", { method: "PUT", body: JSON.stringify({ theme: t }) }).catch(() => {});
+  };
+  api("/api/prefs").then(p => applyTheme(p.theme)).catch(() => {});
   $("btn-undo").onclick = () => undoRedo("undo");
   $("btn-redo").onclick = () => undoRedo("redo");
   $("btn-format").onclick = () => {

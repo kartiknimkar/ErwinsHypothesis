@@ -246,3 +246,21 @@ def save_results_xlsx(filename: str, title: str, results: list[list[str]], data_
         i += 1
     wb.save(_inside(path, d))
     return path.name
+
+
+def _prefs_path() -> Path:
+    return projects_dir() / ".prefs.json"
+
+
+def get_prefs() -> dict:
+    try:
+        return json.loads(_prefs_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def set_prefs(update: dict) -> dict:
+    """Small interface preferences (e.g. dark mode), kept in the projects folder."""
+    prefs = {**get_prefs(), **{k: v for k, v in update.items() if isinstance(k, str) and len(k) < 40}}
+    _prefs_path().write_text(json.dumps(prefs), encoding="utf-8")
+    return prefs

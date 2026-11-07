@@ -82,3 +82,11 @@ def test_tiff_and_png_dpi(client):
     assert im.format == "TIFF" and im.size == (40, 30) and round(im.info["dpi"][0]) == 600
     p = c.post("/api/exports", json={"filename": "g", "data_url": url, "dpi": 300}).json()
     assert round(Image.open(home / "exports" / p["file"]).info["dpi"][0]) == 300
+
+
+def test_prefs_saved_in_projects_folder(client):
+    c, home = client
+    assert c.get("/api/prefs").json() == {}
+    assert c.put("/api/prefs", json={"theme": "dark"}).json() == {"theme": "dark"}
+    assert c.get("/api/prefs").json()["theme"] == "dark"
+    assert (home / "projects" / ".prefs.json").exists()

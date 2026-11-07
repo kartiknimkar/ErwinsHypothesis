@@ -429,6 +429,16 @@ def export_xlsx(body: XlsxExportBody):
         raise HTTPException(400, str(e))
 
 
+@app.get("/api/prefs")
+def prefs_get():
+    return storage.get_prefs()
+
+
+@app.put("/api/prefs")
+def prefs_put(body: dict):
+    return storage.set_prefs(body)
+
+
 @app.post("/api/reveal/{folder}")
 def reveal(folder: str):
     if folder not in ("projects", "exports"):
