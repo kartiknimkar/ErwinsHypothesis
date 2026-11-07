@@ -630,7 +630,7 @@ def linear_regression(x, y, alpha: float = 0.05, band_points: int = 100, origin:
     return {
         "test_name": "Simple linear regression",
         "n": n,
-        "residuals": {"x": xs.tolist(), "y": resid.tolist()},
+        "residuals": {"x": xs.tolist(), "y": resid.tolist(), "fitted": (r.intercept + r.slope * xs).tolist()},
         "runs_test": runs_test(xs, resid),
         "slope": float(r.slope),
         "slope_se": float(r.stderr),
@@ -680,7 +680,7 @@ def _regression_origin(xs, ys, alpha, band_points):
     phalf = tcrit * sy_x * np.sqrt(1 + grid ** 2 / sxx0)
     return {
         "test_name": "Linear regression through the origin", "origin": True, "n": n,
-        "residuals": {"x": xs.tolist(), "y": resid.tolist()}, "runs_test": runs_test(xs, resid),
+        "residuals": {"x": xs.tolist(), "y": resid.tolist(), "fitted": (slope * xs).tolist()}, "runs_test": runs_test(xs, resid),
         "slope": slope, "slope_se": se, "slope_ci": [slope - tcrit * se, slope + tcrit * se],
         "intercept": 0.0, "intercept_se": None, "intercept_ci": None, "x_intercept": 0.0,
         "r": None, "r_squared": 1 - ss_res / ss_tot if ss_tot > 0 else None, "sy_x": sy_x, "df": df,
@@ -1075,4 +1075,73 @@ def assumption_checklist(res: dict, groups, kind: str) -> list:
     out.append({"check": "Independent values", "status": "info",
                 "text": ("Each pair (subject) should be independent of the others, and the pairing must be real (same subject or matched)." if paired else
                          "Each value should come from a different, independent subject or experiment. Technical replicates of one sample are not independent: average them first, or use a Nested table.")})
+    return out
+
+
+def fit_checklist(res: dict, n_params: int, weighting: str = "none", outlier_count: int | None = None,
+                  rout_removed: int | None = None) -> list:
+    """Assumptions behind a curve fit / linear regression, checked on the residuals.
+    Items as in assumption_checklist."""
+    rs = res.get("residuals") or {}
+    resid = np.asarray(rs.get("y") or [], float)
+    fitted = np.asarray(rs.get("fitted") or [], float)
+    n = len(resid)
+    out = []
+    df = n - n_params
+    if df < 1:
+        out.append({"check": "Number of points", "status": "warn", "text": f"{n} points for {n_params} parameters: nothing is left to judge the fit."})
+    elif n < 2 * n_params + 2 or df < 4:
+        out.append({"check": "Number of points", "status": "warn",
+                    "text": f"Only {n} points for {n_params} fitted parameters. Parameter CIs will be wide; more X values (especially where the curve bends) help most."})
+    else:
+        out.append({"check": "Number of points", "status": "ok", "text": f"{n} points for {n_params} fitted parameters."})
+    # parameters that the data barely determine
+    poor = [p["name"] for p in res.get("params", []) if not p.get("fixed") and p.get("se") is not None
+            and np.isfinite(p["se"]) and p["value"] != 0 and p["se"] > abs(p["value"])]
+    if poor:
+        out.append({"check": "Well-determined parameters", "status": "warn",
+                    "text": f"{', '.join(poor)}: the standard error is larger than the value itself, so the data barely pin {'it' if len(poor) == 1 else 'them'} down. "
+                            "Hold a parameter at a known value (e.g. Bottom = 0), or collect data that cover the whole curve."})
+    # random scatter around the curve
+    rt = res.get("runs_test")
+    if rt and rt.get("p") is not None:
+        if rt["p"] < 0.05:
+            out.append({"check": "Points scatter randomly around the curve", "status": "warn",
+                        "text": f"Too few runs (runs test P = {rt['p']:.3g}): points sit above or below the curve in clusters, so the model doesn't follow the data's shape. Try another model (see the residual plot)."})
+        else:
+            out.append({"check": "Points scatter randomly around the curve", "status": "ok", "text": f"No sign of systematic deviation (runs test P = {rt['p']:.3g})."})
+    # normal residuals
+    nr = normality(resid) if n >= 3 else None
+    if nr is None:
+        out.append({"check": "Normal residuals", "status": "info", "text": "Too few points to test."})
+    elif nr["normal"]:
+        out.append({"check": "Normal residuals", "status": "ok", "text": f"The residuals passed the Shapiro-Wilk test (P = {nr['p']:.3g})."})
+    else:
+        out.append({"check": "Normal residuals", "status": "warn",
+                    "text": f"The residuals don't look normal (Shapiro-Wilk P = {nr['p']:.3g}). Check for outliers, or whether Y should be log-transformed."})
+    # equal scatter (homoscedasticity): |residual| vs fitted Y, Spearman
+    if weighting and weighting != "none":
+        out.append({"check": "Equal scatter", "status": "ok", "text": f"Handled by weighting ({weighting}), which allows larger scatter where Y (or X) is larger."})
+    elif len(fitted) == n and n >= 6 and np.ptp(fitted) > 0 and np.ptp(np.abs(resid)) > 0:
+        rho, p = stats.spearmanr(fitted, np.abs(resid))
+        if p < 0.05 and rho > 0:
+            out.append({"check": "Equal scatter", "status": "warn",
+                        "text": f"Scatter grows with Y (Spearman r = {rho:.2f} between |residual| and fitted Y, P = {p:.3g}). "
+                                + ("Choose weighting 1/Y² under Options, or log-transform Y." if res.get("model") != "linear" else "Consider log-transforming Y.")})
+        elif p < 0.05:
+            out.append({"check": "Equal scatter", "status": "warn",
+                        "text": f"Scatter shrinks as Y grows (Spearman r = {rho:.2f}, P = {p:.3g}). Points with small Y vary most; check them."})
+        else:
+            out.append({"check": "Equal scatter", "status": "ok", "text": f"The scatter doesn't change with Y (P = {p:.3g})."})
+    # outliers
+    if rout_removed is not None:
+        out.append({"check": "Outliers", "status": "ok" if rout_removed == 0 else "info",
+                    "text": "ROUT found no outliers." if rout_removed == 0 else f"ROUT removed {rout_removed} point{'s' if rout_removed > 1 else ''} before fitting (circled on the graph)."})
+    elif outlier_count:
+        out.append({"check": "Outliers", "status": "warn",
+                    "text": f"{outlier_count} point{'s look' if outlier_count > 1 else ' looks'} like {'outliers' if outlier_count > 1 else 'an outlier'} (ROUT, Q = 1%). Check for errors, or turn on ROUT under Options to fit without {'them' if outlier_count > 1 else 'it'}."})
+    elif outlier_count == 0:
+        out.append({"check": "Outliers", "status": "ok", "text": "No outliers found (ROUT, Q = 1%)."})
+    out.append({"check": "Independent points", "status": "info",
+                "text": "Each point's error should be independent. Replicates within one experiment aren't fully independent; fitting the means of separate experiments is safer."})
     return out

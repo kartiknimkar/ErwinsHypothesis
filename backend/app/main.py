@@ -278,6 +278,15 @@ def run_fit(req: FitRequest):
                     res["comparison"] = {"error": str(e)}
         if req.rout_q:
             res["outliers"], res["rout_q"] = removed, req.rout_q
+        try:
+            k = sum(1 for p in res.get("params", []) if not p.get("fixed")) or (1 if req.origin else 2)
+            n_out = None
+            if not req.rout_q and len(px) > k + 1:
+                n_out = int(curvefit.rout_mask(px, py, req.model, req.x_is_log, req.fixed, req.equation, req.initial, 0.01).sum())
+            res["checklist"] = stats.fit_checklist(res, k, req.weighting if req.model != "linear" else "none", n_out,
+                                                   len(removed) if req.rout_q else None)
+        except Exception:  # the checklist is advice only; never let it break a fit
+            pass
         if req.auc:
             try:
                 res["auc"] = stats.area_under_curve(px, py, baseline=req.baseline)

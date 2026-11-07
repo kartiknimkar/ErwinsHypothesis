@@ -227,7 +227,7 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
     resid = y - m["f"](x, *popt)
     from .stats import runs_test
     x_user = 10 ** x if (m["log_x"] and not x_is_log) else x  # residual plot uses the X the user entered
-    resid_out = {"residuals": {"x": x_user.tolist(), "y": resid.tolist()}, "runs_test": runs_test(x, resid)}
+    resid_out = {"residuals": {"x": x_user.tolist(), "y": resid.tolist(), "fitted": (y - resid).tolist()}, "runs_test": runs_test(x, resid)}
     ss_res = float(np.sum(w * resid ** 2))
     yw = np.sum(w * y) / np.sum(w)
     ss_tot = float(np.sum(w * (y - yw) ** 2))
@@ -264,8 +264,8 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
     if m.get("derived"):
         dname, lname = m["derived"]
         lp = next(q for q in params if q["name"] == lname)
-        derived.append({"name": dname, "value": 10 ** lp["value"],
-                        "ci": [10 ** lp["ci"][0], 10 ** lp["ci"][1]] if lp["ci"] else None})
+        derived.append({"name": dname, "value": _pow10(lp["value"]),
+                        "ci": [_pow10(lp["ci"][0]), _pow10(lp["ci"][1])] if lp["ci"] else None})
     if m.get("halflife") or m.get("doubling"):
         kp = next(q for q in params if q["name"] == "K")
         label = "Half-life" if m.get("halflife") else "Doubling time"
@@ -413,6 +413,14 @@ def _model(model, equation=None, initial=None):
     if model in MODELS:
         return MODELS[model]
     raise ValueError(f"Unknown model: {model}")
+
+
+def _pow10(v):
+    """10**v that gives inf/0 instead of raising for an ambiguous fit's huge CI limits."""
+    try:
+        return 10.0 ** v
+    except OverflowError:
+        return float("inf") if v > 0 else 0.0
 
 
 def rout_mask(x, y, model, x_is_log=False, fixed=None, equation=None, initial=None, q=0.01) -> np.ndarray:

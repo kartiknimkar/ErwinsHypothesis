@@ -2560,7 +2560,7 @@
 
   // ---------------------------------------------------------------- XY
   function renderXYResults(r, s) {
-    return renderXYCore(r, s) + `<p class="note"><button class="ghost small" data-act="curve-xlsx">Save the fitted curve as an X, Y table (Excel)</button></p>` + renderRuns(r) + (r.predicted ? renderPredicted(r, s) : "") + (r.rout_q ? renderXYOutliers(r, s) : "") + (r.auc ? renderAUC(r.auc, s) : "") + (r.unknowns ? renderUnknowns(r, s) : "");
+    return renderXYCore(r, s) + `<p class="note"><button class="ghost small" data-act="curve-xlsx">Save the fitted curve as an X, Y table (Excel)</button></p>` + renderRuns(r) + (r.predicted ? renderPredicted(r, s) : "") + (r.rout_q ? renderXYOutliers(r, s) : "") + (r.auc ? renderAUC(r.auc, s) : "") + (r.unknowns ? renderUnknowns(r, s) : "") + (r.checklist ? checklistBox(r.checklist) : "");
   }
   function renderPredicted(r, s) {
     return `<div class="opt-label" style="margin-top:10px">Predicted ${esc(s.cols[1] || "Y")} for ${esc(s.cols[0] || "X")} values without Y</div>` +

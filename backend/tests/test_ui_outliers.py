@@ -608,5 +608,8 @@ def test_assumptions_checklist_box(server):  # noqa: F811
         assert "Assumptions checklist" in txt
         items = page.eval_on_selector_all("#results details.checklist li b", "els => els.map(e => e.textContent)")
         assert "Sample size" in items and "Outliers" in items and "Independent values" in items
+        idx = page.eval_on_selector_all("#sheet-list li .t", "els => els.findIndex(e => /dose-respon/i.test(e.textContent))")
+        page.click(f"#sheet-list li:nth-child({idx + 1})")
+        page.wait_for_function("document.querySelector('#results details.checklist') && /Points scatter randomly/.test(document.querySelector('#results details.checklist').textContent)", timeout=15000)
         assert errors == [], errors
         browser.close()

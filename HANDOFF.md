@@ -141,6 +141,12 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (bn) save a graph's Format settings as "My style" and apply it to other graphs (stored in prefs)
 - [x] (bo) apply the current graph's style to every graph in the project (one click)
 - [x] (bp) results: show which assumptions were checked in a short "Checklist" box (normality, equal variances, outliers, sample size) with plain advice
+- [x] (bq) XY fits / linear regression checklist: points per parameter, poorly determined parameters (SE > value), runs test, normal residuals, equal scatter (Spearman |resid| vs fitted), ROUT outliers (Q 1%), independence. Also fixed an OverflowError crash on ambiguous log-X fits (curvefit._pow10)
+- [ ] (br) two-way / three-way ANOVA checklist (residual normality, equal SD across cells, cell sizes / missing cells)
+- [ ] (bs) contingency checklist: expected counts < 5 → recommend Fisher's exact; tiny tables
+- [ ] (bt) correlation: add Kendall's tau option (validate vs scipy.stats.kendalltau) and CI for Spearman r
+- [ ] (bu) XY analyses: smooth (moving average / LOWESS-like), first derivative, cumulative integral → new analysis copy
+- [ ] (bv) multiple Poisson regression (counts outcome) in Multiple variables; validate vs statsmodels GLM Poisson
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →

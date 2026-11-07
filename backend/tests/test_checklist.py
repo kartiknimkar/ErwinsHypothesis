@@ -70,3 +70,46 @@ def test_small_paired_uses_differences():
     assert it["Sample size"]["status"] == "warn" and "pairs" in it["Sample size"]["text"]
     assert "Equal spread (SD)" not in it
     assert "differences" in it["Normal distribution"]["text"].lower()
+
+
+def test_fit_checklist_flags_wrong_model_and_uneven_scatter():
+    rng = np.random.default_rng(2)
+    x = np.repeat(np.linspace(1, 20, 10), 3)
+    y = 3 * x + 2 + rng.normal(0, 1, len(x)) * x * 0.5
+    r = c.post("/api/fit", json={"x": x.tolist(), "ys": [y.tolist()], "model": "linear"}).json()
+    it = _items(r)
+    fitted = np.array(r["residuals"]["fitted"]); res = np.array(r["residuals"]["y"])
+    assert np.allclose(fitted + res, y)
+    rho, p = ss.spearmanr(fitted, np.abs(res))
+    assert p < 0.05 and it["Equal scatter"]["status"] == "warn" and f"{rho:.2f}" in it["Equal scatter"]["text"]
+    # a line through exponential data: runs test fails
+    x2 = np.linspace(0, 5, 20); y2 = np.exp(x2) + rng.normal(0, .5, 20)
+    it2 = _items(c.post("/api/fit", json={"x": x2.tolist(), "ys": [y2.tolist()], "model": "linear"}).json())
+    assert it2["Points scatter randomly around the curve"]["status"] == "warn"
+
+
+def test_fit_checklist_good_dose_response_and_weighting():
+    rng = np.random.default_rng(5)
+    x = np.repeat(np.logspace(-9, -5, 9), 3)
+    y = 5 + 95 / (1 + 10 ** ((-7 - np.log10(x)) * 1.0)) + rng.normal(0, 3, len(x))
+    r = c.post("/api/fit", json={"x": x.tolist(), "ys": [y.tolist()], "model": "dr_stim"}).json()
+    it = _items(r)
+    assert it["Number of points"]["status"] == "ok" and "4 fitted parameters" in it["Number of points"]["text"]
+    assert it["Points scatter randomly around the curve"]["status"] == "ok"
+    assert "Well-determined parameters" not in it
+    r = c.post("/api/fit", json={"x": x.tolist(), "ys": [y.tolist()], "model": "dr_stim", "weighting": "1/Y2"}).json()
+    assert "weighting" in _items(r)["Equal scatter"]["text"]
+    # ROUT on: reports what it removed instead of re-testing
+    r = c.post("/api/fit", json={"x": x.tolist(), "ys": [y.tolist()], "model": "dr_stim", "rout_q": 0.01}).json()
+    assert "ROUT" in _items(r)["Outliers"]["text"]
+
+
+def test_fit_checklist_few_points_and_poor_parameter():
+    # 5 points for a 4-parameter curve that never reaches its top
+    x = [1e-9, 3e-9, 1e-8, 3e-8, 1e-7]
+    y = [2, 4, 9, 15, 27]
+    r = c.post("/api/fit", json={"x": x, "ys": [y], "model": "dr_stim"}).json()
+    it = _items(r)
+    assert it["Number of points"]["status"] == "warn"
+    assert it["Well-determined parameters"]["status"] == "warn" and "Top" in it["Well-determined parameters"]["text"]
+    assert r["derived"][0]["ci"][1] is None  # huge CI limit no longer crashes the fit (was OverflowError)
