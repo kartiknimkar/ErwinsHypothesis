@@ -248,3 +248,10 @@ table.res .pd { color: var(--muted); font-size: 11.5px; font-weight: 400; }
 :root[data-theme="dark"] .toast button { background: rgba(0,0,0,.1); color: #12151b; }
 .sheet-list li.drag-over { box-shadow: inset 0 2px 0 var(--accent); }
 .sheet-list li[draggable="true"] { cursor: grab; }
+
+.graph-format .notes { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
+.graph-format .notes .hint { margin: 0; }
+.graph-format .note-row { display: grid; grid-template-columns: 1fr 70px 28px; gap: 6px; align-items: center; }
+.graph-format .note-row input { border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font-size: 12.5px; color: var(--ink); background: var(--panel); }
+/* editable graphs: don't show Plotly's "Click to enter … title" placeholders */
+.plot .js-placeholder, .layout-plot .js-placeholder { display: none; }

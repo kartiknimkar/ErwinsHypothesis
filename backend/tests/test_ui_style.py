@@ -73,3 +73,45 @@ def test_styles_apply_to_every_graph_and_svg_is_editable(server):  # noqa: F811
             assert svg.count('<g id="panel-') >= 2 and "<text" in svg
         assert errors == [], errors
         browser.close()
+
+
+def test_horizontal_stacked_labels_and_on_graph_edits(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('three groups')")
+        page.wait_for_timeout(600)
+        page.click("#btn-format")
+        page.check('#graph-format [data-g="horizontal"]')
+        page.click("#btn-add-note")
+        page.fill('#graph-format [data-note="0"]', "n = 6 per group")
+        page.wait_for_timeout(500)
+        assert page.evaluate("document.getElementById('plot').layout.yaxis.ticktext.length") == 3
+        assert "n = 6 per group" in page.inner_text("#plot")
+        page.click("#sheet-list li:has-text('two-way')")
+        page.wait_for_timeout(600)
+        page.select_option('#graph-format [data-g="style"]', "stacked")
+        page.wait_for_timeout(500)
+        assert page.evaluate("document.getElementById('plot').layout.barmode") == "stack"
+        # edits made directly on the graph are kept
+        page.evaluate("Plotly.restyle(document.getElementById('plot'), {name: 'Renamed'}, [0])")
+        page.evaluate("Plotly.relayout(document.getElementById('plot'), {'yaxis.title.text': 'Edited Y'})")
+        page.wait_for_timeout(300)
+        page.click("#sheet-list li:has-text('three groups')")
+        page.wait_for_timeout(400)
+        page.click("#sheet-list li:has-text('two-way')")
+        page.wait_for_timeout(700)
+        assert "Renamed" in page.evaluate("document.getElementById('plot').data.map(t => t.name)")
+        assert page.evaluate("document.getElementById('plot').layout.yaxis.title.text") == "Edited Y"
+        page.click("#btn-reset-edits")
+        page.wait_for_timeout(500)
+        assert "Renamed" not in page.evaluate("document.getElementById('plot').data.map(t => t.name)")
+        assert errors == [], errors
+        browser.close()

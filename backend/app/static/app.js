@@ -87,6 +87,8 @@
     };
   }
   const PLOT_CONFIG = { displaylogo: false, responsive: true,
+    // click titles, axis titles, legend entries and text labels on the graph to edit them; drag legend / labels to move
+    edits: { titleText: true, axisTitleText: true, legendText: true, legendPosition: true, annotationText: true, annotationPosition: true },
     modeBarButtonsToRemove: ["select2d", "lasso2d", "autoScale2d", "toggleSpikelines"] };
 
 
@@ -102,8 +104,31 @@
     const n = parseInt(m[1], 16);
     return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
   }
+  const plainText = v => String(v ?? "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+  // turn a vertical graph sideways: swap X/Y of every trace, shape and label, and list categories top to bottom
+  function flipLayout(data, layout) {
+    data.forEach(t => {
+      [t.x, t.y] = [t.y, t.x];
+      if (t.error_y) { t.error_x = t.error_y; delete t.error_y; }
+      if (t.type === "bar" || t.type === "box" || t.type === "violin") t.orientation = "h";
+      if (t.marker && t.marker.symbol === "line-ew") t.marker.symbol = "line-ns";
+    });
+    [layout.xaxis, layout.yaxis] = [layout.yaxis || {}, layout.xaxis || {}];
+    if (layout.yaxis.tickvals && Array.isArray(layout.yaxis.range)) layout.yaxis.range = [...layout.yaxis.range].reverse();
+    else if (layout.yaxis.tickvals || layout.yaxis.type === "category" || !layout.yaxis.type) layout.yaxis.autorange = layout.yaxis.range ? undefined : "reversed";
+    (layout.shapes || []).forEach(sh => {
+      if (sh.path) sh.path = sh.path.replace(/([MLHVZ])\s*(-?[\d.eE+-]+)\s+(-?[\d.eE+-]+)/g, "$1 $3 $2");
+      [sh.x0, sh.y0, sh.x1, sh.y1, sh.xref, sh.yref] = [sh.y0, sh.x0, sh.y1, sh.x1, sh.yref, sh.xref];
+    });
+    (layout.annotations || []).forEach(a => {
+      if (a.xref === "paper" || a.yref === "paper") return;
+      [a.x, a.y] = [a.y, a.x];
+      if (a.yanchor === "bottom") { delete a.yanchor; a.xanchor = "left"; a.xshift = 3; }
+    });
+  }
   function applyStyle(data, layout, g) {
     if (!g) return;
+    if (g.horizontal && layout.meta === "flippable") flipLayout(data, layout);
     const ls = Number(g.lineScale) || 1, family = `${g.fontFamily || "Arial"}, Helvetica, Arial, sans-serif`;
     layout.font = { ...(layout.font || {}), family, color: g.textColor || "#1b2130" };
     if (layout.title && layout.title.font) layout.title.font.family = family;
@@ -124,6 +149,17 @@
     if (pos && layout.showlegend) layout.legend = { ...(layout.legend || {}), ...pos, bgcolor: "rgba(255,255,255,0)" };
     if (g.legendPos === "outside" && layout.showlegend) layout.margin = { ...(layout.margin || {}), r: 130 };
     if (g.legendPos === "hide" || g.legend === "hide") layout.showlegend = false;
+    if (g.legendXY && layout.showlegend) layout.legend = { ...(layout.legend || {}), ...g.legendXY };
+    // text edited directly on the graph
+    Object.entries(g.axisText || {}).forEach(([k, v]) => { if (layout[k]) layout[k].title = { ...(typeof layout[k].title === "object" ? layout[k].title : {}), text: esc(v) }; });
+    data.forEach(t => {
+      if (t.name == null) return;
+      if (t.meta == null) t.meta = plainText(t.name);
+      const nn = (g.legendNames || {})[t.meta];
+      if (nn != null) t.name = esc(nn);
+    });
+    layout.annotations = [...(layout.annotations || []), ...(g.notes || []).map(n => ({ text: esc(n.text || " "), x: n.x ?? 0.5, y: n.y ?? 0.95,
+      xref: "paper", yref: "paper", showarrow: false, font: { size: Number(n.size) || (Number(g.fontSize) || 13) } }))];
     (layout.shapes || []).forEach(sh => { if (sh.line && sh.line.width) sh.line.width *= ls; });
     let barIdx = 0;
     data.forEach(t => {
@@ -151,8 +187,47 @@
     });
   }
   function styledReact(el, data, layout, config) {
-    applyStyle(data, layout, styleCtx);
-    return Plotly.react(el, data, layout, config);
+    const g = styleCtx;
+    applyStyle(data, layout, g);
+    el._ehG = g;
+    el._ehNote0 = (layout.annotations || []).length - ((g && g.notes) || []).length;
+    const p = Plotly.react(el, data, layout, config);
+    Promise.resolve(p).then(() => wireGraphEdits(el));
+    return p;
+  }
+  // keep edits made directly on the graph (titles, legend text/position, text labels)
+  function wireGraphEdits(el) {
+    // Plotly can rebuild the plot (dropping listeners), so re-attach after every draw
+    if (!el.on) return;
+    if (el._ehHandlers && el.removeListener) { el.removeListener("plotly_relayout", el._ehHandlers[0]); el.removeListener("plotly_restyle", el._ehHandlers[1]); }
+    const done = () => { save(); if (el.id === "plot" && !$("graph-format").hidden) renderFormat(); };
+    const onRelayout = ev => {
+      const g = el._ehG; if (!g || !ev) return;
+      let changed = false;
+      Object.entries(ev).forEach(([k, v]) => {
+        if (k === "title.text") { g.title = plainText(v); changed = true; return; }
+        let m = /^([xy]axis\d*)\.title\.text$/.exec(k);
+        if (m) { g.axisText = { ...(g.axisText || {}), [m[1]]: plainText(v) }; changed = true; return; }
+        if (k === "legend.x" || k === "legend.y") { g.legendXY = { ...(g.legendXY || {}), [k.slice(7)]: v }; changed = true; return; }
+        m = /^annotations\[(\d+)\]\.(text|x|y)$/.exec(k);
+        if (m) {
+          const i = Number(m[1]) - el._ehNote0;
+          if (g.notes && i >= 0 && g.notes[i]) { g.notes[i][m[2]] = m[2] === "text" ? plainText(v) : v; changed = true; }
+        }
+      });
+      if (changed) done();
+    };
+    const onRestyle = ev => {
+      const g = el._ehG; if (!g || !ev || !ev[0] || !("name" in ev[0])) return;
+      const names = ev[0].name, idx = ev[1] || [];
+      idx.forEach((ti, n) => {
+        const t = el.data[ti]; if (!t) return;
+        g.legendNames = { ...(g.legendNames || {}), [t.meta ?? ""]: plainText(Array.isArray(names) ? names[n] : names) };
+      });
+      done();
+    };
+    el.on("plotly_relayout", onRelayout); el.on("plotly_restyle", onRestyle);
+    el._ehHandlers = [onRelayout, onRestyle];
   }
 
   // ======================================================================
@@ -247,7 +322,7 @@
           ...(s.options.design === "repeated" ? [["lines", "Before-after (connect subjects)"]] : [])]),
         sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
         sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]),
-        txt("ylabel", "Y axis label"), chk("showPoints", "Show points"),
+        txt("ylabel", "Y axis label"), chk("showPoints", "Show points"), chk("horizontal", "Horizontal (sideways)"),
       ],
       renderResults: (r, s) => r.kind === "freq" ? renderFreq(r) : r.kind === "describe" ? renderColStats(r) : renderGroupResults(r, s),
       draw: drawGroups,
@@ -281,7 +356,7 @@
       graphControls: () => [
         sel("style", "Style", [["bars", "Bars"], ["dots", "Mean only"]]),
         sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
-        sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]), txt("ylabel", "Y axis label"),
+        sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]), txt("ylabel", "Y axis label"), chk("horizontal", "Horizontal (sideways)"),
       ],
       renderResults: (r, s) => renderGroupResults(r, s) + `<p class="note">Computed from summary data (mean, ${s.options.err === "sem" ? "SEM" : "SD"}, n).</p>`,
       draw: drawGroups,
@@ -322,10 +397,10 @@
           <label class="check"><input type="checkbox" data-opt="rm" ${s.options.rm ? "checked" : ""}> Same subjects measured at every row (repeated measures, e.g. a time course)</label>
           ${s.options.rm ? `<p class="hint">Enter each subject in the same position under every row name: the 1st value under each time point in a column is subject 1, the 2nd is subject 2, and so on. Subjects missing a time point are left out.</p>` : ""}${alphaSelect(s)}`),
       graphControls: () => [
-        sel("style", "Style", [["bars", "Bars + dots"], ["dots", "Dots + mean"], ["lines", "Interaction plot (means)"]]),
+        sel("style", "Style", [["bars", "Bars + dots"], ["stacked", "Stacked bars (means)"], ["dots", "Dots + mean"], ["lines", "Interaction plot (means)"]]),
         sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
         sel("brackets", "Significance", [["sig", "Significant pairs"], ["all", "All pairs"], ["none", "Hide"]]),
-        txt("ylabel", "Y axis label"), chk("showPoints", "Show points"),
+        txt("ylabel", "Y axis label"), chk("showPoints", "Show points"), chk("horizontal", "Horizontal (sideways)"),
       ],
       renderResults: (r, s) => r.test_name === "Multiple t tests" ? renderMultiT(r) : renderTwoWayResults(r, s),
       draw: (el, r, s) => r.test_name === "Multiple t tests" ? drawVolcano(el, r, s) : drawTwoWay(el, r, s),
@@ -554,7 +629,7 @@
           cols: s.cols.slice(1).map((c, j) => c || `Outcome ${j + 1}`), alpha: s.options.alpha }];
       },
       renderOptions: s => `<p class="hint">2×2 tables: Fisher's exact test, odds ratio and relative risk. Larger tables: chi-square test.</p>${alphaSelect(s)}`,
-      graphControls: () => [sel("mode", "Show", [["pct", "Percent of each row"], ["count", "Counts"]]), txt("ylabel", "Y axis label")],
+      graphControls: () => [sel("mode", "Show", [["pct", "Percent of each row"], ["count", "Counts"]]), txt("ylabel", "Y axis label"), chk("stack", "Stacked bars"), chk("horizontal", "Horizontal (sideways)")],
       renderResults: renderContingencyResults,
       draw: drawContingency,
     },
@@ -1330,6 +1405,7 @@
       head("Axes & background"), rng("axisWidth", "Axis thickness", 0.5, 4, 0.25), sel("tickDir", "Ticks", [["outside", "Outside"], ["inside", "Inside"], ["none", "None"]]),
       rng("tickLen", "Tick length", 0, 12), chk("grid", "Gridlines"), sel("bg", "Background", [["white", "White"], ["transparent", "Transparent (for figures)"], ["light", "Light gray plot area"]]),
       sel("legendPos", "Legend", [["auto", "Automatic"], ["tr", "Top right (inside)"], ["tl", "Top left (inside)"], ["outside", "Right (outside)"], ["top", "Above graph"], ["bottom", "Below graph"], ["hide", "Hide"]]),
+      head("Text labels"), { kind: "notes" },
       head("Export"), sel("exportSize", "Size", Object.entries(EXPORT_SIZES).map(([k, v]) => [k, v[2]])),
       sel("exportDpi", "Resolution (PNG/TIFF)", [["150", "150 DPI (screen)"], ["300", "300 DPI (print)"], ["600", "600 DPI (high)"]])];
     $("graph-format").innerHTML = ctrls.map(c => {
@@ -1338,6 +1414,9 @@
       if (c.kind === "check") return `<label class="check"><input type="checkbox" data-g="${c.k}" ${v ? "checked" : ""}> ${c.label}</label>`;
       if (c.kind === "range") return `<label>${c.label} <span class="rv">${v}</span><input type="range" data-g="${c.k}" min="${c.min}" max="${c.max}" step="${c.step || 1}" value="${v}"></label>`;
       if (c.kind === "head") return `<div class="fhead">${c.label}</div>`;
+      if (c.kind === "notes") return `<div class="wide notes"><p class="hint">Tip: click any title, axis title, legend entry or label on the graph to edit it; drag the legend or a label to move it.</p>
+        ${(g.notes || []).map((n, i) => `<div class="note-row"><input type="text" data-note="${i}" value="${esc(n.text || "")}" placeholder="Label text"><input type="number" data-note-size="${i}" value="${esc(n.size ?? "")}" placeholder="size" min="6" max="48"><button class="icon" data-note-del="${i}" title="Remove this label">✕</button></div>`).join("")}
+        <div class="row"><button class="ghost small" id="btn-add-note">+ Add text label</button>${g.axisText || g.legendNames || g.legendXY ? `<button class="ghost small" id="btn-reset-edits" title="Undo text and legend edits made on the graph">Reset graph edits</button>` : ""}</div></div>`;
       if (c.kind === "color") return `<label>${c.label}<input type="color" data-g="${c.k}" value="${toHex(v)}"></label>`;
       return `<label>${c.label}<input type="text" data-g="${c.k}" value="${esc(v ?? "")}" placeholder="${esc(c.ph || "")}"></label>`;
     }).join("") + (!seriesNames(s).length ? "" : `<div class="wide colors"><span>Series colors</span>${seriesNames(s).map((n, i) =>
@@ -1347,11 +1426,21 @@
       el.oninput = () => { g.colors = { ...(g.colors || {}), [el.dataset.color]: el.value }; save(); drawPlot(); };
       el.onchange = () => renderFormat();
     });
+    const fmtBox = $("graph-format");
+    const an = $("btn-add-note");
+    if (an) an.onclick = () => { g.notes = [...(g.notes || []), { text: "Label", x: 0.5, y: 0.95 }]; save(); renderFormat(); drawPlot(); };
+    const re = $("btn-reset-edits");
+    if (re) re.onclick = () => { delete g.axisText; delete g.legendNames; delete g.legendXY; save(); renderFormat(); drawPlot(); };
+    fmtBox.querySelectorAll("[data-note]").forEach(el => el.oninput = () => { g.notes[+el.dataset.note].text = el.value; save(); drawPlot(); });
+    fmtBox.querySelectorAll("[data-note-size]").forEach(el => el.oninput = () => { g.notes[+el.dataset.noteSize].size = el.value; save(); drawPlot(); });
+    fmtBox.querySelectorAll("[data-note-del]").forEach(el => el.onclick = () => { g.notes.splice(+el.dataset.noteDel, 1); save(); renderFormat(); drawPlot(); });
     const rc = $("btn-reset-colors");
     if (rc) rc.onclick = () => { g.colors = {}; save(); renderFormat(); drawPlot(); };
     $("graph-format").querySelectorAll("[data-g]").forEach(el => {
       el.oninput = el.onchange = () => {
         g[el.dataset.g] = el.type === "checkbox" ? el.checked : el.type === "range" ? Number(el.value) : el.value;
+        if (/label$/.test(el.dataset.g)) delete g.axisText;   // a typed axis label replaces one edited on the graph
+        if (el.dataset.g === "legendPos") delete g.legendXY;
         if (el.type === "range") el.previousElementSibling.textContent = el.value;
         save(); drawPlot();
       };
@@ -1739,6 +1828,16 @@
   function drawTwoWay(el, r, s) {
     const g = s.graph, traces = [], shapes = [], annotations = [];
     const nr = r.rows.length, nc = r.cols.length;
+    if (g.style === "stacked") {
+      r.cols.forEach((name, j) => {
+        const col = color(g, j, name), cells = r.rows.map((_, i) => r.cells.find(c => c.i === i && c.j === j));
+        traces.push({ type: "bar", name: esc(name), x: r.rows.map((_, i) => i), y: cells.map(c => c ? c.mean : 0), width: 0.6, showlegend: true,
+          marker: { color: col + "99", line: { color: col, width: 1.5 } }, hovertemplate: `${esc(name)}: mean %{y:.4g}<extra></extra>` });
+      });
+      return styledReact(el, traces, { ...baseLayout(g), barmode: "stack", showlegend: true, meta: "flippable", legend: { orientation: "h", y: 1.1, x: 0, traceorder: "normal" },
+        xaxis: axis(g, { tickvals: r.rows.map((_, i) => i), ticktext: r.rows.map(esc), range: [-0.6, nr - 0.4], title: { text: esc(s.cols[0] || "") } }),
+        yaxis: yAxis(g, g.ylabel, { rangemode: "tozero" }) }, PLOT_CONFIG);
+    }
     const width = 0.8, step = width / nc;
     const pos = (i, j) => i - width / 2 + step * (j + 0.5);
     let ymax = -Infinity, ymin = Infinity;
@@ -1782,7 +1881,7 @@
       topExtra = Math.max(topExtra, height + span * 0.04);
     }
     const lo = g.style === "bars" ? Math.min(0, ymin) : ymin - span * 0.08;
-    styledReact(el, traces, { ...baseLayout(g), shapes, annotations, showlegend: true, barmode: "overlay",
+    styledReact(el, traces, { ...baseLayout(g), shapes, annotations, showlegend: true, barmode: "overlay", meta: "flippable",
       legend: { orientation: "h", y: 1.1, x: 0 },
       xaxis: axis(g, { tickvals: r.rows.map((_, i) => i), ticktext: r.rows.map(esc), range: [-0.6, nr - 0.4], title: { text: esc(s.cols[0] || "") } }),
       yaxis: yAxis(g, g.ylabel, { range: [lo, ymax + topExtra] }) }, PLOT_CONFIG);
@@ -2291,7 +2390,7 @@
       topExtra = Math.max(topExtra, height + span * 0.04);
     }
     const lo = g.style === "bars" ? Math.min(0, ymin) : ymin - span * 0.08;
-    styledReact(el, traces, { ...baseLayout(g), shapes, annotations,
+    styledReact(el, traces, { ...baseLayout(g), shapes, annotations, meta: "flippable",
       xaxis: axis(g, { tickvals: groups.map((_, i) => i), ticktext: r.groups.map(x => esc(x.name)), range: [-0.6, groups.length - 0.4] }),
       yaxis: yAxis(g, g.ylabel, { range: [lo, ymax + topExtra] }) }, PLOT_CONFIG);
   }
@@ -2377,7 +2476,7 @@
       y: r.table.map((row, i) => g.mode === "count" ? row[j] : r.row_pct[i][j]),
       marker: { color: color(g, j, c), line: { color: "#1b2130", width: 0.8 } },
       hovertemplate: `${esc(c)}: %{y:.3g}${g.mode === "count" ? "" : "%"}<extra></extra>` }));
-    styledReact(el, traces, { ...baseLayout(g), barmode: "group", bargap: 0.3, showlegend: true,
+    styledReact(el, traces, { ...baseLayout(g), barmode: g.stack ? "stack" : "group", bargap: 0.3, showlegend: true, meta: "flippable",
       legend: { orientation: "h", y: 1.08, x: 0 },
       xaxis: axis(g), yaxis: yAxis(g, g.ylabel || (g.mode === "count" ? "Count" : "Percent of row")) }, PLOT_CONFIG);
   }

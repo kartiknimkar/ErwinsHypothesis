@@ -151,6 +151,13 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
       graph, removed-points table, paper text; 118 tests
 - [x] Violin plots (with inner box, mean line and points) for Compare groups
 
+## Phase 0.33: Graph extras (done 2026-11-06)
+- [x] Horizontal (sideways) graphs for Compare groups, summary data, grouped and contingency graphs (flipLayout in app.js)
+- [x] Stacked bars (grouped means; contingency tables)
+- [x] Edit on the graph: click titles, axis titles, legend entries to retype; drag legend; edits saved per graph
+      (g.axisText, g.legendNames, g.legendXY) with "Reset graph edits"
+- [x] Free text labels (g.notes, paper coordinates, draggable, size); 119 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
