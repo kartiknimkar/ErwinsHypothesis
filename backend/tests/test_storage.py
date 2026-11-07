@@ -105,3 +105,16 @@ def test_prefs_saved_in_projects_folder(client):
     assert c.put("/api/prefs", json={"theme": "dark"}).json() == {"theme": "dark"}
     assert c.get("/api/prefs").json()["theme"] == "dark"
     assert (home / "projects" / ".prefs.json").exists()
+
+
+def test_workbook_export(client):
+    import openpyxl
+    c, home = client
+    an = [{"title": "Two groups: t test", "results": [["P value", "0.01"]], "data_cols": ["A", "B"], "data_rows": [["1", "2"]]},
+          {"title": "Two groups: t test", "results": [["x"]], "data_cols": [], "data_rows": []},
+          {"title": "a/b*c?" * 10, "results": [], "data_cols": [], "data_rows": []}]
+    r = c.post("/api/exports/workbook", json={"filename": "P - all", "analyses": an}).json()
+    wb = openpyxl.load_workbook(home / "exports" / r["file"])
+    assert len(wb.sheetnames) == 3 and len(set(n.lower() for n in wb.sheetnames)) == 3
+    ws = wb[wb.sheetnames[0]]
+    assert ws["B3"].value == 0.01 and any(row[0].value == "DATA" for row in ws.iter_rows())

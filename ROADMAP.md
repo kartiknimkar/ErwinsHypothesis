@@ -263,6 +263,9 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] "Report" button: one self-contained HTML file in exports with every analysis (inline editable SVG graph,
       results tables, text for your paper); 178 tests
 
+## Phase 0.59: All analyses to Excel (done 2026-11-07)
+- [x] "All to Excel": one workbook, one sheet per analysis (results, then the data); unique, valid sheet names; 180 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

@@ -3139,6 +3139,29 @@
     } catch (e) { toast(esc(e.message || "The report couldn't be built.")); }
     finally { holder.remove(); btn.disabled = false; btn.textContent = label; drawPlot(); }
   }
+  async function exportWorkbook() {
+    const btn = $("btn-workbook"), label = btn.textContent;
+    btn.disabled = true; btn.textContent = "Exporting…";
+    try {
+      const analyses = [];
+      for (const sh0 of project.sheets) {
+        const sh = masked(sh0), t = TYPES[sh.type];
+        if (!t || t.runCustom) continue;
+        let rows = [];
+        try {
+          const [url, body] = t.request(sh);
+          const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          const json = await res.json();
+          if (res.ok) { const box = document.createElement("div"); box.innerHTML = t.renderResults(json, sh); rows = resultsRows(box); }
+          else rows = [[json.detail || "Not enough data."]];
+        } catch { rows = [["Couldn't run this analysis."]]; }
+        analyses.push({ title: sh0.title, results: rows.map(r => r.map(String)), data_cols: t.noData ? [] : sh0.cols.map(String), data_rows: t.noData ? [] : sh0.data.map(r => r.map(String)) });
+      }
+      const res = await api("/api/exports/workbook", { method: "POST", body: JSON.stringify({ filename: `${projectName} - all analyses`, analyses }) });
+      toast(`Saved <b>${esc(res.file)}</b> (one sheet per analysis) to the exports folder`, "exports");
+    } catch (e) { toast(esc(e.message || "Export failed.")); }
+    finally { btn.disabled = false; btn.textContent = label; }
+  }
   async function exportPlot(format, convert) {
     if (!lastResult) { toast("Add some data first, then export the graph."); return; }
     if (active().type === "layout") return exportLayout(format === "png" ? (convert || "png") : null);
@@ -3156,9 +3179,9 @@
   // ======================================================================
   // copy results (tab-separated, pastes cleanly into Excel / Word)
   // ======================================================================
-  function resultsRows() {
+  function resultsRows(box = $("results")) {
     const rows = [];
-    $("results").querySelectorAll(".summary, .opt-label, table.res tr, .note").forEach(el => {
+    box.querySelectorAll(".summary, .opt-label, table.res tr, .note").forEach(el => {
       if (el.tagName === "TR") {
         const cells = [...el.children].map(td => td.textContent.trim());
         if (el.classList.contains("sec")) rows.push([], [cells[0].toUpperCase()]);
@@ -3353,6 +3376,7 @@
 
   $("btn-projects").onclick = showProjects;
   $("btn-report").onclick = exportReport;
+  $("btn-workbook").onclick = exportWorkbook;
   $("dlg-close").onclick = hideProjects;
   $("dialog-backdrop").onclick = e => { if (e.target.id === "dialog-backdrop") hideProjects(); };
   const doCreate = async () => {

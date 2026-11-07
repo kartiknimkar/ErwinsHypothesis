@@ -153,3 +153,29 @@ def test_project_report(server):  # noqa: F811
         assert not bad, [html[max(0, i - 150):i + 40] for i in bad[:3]]
         assert errors == [], errors
         browser.close()
+
+
+def test_all_to_excel(server):  # noqa: F811
+    import openpyxl
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        n = page.eval_on_selector_all("#sheet-list li .t", "els => els.filter(e => !/figure layout/i.test(e.textContent)).length")
+        exports = os.path.join(os.environ["EH_HOME"], "exports")
+        before = set(glob.glob(os.path.join(exports, "*all analyses*.xlsx")))
+        page.click("#btn-workbook")
+        page.wait_for_function("!document.getElementById('btn-workbook').disabled", timeout=120000)
+        page.wait_for_timeout(500)
+        new = set(glob.glob(os.path.join(exports, "*all analyses*.xlsx"))) - before
+        assert new
+        wb = openpyxl.load_workbook(new.pop())
+        assert len(wb.sheetnames) == n
+        assert errors == [], errors
+        browser.close()

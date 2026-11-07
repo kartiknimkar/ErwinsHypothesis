@@ -267,6 +267,54 @@ def save_results_xlsx(filename: str, title: str, results: list[list[str]], data_
     return path.name
 
 
+def save_workbook(filename: str, analyses: list[dict]) -> str:
+    """Every analysis of a project in one .xlsx: one sheet per analysis (results, then the data)."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill
+
+    if not analyses:
+        raise ValueError("No analyses to export.")
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    head = PatternFill("solid", fgColor="E9EEFD")
+    used = set()
+    for a in analyses:
+        name = re.sub(r"[\[\]:*?/\\]", "", str(a.get("title") or "Analysis"))[:28].strip() or "Analysis"
+        base, k = name, 2
+        while name.lower() in used:
+            name = f"{base[:25]} ({k})"; k += 1
+        used.add(name.lower())
+        ws = wb.create_sheet(name)
+        ws.append([a.get("title") or name]); ws["A1"].font = Font(bold=True, size=14)
+        ws.append([])
+        for row in a.get("results") or []:
+            ws.append([_number_or_text(c) for c in row])
+            if len(row) == 1 and row[0]:
+                ws.cell(ws.max_row, 1).font = Font(bold=True)
+                if str(row[0]).isupper():
+                    ws.cell(ws.max_row, 1).fill = head
+        if a.get("data_cols"):
+            ws.append([]); ws.append(["DATA"]); ws.cell(ws.max_row, 1).font = Font(bold=True); ws.cell(ws.max_row, 1).fill = head
+            ws.append(list(a["data_cols"]))
+            for c in ws[ws.max_row]:
+                c.font = Font(bold=True)
+            for row in a.get("data_rows") or []:
+                if any(str(v).strip() for v in row):
+                    ws.append([_number_or_text(v) if str(v).strip() else None for v in row])
+        ws.column_dimensions["A"].width = 40
+        for col in "BCDEFGHIJ":
+            ws.column_dimensions[col].width = 16
+    base = safe_name(filename, "project")
+    d = exports_dir()
+    path = d / f"{base}.xlsx"
+    i = 2
+    while path.exists():
+        path = d / f"{base} ({i}).xlsx"
+        i += 1
+    wb.save(_inside(path, d))
+    return path.name
+
+
 def _prefs_path() -> Path:
     return projects_dir() / ".prefs.json"
 
