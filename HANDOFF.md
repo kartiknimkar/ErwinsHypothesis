@@ -35,6 +35,7 @@ Every session starts by reading it and ends by updating it (then committing).
 - User's Windows Python 3.13 got NO ready-made wheels from pip (tried to compile SciPy → needs Fortran → failed).
   Fix: installs use `--only-binary :all:`; if that fails with system Python, launcher falls back to
   private uv Python 3.12. TEMP/TMP (TMPDIR on Mac) point to `runtime/tmp` (pip used AppData\Temp before).
+- Commit only after checking the pytest summary line says no 'failed' (a piped `| tail` hides the exit code).
 - Never use `--quiet` for installs: user thought it was frozen. Always show progress.
 - `run.bat` must keep CRLF line endings (`.gitattributes`: `*.bat -text`, file committed as CRLF).
   After editing it on Linux, convert: `sed -i 's/\r$//; s/$/\r/' run.bat`.
