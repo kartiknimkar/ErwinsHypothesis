@@ -62,3 +62,24 @@ def test_posthoc_choices(server):  # noqa: F811
         page.wait_for_function("document.querySelector('#results').textContent.includes('Holm')", timeout=10000)
         assert errors == [], errors
         browser.close()
+
+
+def test_twoway_comparison_choices(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('two-way AN')")
+        page.wait_for_selector("#opt-twcmp")
+        for v, word in (("within_cols", "rows within each column"), ("col_means", "column means"), ("row_means", "row means"), ("within_rows", "columns within each row")):
+            page.select_option("#opt-twcmp", v)
+            page.wait_for_function(f"document.querySelector('#results').textContent.includes({word!r})", timeout=10000)
+            assert page.query_selector("#plot .main-svg") is not None
+        assert errors == [], errors
+        browser.close()

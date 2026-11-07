@@ -465,14 +465,16 @@
         const body = { rows: s.data.map(r => String(r[0] || "").trim()), columns: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
           names: s.cols.slice(1).map((c, j) => c || `Group ${letter(j)}`), alpha: s.options.alpha };
         if (s.options.analysis === "multit") return ["/api/multit", { ...body, kind: s.options.mtKind || "welch", q: s.options.q || 0.05 }];
-        return ["/api/twoway", { ...body, rm: !!s.options.rm }];
+        return ["/api/twoway", { ...body, rm: !!s.options.rm, compare: s.options.twCompare || "within_rows" }];
       },
       renderOptions: s => `<div class="seg"><button data-set="analysis:anova" class="${s.options.analysis !== "multit" ? "on" : ""}">Two-way ANOVA</button><button data-set="analysis:multit" class="${s.options.analysis === "multit" ? "on" : ""}">Multiple t tests (one per row name)</button></div>` +
         (s.options.analysis === "multit" ? `<p class="hint">One t test for each row name (e.g. each gene or protein), comparing the two columns. Rows with the same name are replicates. P values are corrected for the number of tests with the false discovery rate (Benjamini-Hochberg).</p>
           <div class="row"><label>Test</label><select id="opt-mtkind">${[["welch", "Welch's t test"], ["unpaired", "Unpaired t test"], ["mannwhitney", "Mann-Whitney"]].map(([v, l]) => `<option value="${v}" ${(s.options.mtKind || "welch") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
           <label>FDR (Q)</label><select id="opt-q">${[0.01, 0.05, 0.1].map(v => `<option ${(s.options.q || 0.05) === v ? "selected" : ""}>${v}</option>`).join("")}</select></div>` : `<p class="hint">Tests whether the <b>column factor</b> (${esc(s.cols.slice(1).join(", "))}) matters, whether the <b>row factor</b> (${esc(s.cols[0])}) matters, and whether they <b>interact</b> (the treatment effect differs between rows). Then compares the columns within each row.</p>
           <label class="check"><input type="checkbox" data-opt="rm" ${s.options.rm ? "checked" : ""}> Same subjects measured at every row (repeated measures, e.g. a time course)</label>
-          ${s.options.rm ? `<p class="hint">Enter each subject in the same position under every row name: the 1st value under each time point in a column is subject 1, the 2nd is subject 2, and so on. Subjects missing a time point are left out.</p>` : ""}${alphaSelect(s)}`),
+          ${s.options.rm ? `<p class="hint">Enter each subject in the same position under every row name: the 1st value under each time point in a column is subject 1, the 2nd is subject 2, and so on. Subjects missing a time point are left out.</p>`
+            : `<div class="row"><label for="opt-twcmp">Multiple comparisons</label><select id="opt-twcmp">${[["within_rows", `Compare columns within each ${esc(s.cols[0] || "row")}`], ["within_cols", `Compare ${esc(s.cols[0] || "row")} levels within each column`],
+              ["col_means", "Compare column means (main effect)"], ["row_means", `Compare ${esc(s.cols[0] || "row")} means (main effect)`]].map(([v, l]) => `<option value="${v}" ${(s.options.twCompare || "within_rows") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>`}${alphaSelect(s)}`),
       graphControls: () => [
         sel("style", "Style", [["bars", "Bars + dots"], ["stacked", "Stacked bars (means)"], ["dots", "Dots + mean"], ["lines", "Interaction plot (means)"]]),
         sel("err", "Error bars", [["sd", "Mean ± SD"], ["sem", "Mean ± SEM"], ["ci95", "Mean ± 95% CI"], ["none", "None"]]),
@@ -1447,6 +1449,7 @@
       if (s.options.compareTo === "all" && ph === "dunnett") s.options.posthoc = "tukey";
       save(); renderOptions(); scheduleRun();
     };
+    const tw = $("opt-twcmp"); if (tw) tw.onchange = e => { s.options.twCompare = e.target.value; save(); scheduleRun(); };
     const ph = $("opt-posthoc"); if (ph) ph.onchange = e => { s.options.posthoc = e.target.value; save(); scheduleRun(); };
     const om = $("opt-outmethod"); if (om) om.onchange = e => { s.options.outlierMethod = e.target.value; save(); renderOptions(); scheduleRun(); };
     const rq = $("opt-routq"); if (rq) rq.onchange = e => { s.options.routQ = e.target.value; save(); scheduleRun(); };
@@ -1666,7 +1669,7 @@
       const t = Object.fromEntries(r.table.map(x => [x.source, x]));
       const rowF = esc(s.cols[0] || "row factor");
       const f = x => `F(${x.df}, ${x.dfd ?? t.Residual.df}) = ${r2(x.F)}, ${apaP(x.p)}`;
-      return { methods: `Data were analyzed by ${r.rm ? `two-way repeated-measures (mixed) ANOVA with ${rowF} as the within-subject factor and the Geisser-Greenhouse correction` : "two-way ANOVA"}, followed by ${esc(r.posthoc_name.split(" (")[0])} comparing groups at each level of ${rowF}. Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+      return { methods: `Data were analyzed by ${r.rm ? `two-way repeated-measures (mixed) ANOVA with ${rowF} as the within-subject factor and the Geisser-Greenhouse correction` : "two-way ANOVA"}, followed by ${esc(r.posthoc_name.split(" (")[0])} ${{ within_cols: `comparing levels of ${rowF} within each group`, col_means: "comparing group means averaged over " + rowF, row_means: `comparing ${rowF} means averaged over groups` }[r.compare] || `comparing groups at each level of ${rowF}`}. Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
         results: `There was ${t.Interaction.p < r.alpha ? "a significant" : "no significant"} interaction between group and ${rowF} (${f(t.Interaction)}). The main effect of group was ${t["Column factor"].p < r.alpha ? "" : "not "}significant (${f(t["Column factor"])}), and the main effect of ${rowF} was ${t["Row factor"].p < r.alpha ? "" : "not "}significant (${f(t["Row factor"])}).` };
     }
     if (s.type === "regression" && r.multi) {
@@ -1970,7 +1973,9 @@
     if (r.rm) h += `<p class="note">Repeated measures: ${r.n_subjects} subjects (${r.subjects_per_group.map((n, i) => `${esc(r.cols[i])}: ${n}`).join(", ")}). Row factor and interaction P values use the Geisser-Greenhouse correction (ε = ${fmt(r.epsilon, 3)}); the column factor is tested against variation between subjects.</p>`;
     h += T.multi(["ANOVA table", "SS", "DF", "MS"], r.table.map(x => [x.source === "Row factor" ? rowF : x.source, fmt(x.SS), x.df, fmt(x.MS)]));
     h += `<div class="opt-label" style="margin-top:10px">${esc(r.posthoc_name)}</div>`;
-    h += T.multi([rowF, "Comparison", "Mean diff.", `${pct}% CI`, "Adj. P", ""], r.comparisons.map(c => ({ cls: c.significant ? "hl" : "",
+    const famHead = { within_cols: "Column", col_means: "", row_means: "" }[r.compare] ?? rowF;
+    if (r.compare === "col_means" || r.compare === "row_means") h += `<p class="note">Main-effect comparisons use the unweighted means of the cell means (as Prism does), so every ${r.compare === "col_means" ? "row" : "column"} counts equally. ${r.table.find(x => x.source === "Interaction").p < r.alpha ? "⚠︎ The interaction is significant, so main effects can be misleading; look at the comparisons within each row or column too." : ""}</p>`;
+    h += T.multi([famHead, "Comparison", "Mean diff.", `${pct}% CI`, "Adj. P", ""], r.comparisons.map(c => ({ cls: c.significant ? "hl" : "",
       cells: [esc(c.row), `${esc(c.a)} vs ${esc(c.b)}`, fmt(c.diff), ci(c.ci_low, c.ci_high), pOnly(c.p), st(c.stars)] })));
     h += `<div class="opt-label" style="margin-top:10px">Cell means</div>`;
     h += T.multi([rowF, ...r.cols.map(esc)], r.rows.map((rw, i) => [esc(rw), ...r.cols.map((_, j) => {
@@ -2051,7 +2056,8 @@
     const span = (ymax - Math.min(0, ymin)) || 1;
     let topExtra = span * 0.08;
     if (g.brackets !== "none" && g.style !== "lines") {
-      const show = r.comparisons.filter(c => g.brackets === "all" || c.significant).map(c => ({ i: pos(c.i, c.j1), j: pos(c.i, c.j2), stars: c.stars }));
+      const show = r.comparisons.filter(c => (g.brackets === "all" || c.significant) && (!c.kind || c.kind === "within_rows" || c.kind === "within_cols"))
+        .map(c => c.kind === "within_cols" ? { i: pos(c.i1, c.j), j: pos(c.i2, c.j), stars: c.stars } : { i: pos(c.i, c.j1), j: pos(c.i, c.j2), stars: c.stars });
       const { items, height } = bracketLayout(show, ymax, span);
       const tick = span * 0.02;
       items.forEach(p => {

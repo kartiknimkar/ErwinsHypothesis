@@ -174,6 +174,11 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
       Tukey, Dunnett, Holm-Šídák, Šídák, Bonferroni, Fisher's LSD; Kruskal-Wallis: Dunn's all pairs or vs control
 - [x] Dunnett = scipy.stats.dunnett (seeded integration); corrections match statsmodels multipletests; 132 tests
 
+## Phase 0.37: Two-way ANOVA comparison choices (done 2026-11-06)
+- [x] Compare columns within each row (default), rows within each column, column means or row means (main effects,
+      unweighted marginal means); Šídák for 2 levels, Tukey for 3+; brackets for within-row/column families
+- [x] 2-level main-effect comparison reproduces the Type III F test (balanced and unbalanced); 136 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

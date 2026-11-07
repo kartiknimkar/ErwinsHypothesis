@@ -39,7 +39,57 @@ def _rss(X, y):
     return float(r @ r)
 
 
-def two_way(row_labels, columns, col_names, alpha: float = 0.05) -> dict:
+def _family(pairs_by_group, k, ms_res, df_res, alpha):
+    """pairs_by_group: [(label, [(name_a, name_b, diff, se, meta), ...])]. With 2 levels (one pair per group)
+    Šídák corrects across all groups; with 3+ levels Tukey corrects within each group."""
+    conf = 1 - alpha
+    out = []
+    if k == 2:
+        m = len(pairs_by_group)
+        tcrit = stats.t.ppf(1 - (1 - conf ** (1 / m)) / 2, df_res)
+    else:
+        qcrit = stats.studentized_range.ppf(conf, k, df_res)
+    for label, pairs in pairs_by_group:
+        for na, nb, diff, se, meta in pairs:
+            if k == 2:
+                p = 1 - (1 - 2 * stats.t.sf(abs(diff) / se, df_res)) ** m
+                half = tcrit * se
+            else:
+                p = float(stats.studentized_range.sf(abs(diff) / (se / math.sqrt(2)), k, df_res))
+                half = qcrit * se / math.sqrt(2)
+            p = float(min(1.0, max(0.0, p)))
+            out.append({"row": label, "a": na, "b": nb, "diff": float(diff), "ci_low": float(diff - half), "ci_high": float(diff + half),
+                        "p": p, "stars": stars(p), "significant": p < alpha, **meta})
+    return out
+
+
+def _two_way_comparisons(compare, rows, names, mean, counts, ms_res, df_res, alpha):
+    """compare: within_rows (columns compared at each row: simple effects), within_cols (rows compared in each
+    column), col_means / row_means (main effects, using unweighted marginal means as Prism does)."""
+    a, b = len(rows), len(names)
+    tk = lambda k: "Šídák's" if k == 2 else "Tukey's"
+    if compare == "within_cols":
+        fam = [(names[j], [(rows[i1], rows[i2], mean[(i1, j)] - mean[(i2, j)], math.sqrt(ms_res * (1 / counts[i1, j] + 1 / counts[i2, j])),
+                            {"kind": "within_cols", "j": j, "i1": i1, "i2": i2}) for i1 in range(a) for i2 in range(i1 + 1, a)]) for j in range(b)]
+        return _family(fam, a, ms_res, df_res, alpha), f"{tk(a)} multiple comparisons (rows within each column)"
+    if compare == "col_means":
+        mm = [np.mean([mean[(i, j)] for i in range(a)]) for j in range(b)]
+        fam = [("All rows (main effect)", [(names[j1], names[j2], mm[j1] - mm[j2],
+                 math.sqrt(ms_res * sum(1 / counts[i, j1] + 1 / counts[i, j2] for i in range(a))) / a, {"kind": "col_means", "j1": j1, "j2": j2})
+                 for j1 in range(b) for j2 in range(j1 + 1, b)])]
+        return _family(fam, b, ms_res, df_res, alpha), f"{'Tukey' if b > 2 else 'Main effect'} comparisons of column means (averaged over rows)"
+    if compare == "row_means":
+        mm = [np.mean([mean[(i, j)] for j in range(b)]) for i in range(a)]
+        fam = [("All columns (main effect)", [(rows[i1], rows[i2], mm[i1] - mm[i2],
+                 math.sqrt(ms_res * sum(1 / counts[i1, j] + 1 / counts[i2, j] for j in range(b))) / b, {"kind": "row_means", "i1": i1, "i2": i2})
+                 for i1 in range(a) for i2 in range(i1 + 1, a)])]
+        return _family(fam, a, ms_res, df_res, alpha), f"{'Tukey' if a > 2 else 'Main effect'} comparisons of row means (averaged over columns)"
+    fam = [(rows[i], [(names[j1], names[j2], mean[(i, j1)] - mean[(i, j2)], math.sqrt(ms_res * (1 / counts[i, j1] + 1 / counts[i, j2])),
+                       {"kind": "within_rows", "i": i, "j1": j1, "j2": j2}) for j1 in range(b) for j2 in range(j1 + 1, b)]) for i in range(a)]
+    return _family(fam, b, ms_res, df_res, alpha), f"{tk(b)} multiple comparisons (columns within each row)"
+
+
+def two_way(row_labels, columns, col_names, alpha: float = 0.05, compare: str = "within_rows") -> dict:
     """row_labels: one label per data row (rows with the same label are replicates).
     columns: one list per column-factor level, aligned with row_labels."""
     obs = []
@@ -101,37 +151,10 @@ def two_way(row_labels, columns, col_names, alpha: float = 0.05) -> dict:
             cells.append(d)
     mean = {(c["i"], c["j"]): c["mean"] for c in cells}
 
-    # multiple comparisons: within each row, compare the columns
-    comps = []
-    pairs = [(j1, j2) for j1 in range(b) for j2 in range(j1 + 1, b)]
-    conf = 1 - alpha
-    if b == 2:
-        method = "Šídák's multiple comparisons (columns within each row)"
-        m = a
-        a_adj = 1 - conf ** (1 / m)
-        tcrit = stats.t.ppf(1 - a_adj / 2, df_res)
-    else:
-        method = "Tukey's multiple comparisons (columns within each row)"
-        qcrit = stats.studentized_range.ppf(conf, b, df_res)
-    for i in range(a):
-        for j1, j2 in pairs:
-            diff = mean[(i, j1)] - mean[(i, j2)]
-            se = math.sqrt(ms_res * (1 / counts[i, j1] + 1 / counts[i, j2]))
-            if b == 2:
-                p_raw = 2 * stats.t.sf(abs(diff) / se, df_res)
-                p = 1 - (1 - p_raw) ** m
-                half = tcrit * se
-            else:
-                q = abs(diff) / (se / math.sqrt(2))
-                p = float(stats.studentized_range.sf(q, b, df_res))
-                half = qcrit * se / math.sqrt(2)
-            p = float(min(1.0, max(0.0, p)))
-            comps.append({"row": rows[i], "a": names[j1], "b": names[j2], "i": i, "j1": j1, "j2": j2,
-                          "diff": diff, "ci_low": diff - half, "ci_high": diff + half, "p": p,
-                          "stars": stars(p), "significant": p < alpha})
+    comps, method = _two_way_comparisons(compare, rows, names, mean, counts, ms_res, df_res, alpha)
     inter = table[0]
     return {"test_name": "Two-way ANOVA", "rows": rows, "cols": names, "alpha": alpha,
-            "table": table, "cells": cells, "comparisons": comps, "posthoc_name": method,
+            "table": table, "cells": cells, "comparisons": comps, "posthoc_name": method, "compare": compare,
             "p": inter["p"], "n": N, "balanced": bool(np.all(counts == counts[0, 0]))}
 
 
