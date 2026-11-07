@@ -292,6 +292,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Logistic: Hosmer-Lemeshow test (10 groups), classification table at a chosen cutoff (sensitivity, specificity, PPV, NPV)
 - [x] Multiple linear: standardized β, residuals-vs-predicted plot; 188 tests
 
+## Phase 0.67: Undo everything (done 2026-11-07)
+- [x] Undo/redo also restores analysis options and graph Format settings (snapshots taken before any control
+      changes; quick successive changes form one step); 189 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

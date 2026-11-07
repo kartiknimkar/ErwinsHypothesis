@@ -35,6 +35,7 @@ Every session starts by reading it and ends by updating it (then committing).
 - User's Windows Python 3.13 got NO ready-made wheels from pip (tried to compile SciPy → needs Fortran → failed).
   Fix: installs use `--only-binary :all:`; if that fails with system Python, launcher falls back to
   private uv Python 3.12. TEMP/TMP (TMPDIR on Mac) point to `runtime/tmp` (pip used AppData\Temp before).
+- UI tests share one server: don't assume an example still has its default settings (earlier tests may change them).
 - Commit only after checking the pytest summary line says no 'failed' (a piped `| tail` hides the exit code).
 - Never use `--quiet` for installs: user thought it was frozen. Always show progress.
 - `run.bat` must keep CRLF line endings (`.gitattributes`: `*.bat -text`, file committed as CRLF).
@@ -59,7 +60,7 @@ Every session starts by reading it and ends by updating it (then committing).
 - Sizes measured: ~266 MB (system Python), ~410 MB (private Python).
 
 ## Current state
-- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 188 tests pass (incl. tests/test_ui_smoke.py: Playwright opens all 28 examples and walks every branch of the 'Help me choose' guide (GUIDE tree in app.js) and checks 'Text for your paper' (reportText in app.js); run it after UI changes). Multiple variables type also does multiple linear + logistic regression (multivar.py). 8 analysis types (+ nested): ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
+- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 189 tests pass (incl. tests/test_ui_smoke.py: Playwright opens all 28 examples and walks every branch of the 'Help me choose' guide (GUIDE tree in app.js) and checks 'Text for your paper' (reportText in app.js); run it after UI changes). Multiple variables type also does multiple linear + logistic regression (multivar.py). 8 analysis types (+ nested): ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
 - [x] User confirmed the app runs on their Windows PC (C: drive, private Python fallback)
 - [x] Interface rewritten around a TYPES registry in `static/app.js` (each type: data layout,
       options, request, results renderer, graph drawer, format controls). Add new modules there.
@@ -99,7 +100,7 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (z) Bland-Altman: percent difference and ratio options
 - [x] (aa) logistic regression: Hosmer-Lemeshow test, classification table at a chosen cutoff
 - [x] (ab) multiple linear regression: standardized coefficients, residual plot
-- [ ] (ac) undo/redo also covers graph Format and analysis option changes
+- [x] (ac) undo/redo also covers graph Format and analysis option changes
 - [ ] (ad) automatic project backups (last 5 versions in projects/.backups, restore from Projects dialog)
 
 ## Next step (suggested order; confirm with user)

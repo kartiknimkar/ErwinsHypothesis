@@ -976,7 +976,7 @@
   // ======================================================================
   const history = {};
   let groupOpen = false, groupTimer = null;
-  const snap = s => JSON.stringify({ cols: s.cols, data: s.data, excluded: s.excluded || [] });
+  const snap = s => JSON.stringify({ cols: s.cols, data: s.data, excluded: s.excluded || [], options: s.options, graph: s.graph });
   // ---- excluded values: kept in the table, left out of analyses and graphs
   const exKey = (r, c) => `${r}:${c}`;
   const isExcluded = (s, r, c) => !!(s.excluded && s.excluded.includes(exKey(r, c)));
@@ -1011,8 +1011,10 @@
     to.push(snap(s));
     const st = JSON.parse(from.pop());
     s.cols = st.cols; s.data = st.data; s.excluded = st.excluded || [];
+    if (st.options) s.options = st.options;
+    if (st.graph) s.graph = st.graph;
     groupOpen = false; selA = selB = null;
-    save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun(); updateUndoButtons();
+    save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun(); drawPlot(); updateUndoButtons();
   }
   function updateUndoButtons() {
     const h = hist(active());
@@ -3380,6 +3382,14 @@
     run();
   }
 
+  // analysis options and graph Format changes are undoable too: snapshot just before any control changes
+  // (capture phase runs before the control's own handler; quick successive changes form one undo step)
+  ["options", "graph-format"].forEach(id => {
+    const box = $(id);
+    box.addEventListener("input", () => recordUndo(), true);
+    box.addEventListener("change", () => recordUndo(), true);
+    box.addEventListener("click", e => { if (e.target.closest("button[data-set], button[data-design], #btn-add-note, [data-note-del], #btn-reset-edits, #btn-reset-colors")) recordUndo(true); }, true);
+  });
   const grid = $("grid");
   grid.addEventListener("input", onGridInput);
   grid.addEventListener("paste", onGridPaste);

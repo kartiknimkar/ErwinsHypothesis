@@ -280,3 +280,38 @@ def test_large_table_renders_in_chunks(server):  # noqa: F811
         assert "2,000" in page.inner_text("#results") or "2000" in page.inner_text("#results")
         assert errors == [], errors
         browser.close()
+
+
+def test_undo_covers_format_and_options(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('Example: two groups')")
+        page.wait_for_timeout(400)
+        if page.is_hidden("#graph-format"):
+            page.click("#btn-format")
+        orig = page.input_value('#graph-format [data-g="style"]')  # the server is shared, so earlier tests may have changed it
+        new = "box" if orig != "box" else "violin"
+        page.select_option('#graph-format [data-g="style"]', new)
+        page.wait_for_timeout(1600)  # let the undo group close
+        page.click('#options button[data-set="mode:describe"]')
+        page.wait_for_timeout(500)
+        assert "Describe" in page.inner_text("#options .seg button.on")
+        page.click("#btn-undo")
+        page.wait_for_timeout(400)
+        assert "Compare" in page.inner_text("#options .seg button.on")
+        page.click("#btn-undo")
+        page.wait_for_timeout(400)
+        assert page.input_value('#graph-format [data-g="style"]') == orig
+        page.click("#btn-redo")
+        page.wait_for_timeout(400)
+        assert page.input_value('#graph-format [data-g="style"]') == new
+        assert errors == [], errors
+        browser.close()
