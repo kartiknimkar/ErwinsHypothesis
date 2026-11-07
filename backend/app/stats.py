@@ -263,6 +263,27 @@ POSTHOC_NAMES = {"tukey": "Tukey's", "dunnett": "Dunnett's", "bonferroni": "Bonf
                  "holm": "Holm-Šídák", "lsd": "Fisher's LSD (uncorrected)"}
 
 
+def _smm_cdf(c: float, m: int, df: float) -> float:
+    """CDF of the studentized maximum modulus: P(max_i |Z_i| / S <= c) for m independent standard normals and
+    S = sqrt(chi²_df / df). Used by Dunnett's T3."""
+    from scipy import integrate
+    if c <= 0:
+        return 0.0
+    if df > 1e5:
+        return float((2 * stats.norm.cdf(c) - 1) ** m)
+    logc = 0.5 * df * math.log(df) - (0.5 * df - 1) * math.log(2) - math.lgamma(0.5 * df)
+    dens = lambda s_: math.exp(logc + (df - 1) * math.log(s_) - 0.5 * df * s_ * s_) if s_ > 0 else 0.0
+    f = lambda s_: (2 * stats.norm.cdf(c * s_) - 1) ** m * dens(s_)
+    peak = math.sqrt((df - 1) / df) if df > 1 else 0.5
+    val = integrate.quad(f, 0, peak, limit=200)[0] + integrate.quad(f, peak, np.inf, limit=200)[0]
+    return float(min(1.0, max(0.0, val)))
+
+
+def _smm_ppf(q: float, m: int, df: float) -> float:
+    from scipy import optimize as _opt
+    return float(_opt.brentq(lambda c: _smm_cdf(c, m, df) - q, 1e-6, 100))
+
+
 def _adjust(praw, method: str):
     """Multiplicity-adjusted P values for a family of m tests."""
     p = np.asarray(praw, float)
@@ -385,9 +406,23 @@ def one_way_anova(groups, names=None, kind: str = "ordinary", alpha: float = 0.0
         F = float(a / b)
         df2 = float((k ** 2 - 1) / (3 * lam))
         p = float(stats.f.sf(F, k - 1, df2))
-        res.update(test_name="Welch's ANOVA", posthoc_name="Games-Howell multiple comparisons",
-                   F=F, df_between=k - 1, df_within=df2, p=p)
-        for i, j in _pairs(k):
+        t3 = posthoc == "t3"
+        pairs = _pairs(k) if compare_to != "control" else [(0, j) for j in range(1, k)]
+        if not t3 and compare_to == "control":
+            pairs = _pairs(k)  # Games-Howell is defined for all pairs
+        res.update(test_name="Welch's ANOVA", posthoc_name=("Dunnett's T3 multiple comparisons" + (" vs control" if compare_to == "control" else "")) if t3 else "Games-Howell multiple comparisons",
+                   F=F, df_between=k - 1, df_within=df2, p=p, posthoc="t3" if t3 else "games_howell", compare_to=compare_to if t3 else "all")
+        for i, j in (pairs if t3 else []):
+            vi, vj = vars_[i] / ns[i], vars_[j] / ns[j]
+            se = math.sqrt(vi + vj)
+            df = (vi + vj) ** 2 / (vi ** 2 / (ns[i] - 1) + vj ** 2 / (ns[j] - 1))
+            diff = float(means[i] - means[j])
+            m_ = len(pairs)
+            crit = _smm_ppf(conf, m_, df)
+            comps.append({"a": names[i], "b": names[j], "i": i, "j": j, "diff": diff, "t": diff / se, "df": float(df),
+                          "ci_low": diff - crit * se, "ci_high": diff + crit * se,
+                          "p": float(1 - _smm_cdf(abs(diff) / se, m_, df))})
+        for i, j in ([] if t3 else _pairs(k)):
             vi, vj = vars_[i] / ns[i], vars_[j] / ns[j]
             se = math.sqrt((vi + vj) / 2)
             df = (vi + vj) ** 2 / (vi ** 2 / (ns[i] - 1) + vj ** 2 / (ns[j] - 1))

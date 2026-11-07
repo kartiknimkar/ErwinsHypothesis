@@ -208,6 +208,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Nonlinear fits: weight by 1/Y, 1/Y² (Y of the fitted curve, iteratively reweighted), 1/X, 1/X²; weighted
       SS/R²/Sy.x; model comparison uses the same weights; 156 tests
 
+## Phase 0.45: Dunnett's T3 (done 2026-11-07)
+- [x] Welch's ANOVA: Games-Howell or Dunnett's T3 (studentized maximum modulus by numerical integration; checked
+      against the Šídák limit and simulation), all pairs or vs control; 159 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

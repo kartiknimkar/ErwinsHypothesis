@@ -335,7 +335,8 @@
         if (s.options.mode === "describe") return ["/api/colstats", { groups, names, alpha: s.options.alpha,
           hypothetical: isNum(s.options.hypothetical) ? Number(s.options.hypothetical) : null }];
         return ["/api/compare", { groups, names, kind: kindFor(s, filledCols(s).length), alpha: s.options.alpha, outliers: !!s.options.outliers,
-          posthoc: s.options.posthoc || "tukey", compare_to: s.options.compareTo || "all",
+          posthoc: kindFor(s, filledCols(s).length) === "welch" ? (s.options.welchPosthoc || "games_howell") : (s.options.posthoc || "tukey"),
+          compare_to: kindFor(s, filledCols(s).length) === "welch" && (s.options.welchPosthoc || "games_howell") !== "t3" ? "all" : (s.options.compareTo || "all"),
           outlier_method: s.options.outlierMethod || "rout", q: Number(s.options.routQ ?? 0.01) }];
       },
       renderOptions(s) {
@@ -358,6 +359,9 @@
           CHOICES[key].map(([k, name, d]) => `<label class="choice ${cur === k ? "on" : ""}"><input type="radio" name="kind${key}" value="${k}" ${cur === k ? "checked" : ""}><span><b>${name}</b><small>${d}</small></span></label>`).join("") +
           (n >= 3 ? "" : `<p class="hint">Have 3 or more groups? Click <b>+ Group</b> to add a column.</p>`) +
           (n >= 3 && (cur === "ordinary" || cur === "kruskal") ? postHocOptions(s, cur) : "") +
+          (n >= 3 && cur === "welch" ? `<div class="row"><label for="opt-wph">Comparisons</label><select id="opt-wph"><option value="games_howell" ${(s.options.welchPosthoc || "games_howell") === "games_howell" ? "selected" : ""}>Games-Howell (recommended for larger groups)</option>
+            <option value="t3" ${s.options.welchPosthoc === "t3" ? "selected" : ""}>Dunnett's T3 (better for small groups, n < 50)</option></select>
+            ${s.options.welchPosthoc === "t3" ? `<label for="opt-cmpto">Compare</label><select id="opt-cmpto"><option value="all" ${(s.options.compareTo || "all") === "all" ? "selected" : ""}>every pair</option><option value="control" ${s.options.compareTo === "control" ? "selected" : ""}>each vs first column</option></select>` : ""}</div>` : "") +
           `<div class="row"><label class="check"><input type="checkbox" data-opt="outliers" ${s.options.outliers ? "checked" : ""}> Identify outliers</label>
           ${s.options.outliers ? `<select id="opt-outmethod"><option value="rout" ${(s.options.outlierMethod || "rout") === "rout" ? "selected" : ""}>ROUT (finds one or several)</option><option value="grubbs" ${s.options.outlierMethod === "grubbs" ? "selected" : ""}>Grubbs' test (α = 0.05)</option></select>
             ${(s.options.outlierMethod || "rout") === "rout" ? `<label for="opt-routq">Q</label>` + `<select id="opt-routq">${[["0.001", "0.1%"], ["0.01", "1% (recommended)"], ["0.05", "5%"], ["0.1", "10%"]].map(([v, l]) => `<option value="${v}" ${String(s.options.routQ ?? "0.01") === v ? "selected" : ""}>${l}</option>`).join("")}</select>` : ""}` : ""}</div>` + alphaSelect(s);
@@ -1513,6 +1517,7 @@
       save(); renderOptions(); scheduleRun();
     };
     const tw = $("opt-twcmp"); if (tw) tw.onchange = e => { s.options.twCompare = e.target.value; save(); scheduleRun(); };
+    const wph = $("opt-wph"); if (wph) wph.onchange = e => { s.options.welchPosthoc = e.target.value; save(); renderOptions(); scheduleRun(); };
     const ph = $("opt-posthoc"); if (ph) ph.onchange = e => { s.options.posthoc = e.target.value; save(); scheduleRun(); };
     const om = $("opt-outmethod"); if (om) om.onchange = e => { s.options.outlierMethod = e.target.value; save(); renderOptions(); scheduleRun(); };
     const wt = $("opt-weight"); if (wt) wt.onchange = e => { s.options.weighting = e.target.value; save(); scheduleRun(); };
@@ -1726,7 +1731,7 @@
       const phName = { tukey: "Tukey's multiple comparisons test", dunnett: "Dunnett's multiple comparisons test (each group vs control)", holm: "the Holm-Šídák multiple comparisons test",
         sidak: "Šídák's multiple comparisons test", bonferroni: "Bonferroni's multiple comparisons test", lsd: "uncorrected Fisher's LSD tests" }[r.posthoc || "tukey"]
         + (r.compare_to === "control" && r.posthoc !== "dunnett" ? " comparing each group with the control" : "");
-      const test = { ordinary: `one-way ANOVA followed by ${phName}`, welch: "Welch's ANOVA followed by the Games-Howell test",
+      const test = { ordinary: `one-way ANOVA followed by ${phName}`, welch: `Welch's ANOVA followed by ${r.posthoc === "t3" ? `Dunnett's T3 multiple comparisons test${r.compare_to === "control" ? " (each group vs control)" : ""}` : "the Games-Howell test"}`,
         kruskal: `the Kruskal-Wallis test followed by Dunn's multiple comparisons test${r.compare_to === "control" ? " (each group vs control)" : ""}`, rm: "repeated-measures one-way ANOVA with the Geisser-Greenhouse correction, followed by Tukey's multiple comparisons test",
         friedman: "the Friedman test followed by Dunn's multiple comparisons test" }[r.kind];
       const methods = `Groups were compared using ${test}. Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`;
