@@ -212,6 +212,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Welch's ANOVA: Games-Howell or Dunnett's T3 (studentized maximum modulus by numerical integration; checked
       against the Šídák limit and simulation), all pairs or vs control; 159 tests
 
+## Phase 0.46: More transforms (done 2026-11-07)
+- [x] Subtract first row (baseline), subtract first data column, percent of column total, Z scores, transpose
+      (column / multiple-variable tables); 160 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

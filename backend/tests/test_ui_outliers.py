@@ -123,3 +123,31 @@ def test_residual_plot_and_runs(server):  # noqa: F811
         assert "Residual" in page.inner_text("#plot")
         assert errors == [], errors
         browser.close()
+
+
+def test_new_transforms(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        cell = lambda r, c: page.input_value(f'#grid input[data-r="{r}"][data-c="{c}"]')
+        for op, check in (("subfirst", lambda: cell(0, 0) == "0" and cell(0, 1) == "0"),
+                          ("fraction", lambda: abs(sum(float(cell(r, 0)) for r in range(8)) - 100) < 1e-6),
+                          ("subcol", lambda: page.eval_on_selector_all("#grid thead th", "e => e.length") >= 2 and abs(float(cell(0, 0)) - 1.9) < 1e-9),
+                          ("zscore", lambda: abs(sum(float(cell(r, 0)) for r in range(8))) < 1e-6),
+                          ("transpose", lambda: cell(1, 0) == "6.1")):
+            page.click("#sheet-list li:has-text('Example: two groups')")
+            page.wait_for_timeout(300)
+            page.click("#btn-transform")
+            page.check(f'#tf-body input[value="{op}"]')
+            page.click("#tf-apply")
+            page.wait_for_timeout(500)
+            assert check(), op
+        assert errors == [], errors
+        browser.close()

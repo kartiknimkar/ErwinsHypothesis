@@ -1411,6 +1411,11 @@
     ["recip", "Reciprocal (1/Y)", "Zero becomes blank."],
     ["sqrt", "Square root", "Negative values become blank."],
     ["linear", "Y × K + C", "Multiply and/or add a constant (e.g. unit conversion)."],
+    ["subfirst", "Subtract the first row (remove baseline)", "Each column minus its first value (e.g. change from time 0)."],
+    ["subcol", "Subtract the first data column", "Each column minus the first data column in the same row (e.g. minus background)."],
+    ["fraction", "Percent of column total", "Each value ÷ its column's sum × 100."],
+    ["zscore", "Z scores", "(value − column mean) ÷ column SD."],
+    ["transpose", "Transpose (swap rows and columns)", "Each column becomes a row. Column and multiple-variable tables only."],
   ];
   // which columns hold Y values (numbers to transform) for each analysis type
   const yCols = s => s.type === "threeway" ? [3] : s.type === "regression" || s.type === "survival" || s.type === "twoway" || s.type === "contingency" || s.type === "nested"
@@ -1438,6 +1443,8 @@
     if (onX && !["log10", "ln", "recip", "sqrt"].includes(k)) { toast("For X, choose log10, ln, reciprocal or square root."); return; }
     if (k === "ref" && (a === null || b === null || a === b)) { toast("Enter two different numbers for 0% and 100%."); return; }
     if (k === "linear" && (a === null || b === null)) { toast("Enter numbers for K and C."); return; }
+    if (onX && k === "transpose") { toast("Transpose applies to the whole table, not X."); return; }
+    if (k === "transpose" && !["ttest", "multivar"].includes(s.type)) { toast("Transpose works for column (Compare groups) and multiple-variable tables."); return; }
     const cols = onX ? [0] : yCols(s);
     const copy = JSON.parse(JSON.stringify(s));
     copy.id = uid();
@@ -1445,14 +1452,26 @@
     copy.title = `${s.title} (${onX ? "X: " : ""}${name.toLowerCase().replace("normalize each column to ", "normalized ").replace("normalize to chosen 0% and 100% values", "normalized")})`;
     const f = { log10: v => v > 0 ? Math.log10(v) : null, ln: v => v > 0 ? Math.log(v) : null, recip: v => v !== 0 ? 1 / v : null,
       sqrt: v => v >= 0 ? Math.sqrt(v) : null, linear: v => v * a + b, ref: v => (v - a) / (b - a) * 100 };
-    cols.forEach(j => {
+    if (k === "transpose") {
+      const used = s.data.map((r, i) => i).filter(i => s.data[i].some(v => isNum(v)));
+      copy.cols = used.map(i => `Row ${i + 1}`);
+      copy.data = s.cols.map((_, j) => used.map(i => s.data[i][j] ?? ""));
+      copy.excluded = [];
+      padRows(copy);
+    }
+    const firstCol = cols[0], base0 = copy.data.map(r => num(r[firstCol]));
+    if (k !== "transpose") cols.forEach(j => {
+      if (k === "subcol" && j === firstCol) return;
       const vals = copy.data.map(r => num(r[j]));
       const present = vals.filter(v => v !== null);
       if (!present.length) return;
       let fn = f[k];
       if (k === "minmax") { const lo = Math.min(...present), hi = Math.max(...present); fn = v => hi === lo ? null : (v - lo) / (hi - lo) * 100; }
       if (k === "baseline") { const first = present[0]; fn = v => first ? v / first * 100 : null; }
-      copy.data.forEach((r, i) => { if (vals[i] !== null) { const out = fn(vals[i]); r[j] = out === null || !isFinite(out) ? "" : String(Number(out.toPrecision(10))); } });
+      if (k === "subfirst") { const first = present[0]; fn = v => v - first; }
+      if (k === "fraction") { const tot = present.reduce((x, y) => x + y, 0); fn = v => tot ? v / tot * 100 : null; }
+      if (k === "zscore") { const m = present.reduce((x, y) => x + y, 0) / present.length, sd = Math.sqrt(present.reduce((x, y) => x + (y - m) ** 2, 0) / (present.length - 1)); fn = v => sd > 0 ? (v - m) / sd : null; }
+      copy.data.forEach((r, i) => { if (vals[i] !== null) { const out = k === "subcol" ? (base0[i] === null ? null : vals[i] - base0[i]) : fn(vals[i]); r[j] = out === null || !isFinite(out) ? "" : String(Number(out.toPrecision(10))); } });
     });
     let dropped = 0;
     if (onX && copy.type === "regression") {
@@ -1461,7 +1480,8 @@
       copy.data = copy.data.filter((r, i) => { const bad = num(s.data[i][0]) !== null && r[0] === ""; if (bad) dropped++; return !bad; });
       padRows(copy);
     }
-    if (["minmax", "ref", "baseline"].includes(k) && copy.graph.ylabel !== undefined) copy.graph.ylabel = (copy.graph.ylabel || copy.cols[1] || "Response").replace(/ ?\(%\)$/, "") + " (%)";
+    if (k === "subcol") { const fc = copy.cols[firstCol]; copy.cols.splice(firstCol, 1); copy.data.forEach(r => r.splice(firstCol, 1)); copy.excluded = []; copy.title = `${s.title} (minus ${fc || "first column"})`; }
+    if (["minmax", "ref", "baseline", "fraction"].includes(k) && copy.graph.ylabel !== undefined) copy.graph.ylabel = (copy.graph.ylabel || copy.cols[1] || "Response").replace(/ ?\(%\)$/, "") + " (%)";
     const idx = project.sheets.findIndex(x => x.id === s.id);
     project.sheets.splice(idx + 1, 0, copy);
     project.activeId = copy.id; s._tf = k;
