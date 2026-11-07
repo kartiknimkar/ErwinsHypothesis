@@ -97,6 +97,10 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (x) XY: predict Y for rows that have X but no Y (interpolation both ways)
 - [x] (y) multiple t tests: two-stage step-up FDR (Benjamini-Krieger-Yekutieli, Prism's default), Holm-Šídák, Bonferroni
 - [x] (z) Bland-Altman: percent difference and ratio options
+- [ ] (aa) logistic regression: Hosmer-Lemeshow test, classification table at a chosen cutoff
+- [ ] (ab) multiple linear regression: standardized coefficients, residual plot
+- [ ] (ac) undo/redo also covers graph Format and analysis option changes
+- [ ] (ad) automatic project backups (last 5 versions in projects/.backups, restore from Projects dialog)
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →
