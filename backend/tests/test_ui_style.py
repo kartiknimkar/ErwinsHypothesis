@@ -205,3 +205,32 @@ def test_style_presets(server):  # noqa: F811
         assert page.input_value('#graph-format [data-g="fontSize"]') == "20"  # back to the presentation look
         assert errors == [], errors
         browser.close()
+
+
+def test_my_style_and_apply_to_all(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.on("dialog", lambda d: d.accept())
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('three groups')")
+        page.wait_for_timeout(400)
+        if page.is_hidden("#graph-format"):
+            page.click("#btn-format")
+        page.select_option('#graph-format [data-g="fontFamily"]', "Georgia")
+        page.wait_for_timeout(200)
+        page.click("#btn-save-style")
+        page.wait_for_selector('#style-preset option[value="__mine"]', state="attached")
+        page.click("#btn-style-all")
+        page.wait_for_timeout(300)
+        page.click("#sheet-list li:has-text('survival')")
+        page.wait_for_timeout(500)
+        assert page.input_value('#graph-format [data-g="fontFamily"]') == "Georgia"
+        assert errors == [], errors
+        browser.close()

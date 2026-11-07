@@ -363,6 +363,9 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] New "Grouped from mean, SD, n" type: exact two-way ANOVA from summary data (verified equal to raw-data ANOVA,
       unbalanced); guide branch; example; 211 tests
 
+## Phase 0.85: My style (done 2026-11-07)
+- [x] "Save as my style" (kept in projects/.prefs.json) and "Apply this look to every graph" in the project; 212 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

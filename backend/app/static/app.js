@@ -51,6 +51,12 @@
   };
   // a color picked by the user for a named series wins over the palette
   const color = (g, i, name) => (name != null && g.colors && g.colors[name]) || (PALETTES[g.palette] || PALETTES.vivid)[i % 8];
+  // the look of a graph (not its content): what presets, "My style" and "apply to every graph" copy
+  const STYLE_KEYS = ["fontFamily", "fontSize", "textColor", "titleSize", "tickSize", "palette", "pointSymbol", "pointSize", "pointOpacity", "pointLine",
+    "pointLineColor", "lineScale", "errWidth", "capWidth", "errDir", "barOpacity", "barLine", "pattern", "axisWidth", "tickDir", "tickLen", "minorTicks",
+    "grid", "bg", "legendPos", "exportSize", "exportDpi", "meanWidth", "meanColor", "yFormat", "xFormat", "tickAngle"];
+  const pickStyle = g => Object.fromEntries(STYLE_KEYS.filter(k => g[k] !== undefined).map(k => [k, g[k]]));
+  let myStyle = null;
   const STYLE_PRESETS = {
     classic: { label: "Classic (Prism-like)", set: { fontFamily: "Arial", fontSize: 14, palette: "classic", pointSize: 8, pointOpacity: 1, pointLine: 0, lineScale: 1.2, errWidth: 1.5, capWidth: 10, barOpacity: "1", barLine: 1.5, pattern: "none", axisWidth: 1.5, tickDir: "outside", tickLen: 6, grid: false, bg: "white" } },
     minimal: { label: "Minimal", set: { fontFamily: "Helvetica", fontSize: 13, palette: "vivid", pointSize: 7, pointOpacity: 0.8, pointLine: 0, lineScale: 1, errWidth: 1, capWidth: 0, barOpacity: "0.3", barLine: 0, pattern: "none", axisWidth: 1, tickDir: "outside", tickLen: 4, grid: true, bg: "white" } },
@@ -1860,7 +1866,9 @@
       if (c.kind === "check") return `<label class="check"><input type="checkbox" data-g="${c.k}" ${v ? "checked" : ""}> ${c.label}</label>`;
       if (c.kind === "range") return `<label>${c.label} <span class="rv">${v}</span><input type="range" data-g="${c.k}" min="${c.min}" max="${c.max}" step="${c.step || 1}" value="${v}"></label>`;
       if (c.kind === "head") return `<div class="fhead">${c.label}</div>`;
-      if (c.kind === "presets") return `<label class="wide">Style preset<select id="style-preset"><option value="">Choose a look…</option>${Object.entries(STYLE_PRESETS).map(([k, p]) => `<option value="${k}">${p.label}</option>`).join("")}</select></label>`;
+      if (c.kind === "presets") return `<label class="wide">Style preset<select id="style-preset"><option value="">Choose a look…</option>${myStyle ? `<option value="__mine">My style</option>` : ""}${Object.entries(STYLE_PRESETS).map(([k, p]) => `<option value="${k}">${p.label}</option>`).join("")}</select></label>
+        <div class="wide style-actions"><button class="ghost small" id="btn-save-style" title="Remember this look to use on other graphs (saved in the app folder)">Save as my style</button>
+        <button class="ghost small" id="btn-style-all" title="Give every graph in this project the same fonts, colors, points, lines and axes">Apply this look to every graph</button></div>`;
       if (c.kind === "notes") return `<div class="wide notes"><p class="hint">Tip: click any title, axis title, legend entry or label on the graph to edit it; drag the legend or a label to move it.</p>
         ${(g.notes || []).map((n, i) => `<div class="note-row"><input type="text" data-note="${i}" value="${esc(n.text || "")}" placeholder="Label text"><input type="number" data-note-size="${i}" value="${esc(n.size ?? "")}" placeholder="size" min="6" max="48"><button class="icon" data-note-del="${i}" title="Remove this label">✕</button></div>`).join("")}
         <div class="row"><button class="ghost small" id="btn-add-note">+ Add text label</button>${g.axisText || g.legendNames || g.legendXY ? `<button class="ghost small" id="btn-reset-edits" title="Undo text and legend edits made on the graph">Reset graph edits</button>` : ""}</div></div>`;
@@ -1874,9 +1882,22 @@
       el.onchange = () => renderFormat();
     });
     const fmtBox = $("graph-format");
+    const ss = $("btn-save-style");
+    if (ss) ss.onclick = async () => {
+      myStyle = pickStyle(g);
+      try { await api("/api/prefs", { method: "PUT", body: JSON.stringify({ myStyle }) }); toast("Saved as <b>My style</b>. Pick it from Style preset on any graph."); renderFormat(); }
+      catch (e) { toast(esc(e.message)); }
+    };
+    const sa = $("btn-style-all");
+    if (sa) sa.onclick = () => {
+      if (!confirm("Give every graph in this project this look (fonts, colors, points, lines, axes)? Titles, labels and data stay as they are.")) return;
+      const look = pickStyle(g);
+      project.sheets.forEach(x => { if (x.id !== active().id) Object.assign(x.graph, look); });
+      save(); toast(`Applied this look to ${project.sheets.length - 1} other analyses.`);
+    };
     const sp = $("style-preset");
     if (sp) sp.onchange = () => {
-      const p = STYLE_PRESETS[sp.value]; if (!p) return;
+      const p = sp.value === "__mine" ? { label: "My style", set: myStyle } : STYLE_PRESETS[sp.value]; if (!p || !p.set) return;
       recordUndo(true);
       Object.assign(g, p.set);
       save(); renderFormat(); drawPlot(); toast(`Applied the <b>${esc(p.label)}</b> look. Undo puts the previous one back.`);
@@ -3691,7 +3712,7 @@
     applyTheme(t);
     api("/api/prefs", { method: "PUT", body: JSON.stringify({ theme: t }) }).catch(() => {});
   };
-  api("/api/prefs").then(p => applyTheme(p.theme)).catch(() => {});
+  api("/api/prefs").then(p => { applyTheme(p.theme); myStyle = p.myStyle || null; }).catch(() => {});
   $("btn-undo").onclick = () => undoRedo("undo");
   $("btn-redo").onclick = () => undoRedo("redo");
   $("btn-format").onclick = () => {

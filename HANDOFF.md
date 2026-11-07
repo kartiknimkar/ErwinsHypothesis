@@ -61,7 +61,7 @@ Every session starts by reading it and ends by updating it (then committing).
 - Sizes measured: ~266 MB (system Python), ~410 MB (private Python).
 
 ## Current state
-- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 211 tests pass (incl. tests/test_ui_smoke.py: Playwright opens all 29 examples and walks every branch of the 'Help me choose' guide (GUIDE tree in app.js) and checks 'Text for your paper' (reportText in app.js); run it after UI changes). Multiple variables type also does multiple linear + logistic regression (multivar.py). 8 analysis types (+ nested): ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
+- [x] Preview app with 5 analysis types + Excel/CSV import + 11 curve models with model comparison + fit constraints + custom equations + interpolation + Excel export + series colors + outliers + AUC + correlation matrix + ROC + Bland-Altman (ROADMAP 0.6-0.14; transform dialog is frontend-only, applyTransform in app.js); 212 tests pass (incl. tests/test_ui_smoke.py: Playwright opens all 29 examples and walks every branch of the 'Help me choose' guide (GUIDE tree in app.js) and checks 'Text for your paper' (reportText in app.js); run it after UI changes). Multiple variables type also does multiple linear + logistic regression (multivar.py). 8 analysis types (+ nested): ttest, twoway, regression, survival, contingency, multivar, diagnostic (multivar.py)
 - [x] User confirmed the app runs on their Windows PC (C: drive, private Python fallback)
 - [x] Interface rewritten around a TYPES registry in `static/app.js` (each type: data layout,
       options, request, results renderer, graph drawer, format controls). Add new modules there.
@@ -138,8 +138,9 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (bk) XY: Y error from SD/SEM columns entered by the user (mean, SD, n format like Prism XY tables)
 - [x] (bl) grouped (two-way) data entered as mean, SD, n per cell → two-way ANOVA from summary data
 - [x] (bm) graph gallery: a "Style presets" dropdown (Prism classic, minimal, journal black & white, presentation large text)
-- [ ] (bn) save a graph's Format settings as "My style" and apply it to other graphs (stored in prefs)
-- [ ] (bo) apply the current graph's style to every graph in the project (one click)
+- [x] (bn) save a graph's Format settings as "My style" and apply it to other graphs (stored in prefs)
+- [x] (bo) apply the current graph's style to every graph in the project (one click)
+- [ ] (bp) results: show which assumptions were checked in a short "Checklist" box (normality, equal variances, outliers, sample size) with plain advice
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →
