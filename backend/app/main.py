@@ -235,6 +235,14 @@ def run_multi(req: MultiRequest):
     try:
         if req.analysis == "correlation":
             res = multivar.correlation_matrix(req.columns, req.names, req.method, req.alpha)
+        elif req.analysis in ("mlr", "logistic"):
+            if len(req.columns) < 2:
+                raise ValueError("Enter the outcome in the first column and at least one predictor.")
+            cols = [(n, c) for n, c in zip(req.names[1:], req.columns[1:]) if any(v is not None and str(v).strip() != "" for v in c)]
+            if not cols:
+                raise ValueError("Enter at least one predictor column with values.")
+            fn = multivar.multiple_linear if req.analysis == "mlr" else multivar.logistic
+            res = fn(req.columns[0], [c for _, c in cols], req.names[0], [n for n, _ in cols], alpha=req.alpha)
         else:
             if len(req.columns) < 2:
                 raise ValueError("Enter two columns.")

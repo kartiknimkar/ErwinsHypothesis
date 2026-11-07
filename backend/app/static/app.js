@@ -246,25 +246,38 @@
     },
     // ---------------------------------------------------------------- multiple variables
     multivar: {
-      label: "Multiple variables: correlation", newTitle: "Correlation matrix",
+      label: "Multiple variables", newTitle: "Multiple variables",
       minCols: 2, maxCols: 20, fixedCols: 0, textCol: -1, addLabel: "+ Variable", minRows: 15,
-      colKind: j => `Variable ${j + 1}`, newColName: j => `Variable ${j + 1}`,
-      hint: "One column per variable (e.g. weight, glucose, insulin), one row per subject. Every pair of variables is correlated, using the rows where both have values.",
+      colKind: (j, s) => s && s.options.analysis && s.options.analysis !== "correlation" ? (j === 0 ? (s.options.analysis === "logistic" ? "Outcome (0/1)" : "Outcome (Y)") : `Predictor ${j}`) : `Variable ${j + 1}`,
+      newColName: j => `Variable ${j + 1}`,
+      hint: "One column per variable (e.g. age, BMI, glucose), one row per subject. For regression, put the outcome in the first column and the predictors to its right.",
       cols: ["Variable 1", "Variable 2", "Variable 3"],
-      options: { method: "pearson", alpha: 0.05 },
+      options: { analysis: "correlation", method: "pearson", alpha: 0.05 },
       graph: { showValues: true },
-      examples: () => ({
+      examples: s => s.options.analysis === "logistic" ? {
+        cols: ["Diabetes (0/1)", "Age", "BMI", "Activity"],
+        rows: [[0, 34, 22.1, 9.5], [0, 45, 27.4, 6.1], [1, 52, 31.2, 3.2], [0, 29, 21.5, 10.2], [1, 61, 29.8, 4.0], [0, 38, 24.6, 8.3],
+          [1, 47, 33.1, 2.5], [0, 55, 29.6, 3.8], [0, 41, 23.3, 9.1], [1, 66, 30.5, 3.6], [0, 33, 25.8, 7.4], [1, 58, 25.2, 7.9],
+          [0, 49, 31.5, 4.1], [1, 44, 26.9, 8.1], [0, 62, 24.1, 8.8], [1, 57, 30.9, 2.9], [0, 36, 26.5, 5.5], [1, 51, 29.4, 7.0],
+          [0, 40, 28.8, 6.5], [1, 63, 27.7, 4.4]],
+      } : s.options.analysis === "mlr" ? {
+        cols: ["Glucose", "Age", "BMI", "Activity"],
+        rows: [[88, 34, 22.1, 9.5], [101, 45, 27.4, 6.1], [118, 52, 31.2, 3.2], [84, 29, 21.5, 10.2], [112, 61, 29.8, 4.0], [93, 38, 24.6, 8.3],
+          [126, 47, 33.1, 2.5], [99, 55, 26.0, 6.8], [90, 41, 23.3, 9.1], [121, 66, 30.5, 3.6], [95, 33, 25.8, 7.4], [108, 58, 28.2, 5.0],
+          [104, 49, 27.9, 4.1], [115, 44, 32.4, 6.2], [97, 62, 24.1, 8.8], [119, 57, 30.9, 2.9], [96, 36, 26.5, 5.5], [110, 51, 29.4, 7.0]],
+      } : ({
         cols: ["Age", "BMI", "Glucose", "Insulin", "Activity"],
         rows: [[34, 22.1, 88, 6.2, 9.5], [45, 27.4, 101, 9.8, 6.1], [52, 31.2, 118, 14.3, 3.2], [29, 21.5, 84, 5.1, 10.2],
           [61, 29.8, 112, 12.9, 4.0], [38, 24.6, 93, 7.7, 8.3], [47, 33.1, 126, 16.2, 2.5], [55, 26.0, 99, 8.9, 6.8],
           [41, 23.3, 90, 6.6, 9.1], [66, 30.5, 121, 13.8, 3.6], [33, 25.8, 95, 8.1, 7.4], [58, 28.2, 108, 11.0, 5.0]],
       }),
       request: s => ["/api/multi", { columns: s.cols.map((_, j) => s.data.map(r => num(r[j]))), names: s.cols.map((c, j) => c || `Variable ${j + 1}`),
-        analysis: "correlation", method: s.options.method, alpha: s.options.alpha }],
-      renderOptions: s => `<div class="seg"><button data-set="method:pearson" class="${s.options.method === "pearson" ? "on" : ""}">Pearson (linear)</button><button data-set="method:spearman" class="${s.options.method === "spearman" ? "on" : ""}">Spearman (ranks, nonparametric)</button></div>${alphaSelect(s)}`,
-      graphControls: () => [chk("showValues", "Show r values")],
-      renderResults: renderCorrMatrix,
-      draw: drawCorrMatrix,
+        analysis: s.options.analysis || "correlation", method: s.options.method, alpha: s.options.alpha }],
+      renderOptions: s => `<div class="seg"><button data-set="analysis:correlation" class="${(s.options.analysis || "correlation") === "correlation" ? "on" : ""}">Correlation matrix</button><button data-set="analysis:mlr" class="${s.options.analysis === "mlr" ? "on" : ""}">Multiple linear regression</button><button data-set="analysis:logistic" class="${s.options.analysis === "logistic" ? "on" : ""}">Logistic regression</button></div>` +
+        ((s.options.analysis || "correlation") !== "correlation" ? `<p class="hint">${s.options.analysis === "logistic" ? "Predicts a yes/no outcome (first column: 1 = yes, 0 = no) from the other columns. Results are odds ratios." : "Predicts the outcome (first column) from all the other columns at once; each coefficient is adjusted for the other predictors."} Rows missing any value are left out.</p>${alphaSelect(s)}` : `<div class="seg"><button data-set="method:pearson" class="${s.options.method === "pearson" ? "on" : ""}">Pearson (linear)</button><button data-set="method:spearman" class="${s.options.method === "spearman" ? "on" : ""}">Spearman (ranks, nonparametric)</button></div>${alphaSelect(s)}`),
+      graphControls: s => (s.options.analysis || "correlation") === "correlation" ? [chk("showValues", "Show r values")] : [],
+      renderResults: (r, s) => r.kind === "linear" ? renderMLR(r) : r.kind === "logistic" ? renderLogistic(r) : renderCorrMatrix(r),
+      draw: (el, r, s) => r.kind === "linear" ? drawMLR(el, r, s) : r.kind === "logistic" ? drawROC(el, { auc: r.auc, curve: r.roc_curve, best: null }, s) : drawCorrMatrix(el, r, s),
     },
     // ---------------------------------------------------------------- diagnostics
     diagnostic: {
@@ -428,6 +441,8 @@
     add("survival", "Example: survival");
     add("contingency", "Example: contingency");
     add("multivar", "Example: correlation matrix");
+    add("multivar", "Example: multiple regression", s => { s.options.analysis = "mlr"; });
+    add("multivar", "Example: logistic regression", s => { s.options.analysis = "logistic"; });
     add("diagnostic", "Example: ROC curve");
     add("diagnostic", "Example: Bland-Altman", s => { s.options.analysis = "bland_altman"; });
     project.activeId = first.id;
@@ -789,7 +804,7 @@
   function seriesNames(s) {
     if (s.type === "ttest") return filledCols(s).map(j => s.cols[j] || `Group ${letter(j)}`);
     if (s.type === "regression") return ["Curve", ...(s.options.compare ? ["Comparison curve"] : []), "Unknowns"];
-    if (s.type === "multivar") return [];
+    if (s.type === "multivar") return (s.options.analysis || "correlation") === "correlation" ? [] : s.options.analysis === "logistic" ? ["Curve"] : ["Points"];
     if (s.type === "twoway" && s.options.analysis === "multit") return ["Discoveries"];
     if (s.type === "diagnostic") return s.options.analysis === "roc" ? ["Curve", "Best cutoff"] : ["Points"];
     return s.cols.slice(1).map((c, j) => c || (s.type === "contingency" ? `Outcome ${j + 1}` : `Group ${letter(j)}`));
@@ -1119,6 +1134,42 @@
       PLOT_CONFIG);
   }
 
+  // ---------------------------------------------------------------- multiple / logistic regression
+  function renderMLR(r) {
+    const pct = Math.round((1 - r.alpha) * 100);
+    const preds = r.coefs.slice(1), sig = preds.filter(c => c.p < r.alpha);
+    let h = T.summary(r.p < r.alpha ? "sig" : "ns", `The predictors together explain <b>${fmt(r.r_squared * 100, 3)}%</b> of the variation in <b>${esc(r.y_name)}</b> (R², ${fmtP(r.p)}). ` +
+      (sig.length ? `Significant on their own (adjusted for the others): ${sig.map(c => `<b>${esc(c.name)}</b> (${c.estimate > 0 ? "+" : ""}${fmt(c.estimate, 3)} per unit)`).join(", ")}.` : "No single predictor is significant after adjusting for the others."));
+    h += T.multi(["", "Estimate", "Std. error", `${pct}% CI`, "P", "", "VIF"], r.coefs.map(c => ({ cls: c.name !== "Intercept" && c.p < r.alpha ? "hl" : "",
+      cells: [esc(c.name), fmt(c.estimate), fmt(c.se, 3), ci(...c.ci), pOnly(c.p), st(c.stars), c.vif == null ? "" : `${fmt(c.vif, 3)}${c.vif > 5 ? " ⚠︎" : ""}`] })));
+    h += T.table([T.sec("Goodness of fit"), T.row("R²", fmt(r.r_squared)), T.row("Adjusted R²", fmt(r.adj_r_squared)), T.row("Sy.x (residual SD)", fmt(r.sy_x)),
+      T.row(`F (${r.coefs.length - 1}, ${r.df})`, fmt(r.F)), T.row("P value (model)", pOnly(r.p)), T.row("Rows used", `${r.n}${r.dropped ? ` (${r.dropped} left out: missing values)` : ""}`)]);
+    if (r.coefs.some(c => c.vif > 5)) h += `<p class="note warn">⚠︎ VIF above 5: that predictor is strongly correlated with the others, so its coefficient is unstable.</p>`;
+    h += `<p class="note">Each estimate is the change in ${esc(r.y_name)} per 1-unit increase in that predictor, holding the others constant.</p>`;
+    return h;
+  }
+  function drawMLR(el, r, s) {
+    const g = s.graph, a = r.points.actual, p = r.points.predicted, lo = Math.min(...a, ...p), hi = Math.max(...a, ...p);
+    Plotly.react(el, [{ x: [lo, hi], y: [lo, hi], mode: "lines", line: { color: "#9aa3b2", dash: "dot" }, hoverinfo: "skip" },
+      { x: p, y: a, mode: "markers", marker: { color: color(g, 0, "Points"), size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: "Predicted %{x:.4g}, actual %{y:.4g}<extra></extra>" }],
+      { ...baseLayout(g), annotations: [{ xref: "paper", yref: "paper", x: 0.02, y: 0.98, xanchor: "left", yanchor: "top", showarrow: false, text: `R² = ${fmt(r.r_squared, 3)}`, font: { color: "#6b7385" } }],
+        xaxis: axis(g, { title: { text: `Predicted ${esc(r.y_name)}` } }), yaxis: yAxis(g, `Actual ${esc(r.y_name)}`) }, PLOT_CONFIG);
+  }
+  function renderLogistic(r) {
+    const pct = Math.round((1 - r.alpha) * 100);
+    const sig = r.coefs.slice(1).filter(c => c.p < r.alpha);
+    let h = T.summary(r.p < r.alpha ? "sig" : "ns", `The model predicts <b>${esc(r.y_name)}</b> ${r.p < r.alpha ? "significantly better than chance" : "no better than chance"} (likelihood ratio ${fmtP(r.p)}; AUC = ${fmt(r.auc, 3)}). ` +
+      (sig.length ? sig.map(c => `Each 1-unit increase in <b>${esc(c.name)}</b> multiplies the odds by <b>${fmt(c.or, 3)}</b> (${pct}% CI ${ci(...c.or_ci)})`).join("; ") + "." : "No single predictor is significant after adjusting for the others."));
+    h += T.multi(["", "Odds ratio", `${pct}% CI`, "β (log odds)", "Std. error", "P", ""], r.coefs.map(c => ({ cls: c.name !== "Intercept" && c.p < r.alpha ? "hl" : "",
+      cells: [esc(c.name), c.name === "Intercept" ? "—" : fmt(c.or), c.name === "Intercept" ? "" : ci(...c.or_ci), fmt(c.estimate), fmt(c.se, 3), pOnly(c.p), st(c.stars)] })));
+    h += T.table([T.sec("Model"), T.row("Likelihood ratio χ²", `${fmt(r.lr_chi2)}, P ${pOnly(r.p)}`), T.row("Area under ROC curve", fmt(r.auc, 3)),
+      T.row("McFadden pseudo-R²", fmt(r.mcfadden_r2, 3)), T.row("Tjur R²", fmt(r.tjur_r2, 3)), T.row("Correctly classified (cutoff 0.5)", `${fmt(r.accuracy * 100, 3)}%`),
+      T.row("Rows used (events)", `${r.n} (${r.n_events})${r.dropped ? `; ${r.dropped} left out: missing values` : ""}`)]);
+    if (r.n_events < 10 * (r.coefs.length - 1) || r.n - r.n_events < 10 * (r.coefs.length - 1)) h += `<p class="note warn">⚠︎ Few events per predictor (rule of thumb: ≥ 10). Estimates may be unreliable; consider fewer predictors.</p>`;
+    h += `<p class="note">Graph: ROC curve of the model's predicted probabilities. Odds ratios use Wald confidence intervals.</p>`;
+    return h;
+  }
+
   // ---------------------------------------------------------------- ROC & Bland-Altman
   function renderROC(r) {
     const pct = Math.round((1 - r.alpha) * 100);
@@ -1141,7 +1192,7 @@
       { x: r.curve.map(p => p.fpr * 100), y: r.curve.map(p => p.tpr * 100), mode: "lines+markers", line: { color: c, width: 2.4, shape: "linear" },
         marker: { size: Math.max(3, g.pointSize - 3), color: c }, customdata: r.curve.map(p => p.cut == null ? "" : fmt(p.cut)),
         hovertemplate: "Cutoff %{customdata}: sensitivity %{y:.1f}%, 100% − specificity %{x:.1f}%<extra></extra>" },
-      { x: [100 - r.best.spec], y: [r.best.sens], mode: "markers", marker: { symbol: "star", size: g.pointSize + 8, color: color(g, 1, "Best cutoff") }, hoverinfo: "skip" },
+      ...(r.best ? [{ x: [100 - r.best.spec], y: [r.best.sens], mode: "markers", marker: { symbol: "star", size: g.pointSize + 8, color: color(g, 1, "Best cutoff") }, hoverinfo: "skip" }] : []),
     ], { ...baseLayout(g), annotations: [{ xref: "paper", yref: "paper", x: 0.98, y: 0.04, xanchor: "right", showarrow: false, text: `AUC = ${fmt(r.auc, 3)}`, font: { size: (g.fontSize || 13) + 1 } }],
       xaxis: axis(g, { title: { text: "100% − Specificity %" }, range: [-2, 102] }), yaxis: yAxis(g, "Sensitivity %", { range: [-2, 102] }) }, PLOT_CONFIG);
   }

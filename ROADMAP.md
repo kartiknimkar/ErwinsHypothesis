@@ -68,6 +68,11 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 ## Phase 0.15: Multiple t tests (done 2026-11-06)
 - [x] One t test per row name (Welch/unpaired/Mann-Whitney), Benjamini-Hochberg FDR, volcano plot; 81 tests
 
+## Phase 0.16: Multiple & logistic regression (done 2026-11-06)
+- [x] Multiple linear regression (coefficients, CIs, VIF, R²/adjusted, F test, actual-vs-predicted plot)
+- [x] Logistic regression (IRLS, odds ratios, LR test, McFadden/Tjur R², AUC, separation check, ROC plot)
+- [x] Cross-checked vs statsmodels; 85 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

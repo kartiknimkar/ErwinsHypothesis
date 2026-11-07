@@ -15,7 +15,7 @@ clean, modern interface. Everything runs on your own computer.
   one-phase association, Gaussian, Boltzmann; compare two models (F test / AICc)
 - **Survival:** Kaplan-Meier curves, log-rank test, hazard ratio, median survival
 - **Contingency tables:** Fisher's exact, chi-square, odds ratio, relative risk
-- **Multiple variables:** correlation matrix with heatmap
+- **Multiple variables:** correlation matrix with heatmap, multiple linear regression, logistic regression
 - **Diagnostics:** ROC curves (AUC, best cutoff), Bland-Altman method comparison
 - Also: standard-curve interpolation, area under the curve, Grubbs' outlier test, normalize/transform data
 
