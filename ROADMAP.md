@@ -204,6 +204,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Linear and nonlinear fits return residuals; exact runs test (one-tailed, replicates averaged per X);
       "Residual plot" option in Format; 154 tests
 
+## Phase 0.44: Fit weighting (done 2026-11-07)
+- [x] Nonlinear fits: weight by 1/Y, 1/Y² (Y of the fitted curve, iteratively reweighted), 1/X, 1/X²; weighted
+      SS/R²/Sy.x; model comparison uses the same weights; 156 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

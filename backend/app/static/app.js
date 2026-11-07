@@ -548,6 +548,7 @@
           initial: s.options.model === "custom" ? Object.fromEntries(Object.entries(s.options.initial || {}).filter(([, v]) => isNum(v)).map(([k, v]) => [k, Number(v)])) : null,
           auc: !!s.options.auc, baseline: isNum(s.options.baseline) ? Number(s.options.baseline) : 0,
           rout_q: s.options.rout ? Number(s.options.routQ ?? 0.01) : null,
+          weighting: s.options.model !== "linear" ? (s.options.weighting || "none") : "none",
           x_is_log: !!s.options.xIsLog, alpha: s.options.alpha }];
       },
       renderOptions(s) {
@@ -575,6 +576,8 @@
           </details>` : ""}
           ${m && m.log_x ? `<label class="check"><input type="checkbox" id="opt-xislog" ${s.options.xIsLog ? "checked" : ""}> X values are already log10(concentration)</label>
             <p class="hint">Otherwise X is concentration and the app takes the log for you (X = 0 is left out, as it has no log).</p>` : ""}
+          ${multi || s.options.model === "linear" ? "" : `<div class="row"><label for="opt-weight">Weighting</label><select id="opt-weight">${[["none", "None (equal weights)"], ["1/Y", "1/Y (Poisson-like scatter)"], ["1/Y2", "1/Y² (scatter grows with Y: relative)"], ["1/X", "1/X"], ["1/X2", "1/X²"]]
+            .map(([v, l]) => `<option value="${v}" ${(s.options.weighting || "none") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>`}
           ${multi ? "" : `<div class="row"><label class="check"><input type="checkbox" data-opt="rout" ${s.options.rout ? "checked" : ""}> Remove outliers before fitting (ROUT)</label>
             ${s.options.rout ? `<label for="opt-routq">Q</label>` + `<select id="opt-routq">${[["0.001", "0.1%"], ["0.01", "1% (recommended)"], ["0.05", "5%"], ["0.1", "10%"]].map(([v, l]) => `<option value="${v}" ${String(s.options.routQ ?? "0.01") === v ? "selected" : ""}>${l}</option>`).join("")}</select>` : ""}</div>`}
           ${multi ? "" : `<div class="row"><label class="check"><input type="checkbox" data-opt="auc" ${s.options.auc ? "checked" : ""}> Area under the curve</label>
@@ -1512,6 +1515,7 @@
     const tw = $("opt-twcmp"); if (tw) tw.onchange = e => { s.options.twCompare = e.target.value; save(); scheduleRun(); };
     const ph = $("opt-posthoc"); if (ph) ph.onchange = e => { s.options.posthoc = e.target.value; save(); scheduleRun(); };
     const om = $("opt-outmethod"); if (om) om.onchange = e => { s.options.outlierMethod = e.target.value; save(); renderOptions(); scheduleRun(); };
+    const wt = $("opt-weight"); if (wt) wt.onchange = e => { s.options.weighting = e.target.value; save(); scheduleRun(); };
     const rq = $("opt-routq"); if (rq) rq.onchange = e => { s.options.routQ = e.target.value; save(); scheduleRun(); };
     const hy = $("opt-hyp");
     if (hy) hy.oninput = () => { s.options.hypothetical = hy.value.trim(); hy.classList.toggle("bad", hy.value.trim() !== "" && !isNum(hy.value)); save(); scheduleRun(); };
@@ -1648,6 +1652,7 @@
     if (nx) box.insertAdjacentHTML("afterbegin", `<p class="note warn" style="margin-top:0">${nx} excluded value${nx === 1 ? " is" : "s are"} not used (shown in <i>blue italics</i> in the table). Right-click to include again.</p>`);
     let rep = null;
     try { rep = reportText(lastResult, s); } catch { rep = null; }
+    if (rep && lastResult.weighting && lastResult.weighting !== "none") rep.methods += ` The fit was weighted by ${lastResult.weighting.replace("2", "²")}${lastResult.weighting.includes("Y") ? " (using the Y of the fitted curve)" : ""}.`;
     if (rep && lastResult.rout_q) rep.methods += ` Outliers were identified with the ROUT method (Q = ${fmt(lastResult.rout_q * 100)}%; Motulsky & Brown, 2006) and ${(lastResult.outliers || []).length ? `${lastResult.outliers.length} point${lastResult.outliers.length > 1 ? "s were" : " was"} excluded from the fit` : "none were found"}.`;
     else if (rep && lastResult.outliers && lastResult.outliers[0] && lastResult.outliers[0].method === "rout") rep.methods += ` Outliers were screened with the ROUT method (Q = ${fmt(lastResult.outliers[0].q * 100)}%; Motulsky & Brown, 2006).`;
     if (rep) {
@@ -2209,10 +2214,11 @@
   }
   function renderRuns(r) {
     const t = r.runs_test;
-    if (!t) return "";
+    const wnote = r.weighting && r.weighting !== "none" ? `<p class="note">Weighted fit (${esc(r.weighting.replace("2", "²"))}${r.weighting.includes("Y") ? ", weights from the fitted curve's Y" : ""}): R², Sy.x and sums of squares are weighted.</p>` : "";
+    if (!t) return wnote;
     return T.table([T.sec("Runs test (does the curve follow the data's shape?)"), T.row("Runs (expected)", `${t.runs} (${fmt(t.expected, 3)})`),
       T.row("P value", `${pOnly(t.p)}${t.deviates ? " · <b>the data deviate systematically from the curve</b>: consider another model" : " · no significant deviation"}`)]) +
-      `<p class="note">Too few runs (stretches of points on the same side of the curve) mean the model misses the data's shape. Switch the graph to <b>Residual plot</b> under Format to see it.</p>`;
+      `<p class="note">Too few runs (stretches of points on the same side of the curve) mean the model misses the data's shape. Switch the graph to <b>Residual plot</b> under Format to see it.</p>` + wnote;
   }
   function renderXYOutliers(r, s) {
     const o = r.outliers || [], q = `Q = ${fmt(r.rout_q * 100)}%`;

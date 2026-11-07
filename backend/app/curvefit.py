@@ -144,10 +144,12 @@ def custom_model(equation_text: str, initial: dict | None = None) -> dict:
 
 def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_points: int = 200,
         fixed: dict | None = None, equation: str | None = None, initial: dict | None = None,
-        rout_q: float | None = None) -> dict:
+        rout_q: float | None = None, weighting: str = "none") -> dict:
     """Fit a model to (x, y) points. For dose-response models, X is concentration unless
     x_is_log is True (then X is already log10 of concentration).
-    fixed: {parameter name: value} to hold parameters constant (constraints), e.g. {"Bottom": 0}."""
+    fixed: {parameter name: value} to hold parameters constant (constraints), e.g. {"Bottom": 0}.
+    weighting: none | 1/Y | 1/Y2 | 1/X | 1/X2. Y weights use the Y of the fitted curve (not the data), found by
+    iteratively reweighted least squares; X weights use the X values as entered (concentration)."""
     removed = []
     if rout_q:
         om = rout_mask(x, y, model, x_is_log, fixed, equation, initial, rout_q)
@@ -192,11 +194,32 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
 
     guess = m["guess"](x, y)
     p0 = [guess[i] for i in free]
+    xu = 10 ** x if (m["log_x"] and not x_is_log) else x
+    sigma = None
+    if weighting in ("1/X", "1/X2"):
+        if np.any(xu == 0):
+            raise ValueError("Weighting by 1/X needs every X to be non-zero.")
+        sigma = np.abs(xu) ** (0.5 if weighting == "1/X" else 1.0)
     try:
-        pfit, pcov = optimize.curve_fit(f_free, x, y, p0=p0, maxfev=20000)
-    except (RuntimeError, ValueError):
+        pfit, pcov = optimize.curve_fit(f_free, x, y, p0=p0, sigma=sigma, maxfev=20000)
+        if weighting in ("1/Y", "1/Y2"):
+            k = 0.5 if weighting == "1/Y" else 1.0
+            for _ in range(50):
+                yhat = np.abs(f_free(x, *pfit))
+                if np.any(yhat < 1e-300):
+                    raise ValueError("Weighting by 1/Y needs the curve to stay away from Y = 0.")
+                new, pcov = optimize.curve_fit(f_free, x, y, p0=pfit, sigma=yhat ** k, maxfev=20000)
+                done = np.allclose(new, pfit, rtol=1e-9, atol=1e-12)
+                pfit = new
+                if done:
+                    break
+            sigma = np.abs(f_free(x, *pfit)) ** k
+    except (RuntimeError, ValueError) as e:
+        if "Weighting" in str(e):
+            raise
         raise ValueError("The fit didn't converge. Check that the data have the expected shape "
                          "for this model, or try a different model.")
+    w = np.ones(len(x)) if sigma is None else 1 / np.asarray(sigma) ** 2
     popt = np.array(full(pfit), float)
     if not np.all(np.isfinite(m["f"](x, *popt))):
         raise ValueError("The fitted curve isn't defined at some X values (e.g. log of a negative number). "
@@ -205,8 +228,9 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
     from .stats import runs_test
     x_user = 10 ** x if (m["log_x"] and not x_is_log) else x  # residual plot uses the X the user entered
     resid_out = {"residuals": {"x": x_user.tolist(), "y": resid.tolist()}, "runs_test": runs_test(x, resid)}
-    ss_res = float(np.sum(resid ** 2))
-    ss_tot = float(np.sum((y - y.mean()) ** 2))
+    ss_res = float(np.sum(w * resid ** 2))
+    yw = np.sum(w * y) / np.sum(w)
+    ss_tot = float(np.sum(w * (y - yw) ** 2))
     df = len(x) - p
     sy_x = math.sqrt(ss_res / df)
     tcrit = float(stats.t.ppf(1 - alpha / 2, df))
@@ -267,7 +291,7 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
         "r_squared": 1 - ss_res / ss_tot if ss_tot > 0 else None,
         "sy_x": sy_x, "ss_res": ss_res, "df": df, "n": int(len(x)), "dropped": dropped,
         **({"outliers": removed, "rout_q": rout_q} if rout_q else {}),
-        **resid_out,
+        **resid_out, "weighting": weighting,
         "x_is_log": bool(m["log_x"]), "alpha": alpha, "fixed": fixed,
         "points": {"x": x.tolist(), "y": y.tolist()},
         "curve": {"x": xs.tolist(), "y": curve_y.tolist()},
@@ -275,7 +299,7 @@ def fit(x, y, model: str, x_is_log: bool = False, alpha: float = 0.05, curve_poi
 
 
 def compare(x, y, model_a: str, model_b: str, x_is_log: bool = False, alpha: float = 0.05,
-            fixed: dict | None = None) -> dict:
+            fixed: dict | None = None, weighting: str = "none") -> dict:
     """Fit two models to the same data and say which the data support.
 
     Always reports AICc (works for any pair). For nested pairs (one model is a special
@@ -283,8 +307,8 @@ def compare(x, y, model_a: str, model_b: str, x_is_log: bool = False, alpha: flo
     """
     if MODELS[model_a]["log_x"] != MODELS[model_b]["log_x"]:
         raise ValueError("These two models treat X differently (one uses log of X), so they can't be compared.")
-    fa = fit(x, y, model_a, x_is_log=x_is_log, alpha=alpha, fixed=fixed)
-    fb = fit(x, y, model_b, x_is_log=x_is_log, alpha=alpha, fixed=fixed)
+    fa = fit(x, y, model_a, x_is_log=x_is_log, alpha=alpha, fixed=fixed, weighting=weighting)
+    fb = fit(x, y, model_b, x_is_log=x_is_log, alpha=alpha, fixed=fixed, weighting=weighting)
     out = {"a": model_a, "b": model_b, "name_a": fa["model_name"], "name_b": fb["model_name"],
            "ss_a": fa["ss_res"], "df_a": fa["df"], "ss_b": fb["ss_res"], "df_b": fb["df"],
            "aicc_a": fa["aicc"], "aicc_b": fb["aicc"], "fit_b": fb}

@@ -192,6 +192,7 @@ class FitRequest(BaseModel):
     auc: bool = False           # also compute area under the curve of the data
     baseline: float = 0.0
     rout_q: float | None = None  # remove ROUT outliers before fitting (Q, e.g. 0.01)
+    weighting: str = "none"      # none | 1/Y | 1/Y2 | 1/X | 1/X2 (nonlinear fits)
     x_is_log: bool = False
     alpha: float = 0.05
 
@@ -265,10 +266,10 @@ def run_fit(req: FitRequest):
             res["model"] = "linear"
         else:
             res = curvefit.fit(px, py, req.model, x_is_log=req.x_is_log, alpha=req.alpha, fixed=req.fixed,
-                               equation=req.equation, initial=req.initial)
+                               equation=req.equation, initial=req.initial, weighting=req.weighting)
             if req.compare and req.compare in curvefit.MODELS and req.model in curvefit.MODELS and req.compare != req.model:
                 try:
-                    res["comparison"] = curvefit.compare(px, py, req.model, req.compare, x_is_log=req.x_is_log, alpha=req.alpha, fixed=req.fixed)
+                    res["comparison"] = curvefit.compare(px, py, req.model, req.compare, x_is_log=req.x_is_log, alpha=req.alpha, fixed=req.fixed, weighting=req.weighting)
                 except ValueError as e:
                     res["comparison"] = {"error": str(e)}
         if req.rout_q:
