@@ -113,6 +113,8 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (am) XY: error bars on X (when X replicates aren't used) — skip unless asked; instead: XY graph option to connect points with lines (no fit)
 - [x] (an) correlation matrix: optional P-value correction (Holm / FDR) for the many pairs
 - [x] (ao) survival: export the Kaplan-Meier table (time, at risk, events, survival, CI) to Excel via results
+- [ ] (ap) two-way ANOVA within-row comparisons: choose Tukey/Šídák, Holm-Šídák, Bonferroni, or each column vs the first (control)
+- [ ] (aq) copy graph to clipboard as an image (for PowerPoint / Word), Ctrl+S = save now
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →
