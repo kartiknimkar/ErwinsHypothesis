@@ -92,6 +92,11 @@ Chunk list (mark [x] when done; when all done, pick new chunks from the ideas be
 - [x] (s) graph options: error bars above only (bars), survival: percent death and median survival lines
 - [x] (t) keyboard shortcuts / quick help panel ("?" button)
 - [x] (u) performance check with large tables (e.g. 5,000 rows) and fix any slowness
+- [ ] (v) packaged app: rebuild with PyInstaller on Linux and smoke-test (new modules, no dev-only imports)
+- [ ] (w) dark mode check of newer UI (help, menus, format panel, report buttons)
+- [ ] (x) XY: predict Y for rows that have X but no Y (interpolation both ways)
+- [ ] (y) multiple t tests: two-stage step-up FDR (Benjamini-Krieger-Yekutieli, Prism's default), Holm-Šídák, Bonferroni
+- [ ] (z) Bland-Altman: percent difference and ratio options
 
 ## Next step (suggested order; confirm with user)
 0. Agreed order with user: (done) .pzfx import, exclude values, mean/SD/n entry, styling+editable SVG →
