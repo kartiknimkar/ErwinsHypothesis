@@ -1029,6 +1029,123 @@
     if (lastError) { box.innerHTML = T.summary("err", `<b>Not enough to analyze yet.</b> ${esc(lastError)}`); return; }
     if (!lastResult) { box.innerHTML = ""; return; }
     box.innerHTML = TYPES[s.type].renderResults(lastResult, s);
+    let rep = null;
+    try { rep = reportText(lastResult, s); } catch { rep = null; }
+    if (rep) {
+      box.insertAdjacentHTML("beforeend", `<details class="report"><summary>Text for your paper</summary>
+        <div class="report-block"><div class="opt-label">Methods</div><p id="rep-methods">${rep.methods}</p></div>
+        <div class="report-block"><div class="opt-label">Results</div><p id="rep-results">${rep.results}</p></div>
+        <button class="ghost small" id="btn-copy-report">Copy text</button>
+        <p class="note">Check the wording fits your study. Replace "Erwin's Hypothesis" with the version you used if your journal asks.</p></details>`);
+      $("btn-copy-report").onclick = async () => {
+        const text = `${$("rep-methods").textContent}\n\n${$("rep-results").textContent}`;
+        try { await navigator.clipboard.writeText(text); } catch {
+          const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
+        }
+        toast("Methods and results text copied.");
+      };
+    }
+  }
+
+  // ======================================================================
+  // "Text for your paper": methods + results sentences in standard reporting style
+  // ======================================================================
+  const apaP = p => p == null ? "P = n/a" : p < 0.0001 ? "P < 0.0001" : p < 0.001 ? `P = ${p.toFixed(4)}` : `P = ${p.toFixed(3)}`;
+  const r2 = (v, d = 2) => v == null || Number.isNaN(v) ? "n/a" : Math.abs(v) >= 1000 || (Math.abs(v) < 0.01 && v !== 0) ? fmt(v, 3) : Number(v).toFixed(d);
+  const ALPHA = r => `P < ${r.alpha ?? 0.05} was considered statistically significant.`;
+  const SW = "Erwin's Hypothesis";
+  function reportText(r, s) {
+    const pct = Math.round((1 - (r.alpha ?? 0.05)) * 100);
+    const errName = { sd: "mean ± SD", sem: "mean ± SEM", ci95: "mean ± 95% CI" }[s.graph.err] || "mean ± SD";
+    if (s.type === "ttest" && r.kind === "describe") {
+      const m = `Descriptive statistics were calculated for each group, and normality was assessed with the Shapiro-Wilk test${r.hypothetical != null ? `; each group was compared with a hypothetical value of ${fmt(r.hypothetical)} using a one-sample t test` : ""} (${SW}).`;
+      const res = r.groups.map(g => `${esc(g.name)}: ${r2(g.mean)} ± ${r2(g.sd)} (mean ± SD, n = ${g.n})${g.one_sample_t ? `, t(${g.one_sample_t.df}) = ${r2(g.one_sample_t.t)}, ${apaP(g.one_sample_t.p)}` : ""}`).join("; ") + ".";
+      return { methods: m, results: res };
+    }
+    if (s.type === "ttest" && r.n_groups === 2) {
+      const [a, b] = r.groups.map(g => esc(g.name));
+      const test = { welch: "Welch's t test", unpaired: "an unpaired t test", paired: "a paired t test", mannwhitney: "the Mann-Whitney test", wilcoxon: "the Wilcoxon matched-pairs signed-rank test" }[r.kind] || r.test_name;
+      const np = r.kind === "mannwhitney" || r.kind === "wilcoxon";
+      const methods = `${a} and ${b} were compared using ${test} (two-tailed). Data are presented as ${np ? "median (interquartile range) where appropriate, and " : ""}${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`;
+      const stat = r.df != null ? `${r.statistic_name}(${r2(r.df, Number.isInteger(r.df) ? 0 : 1)}) = ${r2(r.statistic)}` : `${r.statistic_name} = ${r2(r.statistic, 1)}`;
+      const dir = r.difference > 0 ? "higher than" : "lower than";
+      const what = np ? (r.kind === "wilcoxon" ? "median difference" : "median difference") : "mean difference";
+      const results = r.significant
+        ? `${b} was significantly ${dir} ${a} (${what} ${r2(r.difference)}${r.ci_low != null ? `, ${pct}% CI ${r2(r.ci_low)} to ${r2(r.ci_high)}` : ""}; ${stat}, ${apaP(r.p)}).`
+        : `${b} and ${a} did not differ significantly (${what} ${r2(r.difference)}${r.ci_low != null ? `, ${pct}% CI ${r2(r.ci_low)} to ${r2(r.ci_high)}` : ""}; ${stat}, ${apaP(r.p)}).`;
+      return { methods, results };
+    }
+    if (s.type === "ttest") {
+      const test = { ordinary: "one-way ANOVA followed by Tukey's multiple comparisons test", welch: "Welch's ANOVA followed by the Games-Howell test",
+        kruskal: "the Kruskal-Wallis test followed by Dunn's multiple comparisons test", rm: "repeated-measures one-way ANOVA with the Geisser-Greenhouse correction, followed by Tukey's multiple comparisons test",
+        friedman: "the Friedman test followed by Dunn's multiple comparisons test" }[r.kind];
+      const methods = `Groups were compared using ${test}. Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`;
+      const main = r.kind === "kruskal" ? `H(${r.df_between}) = ${r2(r.H)}` : r.kind === "friedman" ? `χ²(${r.df_between}) = ${r2(r.chi2)}`
+        : `F(${r2(r.df_between, Number.isInteger(r.df_between) ? 0 : 2)}, ${r2(r.df_within, Number.isInteger(r.df_within) ? 0 : 2)}) = ${r2(r.F)}`;
+      const sig = r.comparisons.filter(c => c.significant);
+      const pairs = sig.slice(0, 6).map(c => `${esc(c.a)} and ${esc(c.b)} (${apaP(c.p)})`).join("; ");
+      const results = r.significant ? `There was a significant difference among groups (${main}, ${apaP(r.p)}${r.kind === "rm" ? `, ε = ${r2(r.epsilon)}` : ""}).${sig.length ? ` Post hoc comparisons showed differences between ${pairs}${sig.length > 6 ? ", and others" : ""}.` : " No pairwise comparison reached significance."}`
+        : `There was no significant difference among groups (${main}, ${apaP(r.p)}).`;
+      return { methods, results };
+    }
+    if (s.type === "twoway" && r.test_name === "Multiple t tests") {
+      const test = { welch: "Welch's t tests", unpaired: "unpaired t tests", mannwhitney: "Mann-Whitney tests" }[r.kind] || "t tests";
+      return { methods: `Each ${esc(s.cols[0] || "row")} was compared between ${esc(r.names[0])} and ${esc(r.names[1])} using ${test}; P values were adjusted for multiple comparisons with the Benjamini-Hochberg false discovery rate (Q = ${r.q_level * 100}%). Analyses were performed in ${SW}.`,
+        results: `${r.n_discoveries} of ${r.items.length} ${r.n_discoveries === 1 ? "was" : "were"} identified as discoveries${r.n_discoveries ? ` (${r.items.filter(i => i.discovery).sort((x, y) => x.p - y.p).slice(0, 8).map(i => esc(i.name)).join(", ")})` : ""}.` };
+    }
+    if (s.type === "twoway") {
+      const t = Object.fromEntries(r.table.map(x => [x.source, x]));
+      const rowF = esc(s.cols[0] || "row factor");
+      const f = x => `F(${x.df}, ${x.dfd ?? t.Residual.df}) = ${r2(x.F)}, ${apaP(x.p)}`;
+      return { methods: `Data were analyzed by ${r.rm ? `two-way repeated-measures (mixed) ANOVA with ${rowF} as the within-subject factor and the Geisser-Greenhouse correction` : "two-way ANOVA"}, followed by ${esc(r.posthoc_name.split(" (")[0])} comparing groups at each level of ${rowF}. Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+        results: `There was ${t.Interaction.p < r.alpha ? "a significant" : "no significant"} interaction between group and ${rowF} (${f(t.Interaction)}). The main effect of group was ${t["Column factor"].p < r.alpha ? "" : "not "}significant (${f(t["Column factor"])}), and the main effect of ${rowF} was ${t["Row factor"].p < r.alpha ? "" : "not "}significant (${f(t["Row factor"])}).` };
+    }
+    if (s.type === "regression" && r.model === "linear") {
+      const c = r.correlation;
+      return { methods: `The relationship between ${esc(s.cols[0])} and ${esc(s.cols[1])} was analyzed by least-squares linear regression, and correlation was assessed with Pearson's coefficient${r.unknowns ? `; unknown samples were interpolated from the fitted line` : ""}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+        results: `${r.significant ? "There was a significant linear relationship" : "There was no significant linear relationship"} (slope ${r2(r.slope, 4)}, ${pct}% CI ${r2(r.slope_ci[0], 4)} to ${r2(r.slope_ci[1], 4)}; R² = ${r2(r.r_squared, 3)}; F(1, ${r.df}) = ${r2(r.F)}, ${apaP(r.p)}; Pearson r = ${r2(c.pearson_r, 3)}).` };
+    }
+    if (s.type === "regression") {
+      const key = r.derived && r.derived[0];
+      const fixed = r.params.filter(p => p.fixed);
+      return { methods: `Data were fitted by nonlinear least-squares regression ${r.model === "custom" ? `to the user-defined equation ${esc(r.equation)}` : `using the model “${esc(r.model_name)}”, ${esc(r.equation)}`}${r.x_is_log && !s.options.xIsLog ? ", with X log10-transformed" : ""}${fixed.length ? `; ${fixed.map(p => `${esc(p.name)} was constrained to ${fmt(p.value)}`).join(", ")}` : ""}. Analyses were performed in ${SW}.`,
+        results: `${key && key.value != null ? `The best-fit ${key.name} was ${r2(key.value, 3)}${key.ci && key.ci[0] != null ? ` (${pct}% CI ${r2(key.ci[0], 3)} to ${r2(key.ci[1], 3)})` : ""}; ` : ""}${r.params.filter(p => !p.fixed).map(p => `${esc(p.name)} = ${r2(p.value, 3)}`).join(", ")} (R² = ${r2(r.r_squared, 3)}, n = ${r.n}).` };
+    }
+    if (s.type === "survival") {
+      const m = `Survival was estimated with the Kaplan-Meier method${r.logrank ? " and compared between groups with the log-rank (Mantel-Cox) test" : ""}${r.hazard_ratio ? "; the hazard ratio was calculated with the Mantel-Haenszel method" : ""}. ${ALPHA(r)} Analyses were performed in ${SW}.`;
+      const meds = r.curves.map(c => `${esc(c.name)} ${c.median == null ? "not reached" : r2(c.median, 1)}`).join(", ");
+      return { methods: m, results: `Median survival: ${meds}.${r.logrank ? ` Survival ${r.p < r.alpha ? "differed significantly" : "did not differ significantly"} between groups (χ²(${r.logrank.df}) = ${r2(r.logrank.chi2)}, ${apaP(r.p)})` : ""}${r.hazard_ratio ? `; hazard ratio (${esc(r.hazard_ratio.label)}) ${r2(r.hazard_ratio.value)}, 95% CI ${r2(r.hazard_ratio.ci[0])} to ${r2(r.hazard_ratio.ci[1])}.` : "."}` };
+    }
+    if (s.type === "contingency") {
+      return { methods: `The association between group and outcome was tested with ${r.fisher ? "Fisher's exact test (two-sided)" : "the chi-square test"}${r.odds_ratio ? "; odds ratios and relative risks are reported with 95% confidence intervals" : ""}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+        results: `${r.table.map((row, i) => `${esc(r.rows[i])}: ${row[0]}/${row.reduce((x, y) => x + y, 0)} (${r2(r.row_pct[i][0], 1)}%) ${esc(r.cols[0]).toLowerCase()}`).join("; ")}. The association was ${r.p < r.alpha ? "" : "not "}significant (${r.fisher ? apaP(r.fisher.p) : `χ²(${r.chi_square.df}) = ${r2(r.chi_square.chi2)}, ${apaP(r.p)}`}${r.odds_ratio ? `; OR ${r2(r.odds_ratio.value)}, 95% CI ${r2(r.odds_ratio.ci[0])} to ${r2(r.odds_ratio.ci[1])}` : ""}).` };
+    }
+    if (s.type === "multivar" && r.kind === "linear") {
+      return { methods: `${esc(r.y_name)} was modeled by multiple linear regression with ${r.coefs.slice(1).map(c => esc(c.name)).join(", ")} as predictors. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+        results: `The model explained ${r2(r.r_squared * 100, 1)}% of the variance (adjusted R² = ${r2(r.adj_r_squared, 3)}; F(${r.coefs.length - 1}, ${r.df}) = ${r2(r.F)}, ${apaP(r.p)}). ${r.coefs.slice(1).map(c => `${esc(c.name)}: β = ${r2(c.estimate, 3)} (${pct}% CI ${r2(c.ci[0], 3)} to ${r2(c.ci[1], 3)}), ${apaP(c.p)}`).join("; ")}.` };
+    }
+    if (s.type === "multivar" && r.kind === "logistic") {
+      return { methods: `${esc(r.y_name)} was modeled by binary logistic regression with ${r.coefs.slice(1).map(c => esc(c.name)).join(", ")} as predictors; odds ratios are reported with 95% Wald confidence intervals. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+        results: `The model was ${r.p < r.alpha ? "" : "not "}significant (likelihood ratio χ²(${r.coefs.length - 1}) = ${r2(r.lr_chi2)}, ${apaP(r.p)}; AUC = ${r2(r.auc, 3)}). ${r.coefs.slice(1).map(c => `${esc(c.name)}: OR ${r2(c.or, 3)} (95% CI ${r2(c.or_ci[0], 3)} to ${r2(c.or_ci[1], 3)}), ${apaP(c.p)}`).join("; ")}.` };
+    }
+    if (s.type === "multivar" && r.kind === "pca") {
+      return { methods: `Principal component analysis was performed on ${r.standardized ? "standardized" : "unstandardized"} variables (${r.names.map(esc).join(", ")}; n = ${r.n}). Analyses were performed in ${SW}.`,
+        results: `The first two components explained ${r2(r.cumulative_pct[Math.min(1, r.cumulative_pct.length - 1)], 1)}% of the total variance (PC1 ${r2(r.variance_pct[0], 1)}%${r.variance_pct[1] != null ? `, PC2 ${r2(r.variance_pct[1], 1)}%` : ""}); ${r.kaiser} component${r.kaiser === 1 ? "" : "s"} had eigenvalues above 1.` };
+    }
+    if (s.type === "multivar") {
+      const sig = r.pairs.filter(p => p.significant);
+      return { methods: `Associations between variables were assessed with ${r.method === "pearson" ? "Pearson" : "Spearman"} correlation coefficients (pairwise complete observations). ${ALPHA(r)} Analyses were performed in ${SW}.`,
+        results: `${sig.length} of ${r.pairs.length} pairs were significantly correlated. ${r.pairs.slice(0, 4).map(p => `${esc(p.a)} and ${esc(p.b)}: r = ${r2(p.r)}, ${apaP(p.p)}`).join("; ")}.` };
+    }
+    if (s.type === "diagnostic" && r.test_name === "ROC curve") {
+      return { methods: `Diagnostic performance was evaluated by receiver operating characteristic (ROC) analysis; the standard error of the area under the curve was calculated by the Hanley-McNeil method and the optimal cutoff by the Youden index. Analyses were performed in ${SW}.`,
+        results: `The area under the ROC curve was ${r2(r.auc, 3)} (${pct}% CI ${r2(r.ci[0], 3)} to ${r2(r.ci[1], 3)}, ${apaP(r.p)}). At a cutoff of ${r.direction === "higher" ? "≥" : "≤"} ${fmt(r.best.cut)}, sensitivity was ${r2(r.best.sens, 1)}% and specificity ${r2(r.best.spec, 1)}% (${r.n_patients} ${esc(r.names[1]).toLowerCase()}, ${r.n_controls} ${esc(r.names[0]).toLowerCase()}).` };
+    }
+    if (s.type === "diagnostic") {
+      return { methods: `Agreement between ${esc(r.names[0])} and ${esc(r.names[1])} was assessed by Bland-Altman analysis (bias and 95% limits of agreement). Analyses were performed in ${SW}.`,
+        results: `The mean difference (${esc(r.names[1])} − ${esc(r.names[0])}) was ${r2(r.bias, 3)} (${pct}% CI ${r2(r.bias_ci[0], 3)} to ${r2(r.bias_ci[1], 3)}), with 95% limits of agreement from ${r2(r.loa[0], 3)} to ${r2(r.loa[1], 3)} (n = ${r.n}).` };
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------- groups

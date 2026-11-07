@@ -100,6 +100,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Plain-language question flow → recommended analysis with reason → creates it pre-configured
 - [x] Browser test walks every branch (22+ recommendations) and runs each with example data; 95 tests
 
+## Phase 0.23: Text for your paper (done 2026-11-06)
+- [x] Methods + results sentences (APA-style statistics) for every analysis type, with Copy button
+- [x] UI test checks every example produces text without undefined/NaN gaps
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

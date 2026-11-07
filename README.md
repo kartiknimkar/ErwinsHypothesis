@@ -22,6 +22,7 @@ clean, modern interface. Everything runs on your own computer.
 
 Data can be typed, pasted from Excel, or imported from .xlsx / .csv files. Not sure which test to use?
 Click **Help me choose**: a few plain-language questions recommend and set up the right analysis.
+Every result also has **Text for your paper**: a methods sentence and a results sentence in standard reporting style.
 
 See `ROADMAP.md` for what's coming.
 

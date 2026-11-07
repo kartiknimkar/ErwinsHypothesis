@@ -186,6 +186,9 @@ table.res tr.hl td { background: #f0f9f4; }
 table.res .pd { color: var(--muted); font-size: 11.5px; font-weight: 400; }
 .st { font-weight: 650; }
 .st.ns { color: var(--muted); font-weight: 400; }
+.report { margin-top: 12px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; }
+.report summary { cursor: pointer; font-weight: 600; }
+.report-block p { margin: 4px 0 10px; line-height: 1.55; }
 .note { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.45; }
 .note.warn { color: var(--warn); }
 

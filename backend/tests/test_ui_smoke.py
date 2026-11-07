@@ -48,6 +48,12 @@ def test_every_example_renders(server):
             summary = page.inner_text("#results")
             assert "Not enough to analyze" not in summary, f"{name}: {summary[:200]}"
             assert page.query_selector("#plot .main-svg") is not None, f"{name}: no graph"
+            if "figure layout" not in name:
+                rep = page.query_selector("#rep-results")
+                assert rep is not None, f"{name}: no paper text"
+                text = page.eval_on_selector("#results details.report", "e => e.textContent")
+                for bad in ("undefined", "NaN", "null", "[object"):
+                    assert bad not in text, f"{name}: '{bad}' in paper text: {text[:300]}"
             # open the Format panel once per type and change a setting
             page.click("#btn-format"); page.wait_for_timeout(100); page.click("#btn-format")
         assert errors == [], errors
