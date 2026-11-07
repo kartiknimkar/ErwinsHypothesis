@@ -123,6 +123,12 @@ def analyze(times: list, groups: dict[str, list], alpha: float = 0.05) -> dict:
         res["wilcoxon"] = logrank(data, "wilcoxon")
         if len(curves) >= 3:
             res["trend"] = trend_test(lr)
+            from .stats import _adjust, stars
+            pairs = [(i, j) for i in range(len(curves)) for j in range(i + 1, len(curves))]
+            raw = [logrank([data[i], data[j]]) for i, j in pairs]
+            adj = _adjust([x["p"] for x in raw], "holm")
+            res["pairwise"] = [{"a": curves[i]["name"], "b": curves[j]["name"], "chi2": x["chi2"], "p_raw": x["p"], "p": float(pa),
+                                "stars": stars(float(pa)), "significant": bool(pa < alpha)} for (i, j), x, pa in zip(pairs, raw, adj)]
         if len(curves) == 2:
             # Mantel-Haenszel hazard ratio, second group relative to the first
             O2, E2, V2 = lr["observed"][1], lr["expected"][1], lr["variance"][1]

@@ -232,6 +232,9 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Cohen's d (+ CI), Hedges' g, paired d_z, rank-biserial r, R² for t tests; η², ω² (ANOVA), ε² (Kruskal-Wallis);
       d in paper text; matches pingouin; 165 tests
 
+## Phase 0.51: Pairwise survival comparisons (done 2026-11-07)
+- [x] 3+ survival curves: every pair compared by log-rank, Holm-Šídák adjusted (matches lifelines per pair); 166 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

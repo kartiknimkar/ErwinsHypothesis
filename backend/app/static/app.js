@@ -2692,6 +2692,9 @@
         T.row("95% CI", ci(...r.hazard_ratio.ci)));
       if (r.median_ratio) rows.push(T.row("Ratio of medians", fmt(r.median_ratio)));
       h += T.table(rows);
+      if (r.pairwise) h += `<div class="opt-label" style="margin-top:10px">Pairwise log-rank comparisons (Holm-Šídák adjusted)</div>` +
+        T.multi(["Comparison", "Chi-square", "Unadjusted P", "Adjusted P", ""], r.pairwise.map(c => ({ cls: c.significant ? "hl" : "",
+          cells: [`${esc(c.a)} vs ${esc(c.b)}`, fmt(c.chi2), pOnly(c.p_raw), pOnly(c.p), st(c.stars)] })));
     }
     h += `<p class="note">"Undefined" median: survival never fell to 50%.</p>`;
     return h;

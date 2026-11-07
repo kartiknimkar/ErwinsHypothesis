@@ -156,3 +156,17 @@ def test_gehan_wilcoxon_and_trend():
     assert np.isclose(survival.trend_test(lr)["chi2"], lr["chi2"], rtol=1e-10)
     rt = survival.risk_table(g, ["a", "b"])
     assert rt["counts"]["a"][0] == len(T1) and rt["times"][0] == 0 and all(np.diff(rt["counts"]["b"]) <= 0)
+
+
+def test_pairwise_logrank():
+    lf = pytest.importorskip("lifelines.statistics")
+    T3 = [3, 5, 7, 9, 11]; E3 = [1, 1, 0, 1, 1]
+    times = T1 + T2 + T3
+    n = len(times)
+    cols = {"A": E1 + [""] * (n - len(E1)), "B": [""] * len(T1) + E2 + [""] * len(T3), "C": [""] * (len(T1) + len(T2)) + E3}
+    r = survival.analyze(times, cols)
+    assert len(r["pairwise"]) == 3
+    ab = r["pairwise"][0]
+    ref = lf.logrank_test(T1, T2, E1, E2)
+    assert ab["a"] == "A" and ab["b"] == "B" and np.isclose(ab["p_raw"], ref.p_value)
+    assert all(p["p"] >= p["p_raw"] for p in r["pairwise"])
