@@ -185,8 +185,56 @@ def _pairs(k: int):
     return [(i, j) for i in range(k) for j in range(i + 1, k)]
 
 
-def one_way_anova(groups, names=None, kind: str = "ordinary", alpha: float = 0.05) -> dict:
+POSTHOC_NAMES = {"tukey": "Tukey's", "dunnett": "Dunnett's", "bonferroni": "Bonferroni's", "sidak": "Šídák's",
+                 "holm": "Holm-Šídák", "lsd": "Fisher's LSD (uncorrected)"}
+
+
+def _adjust(praw, method: str):
+    """Multiplicity-adjusted P values for a family of m tests."""
+    p = np.asarray(praw, float)
+    m = len(p)
+    if method == "bonferroni":
+        return np.minimum(1, p * m)
+    if method == "sidak":
+        return 1 - (1 - p) ** m
+    if method == "holm":  # Holm-Šídák step-down
+        order = np.argsort(p)
+        adj = np.empty(m)
+        run = 0.0
+        for rank, idx in enumerate(order):
+            run = max(run, 1 - (1 - p[idx]) ** (m - rank))
+            adj[idx] = min(1.0, run)
+        return adj
+    return p  # lsd: no correction
+
+
+def _pairwise_pooled(xs, names, pairs, msw, dfw, method, alpha):
+    """t tests using the pooled within-group variance (MS residual), then a multiplicity correction."""
+    ns = [len(x) for x in xs]
+    means = [x.mean() for x in xs]
+    m = len(pairs)
+    rows, praw = [], []
+    for i, j in pairs:
+        se = math.sqrt(msw * (1 / ns[i] + 1 / ns[j]))
+        d = float(means[i] - means[j])
+        t = d / se
+        praw.append(2 * stats.t.sf(abs(t), dfw))
+        rows.append((i, j, d, se, t))
+    padj = _adjust(praw, method)
+    a_ci = {"bonferroni": alpha / m, "sidak": 1 - (1 - alpha) ** (1 / m), "lsd": alpha}.get(method)
+    tcrit = float(stats.t.ppf(1 - a_ci / 2, dfw)) if a_ci else None
+    return [{"a": names[i], "b": names[j], "i": i, "j": j, "diff": d, "t": float(t), "p_raw": float(pr),
+             "ci_low": d - tcrit * se if tcrit else None, "ci_high": d + tcrit * se if tcrit else None, "p": float(pa)}
+            for (i, j, d, se, t), pr, pa in zip(rows, praw, padj)]
+
+
+def one_way_anova(groups, names=None, kind: str = "ordinary", alpha: float = 0.05,
+                  posthoc: str = "tukey", compare_to: str = "all") -> dict:
     """Compare 3+ groups.
+
+    posthoc (ordinary ANOVA): tukey | dunnett | bonferroni | sidak | holm | lsd.
+    compare_to: "all" pairs, or "control" (every group vs the first column). Tukey implies all pairs and
+    Dunnett implies vs control. Kruskal-Wallis uses Dunn's test for either family.
 
     kind: "ordinary" (one-way ANOVA + Tukey), "welch" (Welch's ANOVA + Games-Howell),
           "kruskal" (Kruskal-Wallis + Dunn's, Bonferroni-adjusted).
@@ -220,17 +268,36 @@ def one_way_anova(groups, names=None, kind: str = "ordinary", alpha: float = 0.0
         msb, msw = ssb / dfb, ssw / dfw
         F = msb / msw if msw > 0 else float("inf")
         p = float(stats.f.sf(F, dfb, dfw))
-        res.update(test_name="Ordinary one-way ANOVA", posthoc_name="Tukey's multiple comparisons",
+        if posthoc == "tukey":
+            compare_to = "all"
+        if posthoc == "dunnett":
+            compare_to = "control"
+        res.update(test_name="Ordinary one-way ANOVA", posthoc_name=f"{POSTHOC_NAMES.get(posthoc, posthoc)} multiple comparisons" + (" vs control" if compare_to == "control" else ""),
                    F=F, df_between=dfb, df_within=dfw, p=p, r_squared=ssb / (ssb + ssw),
                    table=[{"source": "Between groups", "SS": ssb, "df": dfb, "MS": msb},
                           {"source": "Within groups (residual)", "SS": ssw, "df": dfw, "MS": msw},
                           {"source": "Total", "SS": ssb + ssw, "df": int(N - 1), "MS": None}])
-        tk = stats.tukey_hsd(*xs)
-        ci = tk.confidence_interval(conf)
-        for i, j in _pairs(k):
-            comps.append({"a": names[i], "b": names[j], "i": i, "j": j, "diff": float(tk.statistic[i, j]),
-                          "ci_low": float(ci.low[i, j]), "ci_high": float(ci.high[i, j]),
-                          "p": float(tk.pvalue[i, j])})
+        pairs = _pairs(k) if compare_to != "control" else [(0, j) for j in range(1, k)]
+        if posthoc == "tukey":
+            tk = stats.tukey_hsd(*xs)
+            ci = tk.confidence_interval(conf)
+            for i, j in pairs:
+                comps.append({"a": names[i], "b": names[j], "i": i, "j": j, "diff": float(tk.statistic[i, j]),
+                              "ci_low": float(ci.low[i, j]), "ci_high": float(ci.high[i, j]),
+                              "p": float(tk.pvalue[i, j])})
+        elif posthoc == "dunnett":
+            # multivariate-t integration is randomized in SciPy: a fixed seed makes results reproducible
+            dn = stats.dunnett(*xs[1:], control=xs[0], rng=np.random.default_rng(12345))
+            dci = dn.confidence_interval(conf)
+            for n_, (i, j) in enumerate(pairs):
+                # scipy reports treatment − control; we report first − second (control − treatment)
+                comps.append({"a": names[i], "b": names[j], "i": i, "j": j, "diff": float(means[i] - means[j]),
+                              "ci_low": -float(dci.high[n_]), "ci_high": -float(dci.low[n_]), "p": float(dn.pvalue[n_])})
+        elif posthoc in ("bonferroni", "sidak", "holm", "lsd"):
+            comps = _pairwise_pooled(xs, names, pairs, msw, dfw, posthoc, alpha)
+        else:
+            raise ValueError(f"Unknown multiple comparison method: {posthoc}")
+        res["posthoc"], res["compare_to"] = posthoc, compare_to
         # Brown-Forsythe check for equal spread
         bf = stats.levene(*xs, center="median")
         res["variance_check"] = {"name": "Brown-Forsythe", "statistic": float(bf.statistic), "p": float(bf.pvalue)}
@@ -266,8 +333,12 @@ def one_way_anova(groups, names=None, kind: str = "ordinary", alpha: float = 0.0
         tie = np.sum(counts ** 3 - counts) / (12 * (N - 1))
         bounds = np.cumsum([0] + [len(x) for x in xs])
         mean_ranks = [ranks[bounds[g]:bounds[g + 1]].mean() for g in range(k)]
-        m = len(_pairs(k))
-        for i, j in _pairs(k):
+        pairs = _pairs(k) if compare_to != "control" else [(0, j) for j in range(1, k)]
+        m = len(pairs)
+        if compare_to == "control":
+            res["posthoc_name"] = "Dunn's multiple comparisons vs control"
+        res["compare_to"] = compare_to
+        for i, j in pairs:
             se = math.sqrt((N * (N + 1) / 12 - tie) * (1 / ns[i] + 1 / ns[j]))
             z = (mean_ranks[i] - mean_ranks[j]) / se
             p_raw = 2 * stats.norm.sf(abs(z))
@@ -463,7 +534,8 @@ def _synthetic(mean: float, sd: float, n: int) -> np.ndarray:
     return mean + sd * z
 
 
-def compare_summary(groups, kind: str = "welch", alpha: float = 0.05, err: str = "sd") -> dict:
+def compare_summary(groups, kind: str = "welch", alpha: float = 0.05, err: str = "sd",
+                    posthoc: str = "tukey", compare_to: str = "all") -> dict:
     """Compare groups given as {name, mean, sd (or sem), n}. Only tests that are exact from
     summary statistics are allowed: unpaired/Welch t test, ordinary/Welch one-way ANOVA."""
     clean = []
@@ -485,7 +557,7 @@ def compare_summary(groups, kind: str = "welch", alpha: float = 0.05, err: str =
         res = t_test(data[0], data[1], kind=k, name_a=names[0], name_b=names[1], alpha=alpha)
     else:
         k = kind if kind in ("ordinary", "welch") else "ordinary"
-        res = one_way_anova(data, names, kind=k, alpha=alpha)
+        res = one_way_anova(data, names, kind=k, alpha=alpha, posthoc=posthoc if k == "ordinary" else "tukey", compare_to=compare_to)
         res.pop("variance_check", None)  # Brown-Forsythe needs the raw values
     res.pop("normality", None)
     res.pop("normality_of", None)

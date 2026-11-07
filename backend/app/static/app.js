@@ -276,12 +276,21 @@
       ["mannwhitney", "Mann-Whitney test", "Nonparametric: compares ranks, no normality needed."]],
     "2r": [["paired", "Paired t test", "Each row is one subject measured in both columns."],
       ["wilcoxon", "Wilcoxon signed-rank test", "Nonparametric paired test."]],
-    "3i": [["ordinary", "One-way ANOVA + Tukey", "Compares all means; Tukey's test for every pair."],
+    "3i": [["ordinary", "One-way ANOVA", "Compares all means, then each pair (Tukey) or each group vs control (Dunnett). Choose below."],
       ["welch", "Welch's ANOVA + Games-Howell", "When the groups' spreads differ."],
       ["kruskal", "Kruskal-Wallis + Dunn's", "Nonparametric: compares ranks, no normality needed."]],
     "3r": [["rm", "Repeated-measures ANOVA + Tukey", "Each row is one subject measured in every column. Geisser-Greenhouse corrected."],
       ["friedman", "Friedman test + Dunn's", "Nonparametric repeated measures."]],
   };
+  function postHocOptions(s, kind) {
+    const to = s.options.compareTo || "all", ph = s.options.posthoc || "tukey";
+    const methods = to === "control"
+      ? [["dunnett", "Dunnett (recommended)"], ["holm", "Holm-Šídák"], ["sidak", "Šídák"], ["bonferroni", "Bonferroni"], ["lsd", "Fisher's LSD (no correction)"]]
+      : [["tukey", "Tukey (recommended)"], ["holm", "Holm-Šídák"], ["sidak", "Šídák"], ["bonferroni", "Bonferroni"], ["lsd", "Fisher's LSD (no correction)"]];
+    return `<div class="row"><label for="opt-cmpto">Compare</label><select id="opt-cmpto"><option value="all" ${to === "all" ? "selected" : ""}>every pair of groups</option>
+      <option value="control" ${to === "control" ? "selected" : ""}>each group with the first column (control)</option></select>
+      ${kind === "ordinary" ? `<label for="opt-posthoc">Correction</label><select id="opt-posthoc">${methods.map(([v, l]) => `<option value="${v}" ${ph === v ? "selected" : ""}>${l}</option>`).join("")}</select>` : `<span class="pd">Dunn's test</span>`}</div>`;
+  }
   const choiceKey = (s, n) => `${n >= 3 ? 3 : 2}${s.options.design === "repeated" ? "r" : "i"}`;
   const kindFor = (s, n) => { const key = choiceKey(s, n); const k = s.options["kind" + key]; return CHOICES[key].some(c => c[0] === k) ? k : CHOICES[key][0][0]; };
   let MODELS = [
@@ -324,6 +333,7 @@
         if (s.options.mode === "describe") return ["/api/colstats", { groups, names, alpha: s.options.alpha,
           hypothetical: isNum(s.options.hypothetical) ? Number(s.options.hypothetical) : null }];
         return ["/api/compare", { groups, names, kind: kindFor(s, filledCols(s).length), alpha: s.options.alpha, outliers: !!s.options.outliers,
+          posthoc: s.options.posthoc || "tukey", compare_to: s.options.compareTo || "all",
           outlier_method: s.options.outlierMethod || "rout", q: Number(s.options.routQ ?? 0.01) }];
       },
       renderOptions(s) {
@@ -345,6 +355,7 @@
           <div class="opt-label">${n >= 3 ? `${n} groups: compare all` : "2 groups"}</div>` +
           CHOICES[key].map(([k, name, d]) => `<label class="choice ${cur === k ? "on" : ""}"><input type="radio" name="kind${key}" value="${k}" ${cur === k ? "checked" : ""}><span><b>${name}</b><small>${d}</small></span></label>`).join("") +
           (n >= 3 ? "" : `<p class="hint">Have 3 or more groups? Click <b>+ Group</b> to add a column.</p>`) +
+          (n >= 3 && (cur === "ordinary" || cur === "kruskal") ? postHocOptions(s, cur) : "") +
           `<div class="row"><label class="check"><input type="checkbox" data-opt="outliers" ${s.options.outliers ? "checked" : ""}> Identify outliers</label>
           ${s.options.outliers ? `<select id="opt-outmethod"><option value="rout" ${(s.options.outlierMethod || "rout") === "rout" ? "selected" : ""}>ROUT (finds one or several)</option><option value="grubbs" ${s.options.outlierMethod === "grubbs" ? "selected" : ""}>Grubbs' test (α = 0.05)</option></select>
             ${(s.options.outlierMethod || "rout") === "rout" ? `<label for="opt-routq">Q</label>` + `<select id="opt-routq">${[["0.001", "0.1%"], ["0.01", "1% (recommended)"], ["0.05", "5%"], ["0.1", "10%"]].map(([v, l]) => `<option value="${v}" ${String(s.options.routQ ?? "0.01") === v ? "selected" : ""}>${l}</option>`).join("")}</select>` : ""}` : ""}</div>` + alphaSelect(s);
@@ -405,16 +416,18 @@
         const rows = s.data.filter(r => isNum(r[1]) && isNum(r[2]) && isNum(r[3]));
         const n = rows.length;
         return ["/api/summary", { groups: rows.map((r, i) => ({ name: String(r[0] || `Group ${i + 1}`), mean: Number(r[1]), sd: Number(r[2]), n: Number(r[3]) })),
-          err: s.options.err, kind: n >= 3 ? s.options.kind3 : s.options.kind2, alpha: s.options.alpha }];
+          err: s.options.err, kind: n >= 3 ? s.options.kind3 : s.options.kind2, alpha: s.options.alpha,
+          posthoc: s.options.posthoc || "tukey", compare_to: s.options.compareTo || "all" }];
       },
       renderOptions(s) {
         const n = s.data.filter(r => isNum(r[1]) && isNum(r[2]) && isNum(r[3])).length;
-        const list = n >= 3 ? [["ordinary", "One-way ANOVA + Tukey", "Compares all means; Tukey's test for every pair."], ["welch", "Welch's ANOVA + Games-Howell", "When the groups' spreads differ."]]
+        const list = n >= 3 ? [["ordinary", "One-way ANOVA", "Compares all means, then each pair (Tukey) or each group vs control (Dunnett)."], ["welch", "Welch's ANOVA + Games-Howell", "When the groups' spreads differ."]]
           : [["welch", "Welch's t test", "Spread may differ between groups. Safe default."], ["unpaired", "Unpaired t test", "Assumes both groups have similar spread."]];
         const key = n >= 3 ? "kind3" : "kind2";
         return `<div class="seg"><button data-set="err:sd" class="${s.options.err !== "sem" ? "on" : ""}">Second column is SD</button><button data-set="err:sem" class="${s.options.err === "sem" ? "on" : ""}">Second column is SEM</button></div>
           <div class="opt-label">${n >= 3 ? `${n} groups` : "2 groups"}</div>` +
           list.map(([k, name, d]) => `<label class="choice ${s.options[key] === k ? "on" : ""}"><input type="radio" name="${key}" value="${k}" ${s.options[key] === k ? "checked" : ""}><span><b>${name}</b><small>${d}</small></span></label>`).join("") +
+          (n >= 3 && (s.options.kind3 || "ordinary") === "ordinary" ? postHocOptions(s, "ordinary") : "") +
           `<p class="hint">These tests are exact from summary data. Paired, nonparametric and normality tests need the individual values.</p>${alphaSelect(s)}`;
       },
       graphControls: () => [
@@ -1426,6 +1439,15 @@
     box.querySelectorAll("[data-num]").forEach(inp => inp.oninput = () => {
       const v = inp.value.trim(); s.options[inp.dataset.num] = v; inp.classList.toggle("bad", v !== "" && !isNum(v)); save(); scheduleRun();
     });
+    const ct = $("opt-cmpto");
+    if (ct) ct.onchange = e => {
+      s.options.compareTo = e.target.value;
+      const ph = s.options.posthoc || "tukey";
+      if (s.options.compareTo === "control" && ph === "tukey") s.options.posthoc = "dunnett";
+      if (s.options.compareTo === "all" && ph === "dunnett") s.options.posthoc = "tukey";
+      save(); renderOptions(); scheduleRun();
+    };
+    const ph = $("opt-posthoc"); if (ph) ph.onchange = e => { s.options.posthoc = e.target.value; save(); scheduleRun(); };
     const om = $("opt-outmethod"); if (om) om.onchange = e => { s.options.outlierMethod = e.target.value; save(); renderOptions(); scheduleRun(); };
     const rq = $("opt-routq"); if (rq) rq.onchange = e => { s.options.routQ = e.target.value; save(); scheduleRun(); };
     const hy = $("opt-hyp");
@@ -1620,8 +1642,11 @@
       return { methods, results };
     }
     if (s.type === "ttest") {
-      const test = { ordinary: "one-way ANOVA followed by Tukey's multiple comparisons test", welch: "Welch's ANOVA followed by the Games-Howell test",
-        kruskal: "the Kruskal-Wallis test followed by Dunn's multiple comparisons test", rm: "repeated-measures one-way ANOVA with the Geisser-Greenhouse correction, followed by Tukey's multiple comparisons test",
+      const phName = { tukey: "Tukey's multiple comparisons test", dunnett: "Dunnett's multiple comparisons test (each group vs control)", holm: "the Holm-Šídák multiple comparisons test",
+        sidak: "Šídák's multiple comparisons test", bonferroni: "Bonferroni's multiple comparisons test", lsd: "uncorrected Fisher's LSD tests" }[r.posthoc || "tukey"]
+        + (r.compare_to === "control" && r.posthoc !== "dunnett" ? " comparing each group with the control" : "");
+      const test = { ordinary: `one-way ANOVA followed by ${phName}`, welch: "Welch's ANOVA followed by the Games-Howell test",
+        kruskal: `the Kruskal-Wallis test followed by Dunn's multiple comparisons test${r.compare_to === "control" ? " (each group vs control)" : ""}`, rm: "repeated-measures one-way ANOVA with the Geisser-Greenhouse correction, followed by Tukey's multiple comparisons test",
         friedman: "the Friedman test followed by Dunn's multiple comparisons test" }[r.kind];
       const methods = `Groups were compared using ${test}. Data are presented as ${errName}. ${ALPHA(r)} Analyses were performed in ${SW}.`;
       const main = r.kind === "kruskal" ? `H(${r.df_between}) = ${r2(r.H)}` : r.kind === "friedman" ? `χ²(${r.df_between}) = ${r2(r.chi2)}`
@@ -1810,7 +1835,9 @@
       const rankBased = r.kind === "kruskal" || r.kind === "friedman";
       h += `<div class="opt-label" style="margin-top:10px">${esc(r.posthoc_name)}</div>`;
       h += T.multi(["Comparison", esc(r.diff_label), rankBased ? "" : `${pct}% CI`, "Adj. P", ""],
-        r.comparisons.map(c => ({ cls: c.significant ? "hl" : "", cells: [`${esc(c.a)} vs ${esc(c.b)}`, fmt(c.diff), rankBased ? "" : ci(c.ci_low, c.ci_high), pOnly(c.p), st(c.stars)] })));
+        r.comparisons.map(c => ({ cls: c.significant ? "hl" : "", cells: [`${esc(c.a)} vs ${esc(c.b)}`, fmt(c.diff), rankBased ? "" : c.ci_low == null ? "—" : ci(c.ci_low, c.ci_high), pOnly(c.p), st(c.stars)] })));
+      if (r.posthoc === "holm") h += `<p class="note">The Holm-Šídák method doesn't produce confidence intervals.</p>`;
+      if (r.posthoc === "lsd") h += `<p class="note warn">Fisher's LSD doesn't correct for multiple comparisons, so with many pairs some "significant" results may be chance.</p>`;
       if (r.normality) h += T.table(normalityRows(r));
       if (r.kind === "rm" || r.kind === "friedman") h += `<p class="note">Only rows with a value in every column are used (${r.n_subjects} subjects).</p>`;
       if (r.variance_check && r.variance_check.p < 0.05) h += `<p class="note warn">⚠︎ The groups' spreads differ (Brown-Forsythe ${fmtP(r.variance_check.p)}). Welch's ANOVA is safer.</p>`;

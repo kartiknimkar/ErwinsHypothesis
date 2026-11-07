@@ -169,6 +169,11 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Balanced data = ANOVA/t test on subject means (tested); unbalanced REML matches statsmodels MixedLM
 - [x] Graph: replicates (small), subject means, group mean ± SD; guide entry; example; 125 tests
 
+## Phase 0.36: Multiple comparison choices (done 2026-11-06)
+- [x] One-way ANOVA (raw and summary data): compare every pair or each group vs control (first column);
+      Tukey, Dunnett, Holm-Šídák, Šídák, Bonferroni, Fisher's LSD; Kruskal-Wallis: Dunn's all pairs or vs control
+- [x] Dunnett = scipy.stats.dunnett (seeded integration); corrections match statsmodels multipletests; 132 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

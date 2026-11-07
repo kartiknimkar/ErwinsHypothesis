@@ -46,6 +46,8 @@ class CompareRequest(BaseModel):
     outliers: bool = False  # also run an outlier test on each group
     outlier_method: str = "grubbs"  # grubbs | rout
     q: float = 0.01                 # ROUT's Q (maximum false discovery rate)
+    posthoc: str = "tukey"          # 3+ groups: tukey|dunnett|bonferroni|sidak|holm|lsd
+    compare_to: str = "all"         # all | control (first column)
 
 
 class SummaryRequest(BaseModel):
@@ -53,12 +55,14 @@ class SummaryRequest(BaseModel):
     kind: str = "welch"
     err: str = "sd"         # "sd" or "sem": what the second column holds
     alpha: float = 0.05
+    posthoc: str = "tukey"
+    compare_to: str = "all"
 
 
 @app.post("/api/summary")
 def run_summary(req: SummaryRequest):
     try:
-        res = stats.compare_summary(req.groups, kind=req.kind, alpha=req.alpha, err=req.err)
+        res = stats.compare_summary(req.groups, kind=req.kind, alpha=req.alpha, err=req.err, posthoc=req.posthoc, compare_to=req.compare_to)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))
@@ -165,7 +169,7 @@ def run_compare(req: CompareRequest):
             res = anova2.repeated_measures(groups, names, kind=req.kind, alpha=req.alpha)
         else:
             kind = req.kind if req.kind in ("ordinary", "welch", "kruskal") else "ordinary"
-            res = stats.one_way_anova(groups, names, kind=kind, alpha=req.alpha)
+            res = stats.one_way_anova(groups, names, kind=kind, alpha=req.alpha, posthoc=req.posthoc, compare_to=req.compare_to)
         res["n_groups"] = len(cols)
         if req.outliers:
             if req.outlier_method == "rout":
