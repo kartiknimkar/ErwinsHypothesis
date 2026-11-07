@@ -523,13 +523,20 @@
     multivar: {
       label: "Multiple variables", newTitle: "Multiple variables",
       minCols: 2, maxCols: 20, fixedCols: 0, textCol: -1, addLabel: "+ Variable", minRows: 15,
-      colKind: (j, s) => s && s.options.analysis && s.options.analysis !== "correlation" ? (j === 0 ? (s.options.analysis === "logistic" ? "Outcome (0/1)" : "Outcome (Y)") : `Predictor ${j}`) : `Variable ${j + 1}`,
+      colKind: (j, s) => s && s.options.analysis === "cox" ? (j === 0 ? "Time" : j === 1 ? "Event (1/0)" : `Predictor ${j - 1}`)
+        : s && s.options.analysis && s.options.analysis !== "correlation" ? (j === 0 ? (s.options.analysis === "logistic" ? "Outcome (0/1)" : "Outcome (Y)") : `Predictor ${j}`) : `Variable ${j + 1}`,
       newColName: j => `Variable ${j + 1}`,
       hint: "One column per variable (e.g. age, BMI, glucose), one row per subject. For regression, put the outcome in the first column and the predictors to its right.",
       cols: ["Variable 1", "Variable 2", "Variable 3"],
       options: { analysis: "correlation", method: "pearson", alpha: 0.05 },
       graph: { showValues: true },
-      examples: s => s.options.analysis === "logistic" ? {
+      examples: s => s.options.analysis === "cox" ? {
+        cols: ["Months", "Died (1/0)", "Age", "Treated (1/0)", "Tumor size (cm)"],
+        rows: [[5, 1, 71, 0, 4.2], [8, 1, 66, 0, 3.5], [12, 1, 59, 1, 3.9], [14, 0, 48, 1, 2.1], [3, 1, 74, 0, 5.0], [22, 0, 52, 1, 1.8],
+          [9, 1, 63, 1, 4.4], [18, 1, 69, 0, 2.6], [30, 0, 45, 1, 1.5], [6, 1, 77, 0, 3.1], [25, 1, 58, 1, 2.9], [16, 0, 61, 0, 2.2],
+          [11, 1, 68, 0, 3.8], [28, 0, 50, 1, 2.4], [4, 1, 72, 1, 4.8], [20, 1, 64, 0, 2.0], [33, 0, 47, 1, 1.2], [7, 1, 70, 0, 3.3],
+          [26, 0, 55, 1, 3.0], [13, 1, 62, 0, 2.7], [35, 0, 49, 1, 1.9], [10, 1, 75, 1, 3.6], [19, 0, 57, 0, 2.3], [24, 1, 60, 1, 4.1]],
+      } : s.options.analysis === "logistic" ? {
         cols: ["Diabetes (0/1)", "Age", "BMI", "Activity"],
         rows: [[0, 34, 22.1, 9.5], [0, 45, 27.4, 6.1], [1, 52, 31.2, 3.2], [0, 29, 21.5, 10.2], [1, 61, 29.8, 4.0], [0, 38, 24.6, 8.3],
           [1, 47, 33.1, 2.5], [0, 55, 29.6, 3.8], [0, 41, 23.3, 9.1], [1, 66, 30.5, 3.6], [0, 33, 25.8, 7.4], [1, 58, 25.2, 7.9],
@@ -549,14 +556,14 @@
       request: s => ["/api/multi", { columns: s.cols.map((_, j) => s.data.map(r => num(r[j]))), names: s.cols.map((c, j) => c || `Variable ${j + 1}`),
         analysis: s.options.analysis || "correlation", alpha: s.options.alpha,
         method: s.options.analysis === "pca" ? (s.options.pcaScale || "standardized") : s.options.method }],
-      renderOptions: s => `<div class="seg"><button data-set="analysis:correlation" class="${(s.options.analysis || "correlation") === "correlation" ? "on" : ""}">Correlation matrix</button><button data-set="analysis:mlr" class="${s.options.analysis === "mlr" ? "on" : ""}">Multiple linear regression</button><button data-set="analysis:logistic" class="${s.options.analysis === "logistic" ? "on" : ""}">Logistic regression</button><button data-set="analysis:pca" class="${s.options.analysis === "pca" ? "on" : ""}">PCA</button></div>` +
+      renderOptions: s => `<div class="seg"><button data-set="analysis:correlation" class="${(s.options.analysis || "correlation") === "correlation" ? "on" : ""}">Correlation matrix</button><button data-set="analysis:mlr" class="${s.options.analysis === "mlr" ? "on" : ""}">Multiple linear regression</button><button data-set="analysis:logistic" class="${s.options.analysis === "logistic" ? "on" : ""}">Logistic regression</button><button data-set="analysis:cox" class="${s.options.analysis === "cox" ? "on" : ""}">Cox regression</button><button data-set="analysis:pca" class="${s.options.analysis === "pca" ? "on" : ""}">PCA</button></div>` +
         (s.options.analysis === "pca" ? `<p class="hint">Principal component analysis finds the few directions (components) that capture most of the variation across all variables. Rows missing any value are left out.</p>
           <div class="seg"><button data-set="pcaScale:standardized" class="${(s.options.pcaScale || "standardized") === "standardized" ? "on" : ""}">Standardize variables (recommended)</button><button data-set="pcaScale:covariance" class="${s.options.pcaScale === "covariance" ? "on" : ""}">Use raw units</button></div>` :
-        (s.options.analysis || "correlation") !== "correlation" ? `<p class="hint">${s.options.analysis === "logistic" ? "Predicts a yes/no outcome (first column: 1 = yes, 0 = no) from the other columns. Results are odds ratios." : "Predicts the outcome (first column) from all the other columns at once; each coefficient is adjusted for the other predictors."} Rows missing any value are left out.</p>${alphaSelect(s)}` : `<div class="seg"><button data-set="method:pearson" class="${s.options.method === "pearson" ? "on" : ""}">Pearson (linear)</button><button data-set="method:spearman" class="${s.options.method === "spearman" ? "on" : ""}">Spearman (ranks, nonparametric)</button></div>${alphaSelect(s)}`),
+        (s.options.analysis || "correlation") !== "correlation" ? `<p class="hint">${s.options.analysis === "cox" ? "Survival with several predictors: first column = time to event or last follow-up, second column = 1 if the event (e.g. death) happened, 0 if censored, then one column per predictor (numbers; use 1/0 for yes/no). Results are hazard ratios." : s.options.analysis === "logistic" ? "Predicts a yes/no outcome (first column: 1 = yes, 0 = no) from the other columns. Results are odds ratios." : "Predicts the outcome (first column) from all the other columns at once; each coefficient is adjusted for the other predictors."} Rows missing any value are left out.</p>${alphaSelect(s)}` : `<div class="seg"><button data-set="method:pearson" class="${s.options.method === "pearson" ? "on" : ""}">Pearson (linear)</button><button data-set="method:spearman" class="${s.options.method === "spearman" ? "on" : ""}">Spearman (ranks, nonparametric)</button></div>${alphaSelect(s)}`),
       graphControls: s => (s.options.analysis || "correlation") === "correlation" ? [chk("showValues", "Show r values")]
         : s.options.analysis === "pca" ? [sel("pcaPlot", "Plot", [["biplot", "Biplot (PC1 vs PC2)"], ["scree", "Scree plot"]]), chk("pcaLabels", "Label rows")] : [],
-      renderResults: (r, s) => r.kind === "pca" ? renderPCA(r) : r.kind === "linear" ? renderMLR(r) : r.kind === "logistic" ? renderLogistic(r) : renderCorrMatrix(r),
-      draw: (el, r, s) => r.kind === "pca" ? drawPCA(el, r, s) : r.kind === "linear" ? drawMLR(el, r, s) : r.kind === "logistic" ? drawROC(el, { auc: r.auc, curve: r.roc_curve, best: null }, s) : drawCorrMatrix(el, r, s),
+      renderResults: (r, s) => r.kind === "cox" ? renderCox(r) : r.kind === "pca" ? renderPCA(r) : r.kind === "linear" ? renderMLR(r) : r.kind === "logistic" ? renderLogistic(r) : renderCorrMatrix(r),
+      draw: (el, r, s) => r.kind === "cox" ? drawForest(el, r, s) : r.kind === "pca" ? drawPCA(el, r, s) : r.kind === "linear" ? drawMLR(el, r, s) : r.kind === "logistic" ? drawROC(el, { auc: r.auc, curve: r.roc_curve, best: null }, s) : drawCorrMatrix(el, r, s),
     },
     // ---------------------------------------------------------------- diagnostics
     diagnostic: {
@@ -772,6 +779,7 @@
     add("multivar", "Example: correlation matrix");
     add("multivar", "Example: multiple regression", s => { s.options.analysis = "mlr"; });
     add("multivar", "Example: logistic regression", s => { s.options.analysis = "logistic"; });
+    add("multivar", "Example: Cox regression", s => { s.options.analysis = "cox"; });
     add("multivar", "Example: PCA", s => { s.options.analysis = "pca"; });
     add("diagnostic", "Example: ROC curve");
     add("diagnostic", "Example: Bland-Altman", s => { s.options.analysis = "bland_altman"; });
@@ -1175,7 +1183,9 @@
         ["Up (stimulation)", "", rec("Dose-response: stimulation (EC50)", "4-parameter logistic fit; enter concentrations as X.", "regression", s => { s.options.model = "dr_stim"; s.graph.logX = true; })] ] }],
       ["Read unknowns off a standard curve", "ELISA, BCA, Bradford, qPCR", rec("Standard curve + interpolation", "Enter standards with X, and unknowns with X left blank: their concentrations are read off the fitted line. Switch the fit to 4PL for ELISA.", "regression", s => {})],
       ["Enzyme kinetics, decay, growth or binding", "", rec("Curve fitting", "Choose Michaelis-Menten, exponential decay/growth or one-phase association in the Fit list.", "regression", s => { s.options.model = "michaelis"; })] ] }],
-    ["Time until an event", "survival, relapse, time to failure", rec("Kaplan-Meier survival + log-rank", "Survival curves, median survival, log-rank test and hazard ratio.", "survival", s => {})],
+    ["Time until an event", "survival, relapse, time to failure", { q: "What do you want to know?", opts: [
+      ["Compare survival between groups", "e.g. treated vs control", rec("Kaplan-Meier survival + log-rank", "Survival curves, median survival, log-rank test and hazard ratio.", "survival", s => {})],
+      ["Effect of several factors at once", "e.g. treatment adjusted for age and tumor size", rec("Cox proportional hazards regression", "Hazard ratios for each predictor, adjusted for the others. Columns: time, event (1/0), then predictors.", "multivar", s => { s.options.analysis = "cox"; s.cols = ["Time", "Event (1/0)", "Predictor 1", "Predictor 2"]; s.data = s.data.map(r => [...r, "", ""].slice(0, 4)); })] ] }],
     ["Compare proportions (yes/no outcomes)", "e.g. responders vs non-responders by group", rec("Contingency table", "Fisher's exact test (2×2) or chi-square, with odds ratio and relative risk.", "contingency", s => {})],
     ["Many variables at once", "correlations, predicting an outcome, PCA", { q: "What do you want to learn?", opts: [
       ["How all the variables correlate", "", rec("Correlation matrix", "Every pair of variables, with a heatmap.", "multivar", s => {})],
@@ -1627,6 +1637,10 @@
     if (s.type === "multivar" && r.kind === "linear") {
       return { methods: `${esc(r.y_name)} was modeled by multiple linear regression with ${r.coefs.slice(1).map(c => esc(c.name)).join(", ")} as predictors. ${ALPHA(r)} Analyses were performed in ${SW}.`,
         results: `The model explained ${r2(r.r_squared * 100, 1)}% of the variance (adjusted R² = ${r2(r.adj_r_squared, 3)}; F(${r.coefs.length - 1}, ${r.df}) = ${r2(r.F)}, ${apaP(r.p)}). ${r.coefs.slice(1).map(c => `${esc(c.name)}: β = ${r2(c.estimate, 3)} (${pct}% CI ${r2(c.ci[0], 3)} to ${r2(c.ci[1], 3)}), ${apaP(c.p)}`).join("; ")}.` };
+    }
+    if (s.type === "multivar" && r.kind === "cox") {
+      return { methods: `Time to event was analyzed by Cox proportional hazards regression (Efron method for ties) with ${r.coefs.map(c => esc(c.name)).join(", ")} as predictors; hazard ratios are reported with 95% Wald confidence intervals. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+        results: `The model was ${r.p < r.alpha ? "" : "not "}significant (likelihood ratio χ²(${r.df}) = ${r2(r.lr_chi2)}, ${apaP(r.p)}; n = ${r.n}, ${r.n_events} events; concordance = ${r2(r.concordance, 3)}). ${r.coefs.map(c => `${esc(c.name)}: HR ${r2(c.hr, 3)} (95% CI ${r2(c.hr_ci[0], 3)} to ${r2(c.hr_ci[1], 3)}), ${apaP(c.p)}`).join("; ")}.` };
     }
     if (s.type === "multivar" && r.kind === "logistic") {
       return { methods: `${esc(r.y_name)} was modeled by binary logistic regression with ${r.coefs.slice(1).map(c => esc(c.name)).join(", ")} as predictors; odds ratios are reported with 95% Wald confidence intervals. ${ALPHA(r)} Analyses were performed in ${SW}.`,
@@ -2151,6 +2165,30 @@
       { x: p, y: a, mode: "markers", marker: { color: color(g, 0, "Points"), size: g.pointSize, line: { color: "#fff", width: 1 } }, hovertemplate: "Predicted %{x:.4g}, actual %{y:.4g}<extra></extra>" }],
       { ...baseLayout(g), annotations: [{ xref: "paper", yref: "paper", x: 0.02, y: 0.98, xanchor: "left", yanchor: "top", showarrow: false, text: `R² = ${fmt(r.r_squared, 3)}`, font: { color: "#6b7385" } }],
         xaxis: axis(g, { title: { text: `Predicted ${esc(r.y_name)}` } }), yaxis: yAxis(g, `Actual ${esc(r.y_name)}`) }, PLOT_CONFIG);
+  }
+  function renderCox(r) {
+    const pct = Math.round((1 - r.alpha) * 100);
+    const sig = r.coefs.filter(c => c.p < r.alpha);
+    let h = T.summary(r.p < r.alpha ? "sig" : "ns", `The predictors together are ${r.p < r.alpha ? "<b>significantly</b>" : "not significantly"} related to survival (likelihood ratio ${fmtP(r.p)}). ` +
+      (sig.length ? sig.map(c => `Each 1-unit increase in <b>${esc(c.name)}</b> multiplies the hazard (risk of the event at any moment) by <b>${fmt(c.hr, 3)}</b> (${pct}% CI ${ci(...c.hr_ci)})`).join("; ") + "." : "No single predictor is significant after adjusting for the others."));
+    h += T.multi(["", "Hazard ratio", `${pct}% CI`, "β (log hazard)", "Std. error", "z", "P", ""], r.coefs.map(c => ({ cls: c.p < r.alpha ? "hl" : "",
+      cells: [esc(c.name), fmt(c.hr), ci(...c.hr_ci), fmt(c.estimate), fmt(c.se, 3), fmt(c.z, 3), pOnly(c.p), st(c.stars)] })));
+    h += T.table([T.sec("Model"), T.row(`Likelihood ratio χ² (df ${r.df})`, `${fmt(r.lr_chi2)}, P ${pOnly(r.p)}`),
+      T.row("Wald χ²", `${fmt(r.wald_chi2)}, P ${pOnly(r.wald_p)}`), T.row("Score (log-rank) χ²", `${fmt(r.score_chi2)}, P ${pOnly(r.score_p)}`),
+      T.row("Concordance (Harrell's C)", fmt(r.concordance, 3)), T.row("Log likelihood", fmt(r.loglik)),
+      T.row("Rows used (events)", `${r.n} (${r.n_events})${r.dropped ? `; ${r.dropped} left out: missing values` : ""}`)]);
+    if (r.n_events < 10 * r.coefs.length) h += `<p class="note warn">⚠︎ Few events per predictor (rule of thumb: ≥ 10). Estimates may be unreliable; consider fewer predictors.</p>`;
+    h += `<p class="note">Ties in event times use Efron's method. The model assumes each predictor's effect on the hazard is constant over time (proportional hazards). Graph: hazard ratios with ${pct}% CIs (forest plot).</p>`;
+    return h;
+  }
+  function drawForest(el, r, s) {
+    const g = s.graph, cs = [...r.coefs].reverse(), c0 = color(g, 0, "Points");
+    const traces = [{ type: "scatter", mode: "markers", x: cs.map(c => c.hr), y: cs.map(c => esc(c.name)),
+      error_x: { type: "data", symmetric: false, array: cs.map(c => c.hr_ci[1] - c.hr), arrayminus: cs.map(c => c.hr - c.hr_ci[0]), color: c0, thickness: 1.6, width: 6 },
+      marker: { symbol: "square", color: c0, size: g.pointSize + 2 }, hovertemplate: "%{y}: HR %{x:.3g}<extra></extra>" }];
+    styledReact(el, traces, { ...baseLayout(g), margin: { l: 120, r: 20, t: g.title ? 44 : 20, b: 52 },
+      shapes: [{ type: "line", xref: "x", yref: "paper", x0: 1, x1: 1, y0: 0, y1: 1, line: { color: "#8a93a3", width: 1.2, dash: "dash" } }],
+      xaxis: axis(g, { type: "log", title: { text: "Hazard ratio (log scale)" } }), yaxis: axis(g, { type: "category", automargin: true }) }, PLOT_CONFIG);
   }
   function renderLogistic(r) {
     const pct = Math.round((1 - r.alpha) * 100);

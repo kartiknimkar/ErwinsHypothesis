@@ -335,6 +335,13 @@ def run_multi(req: MultiRequest):
             res = multivar.correlation_matrix(req.columns, req.names, req.method, req.alpha)
         elif req.analysis == "pca":
             res = multivar.pca(req.columns, req.names, standardize=req.method != "covariance")
+        elif req.analysis == "cox":
+            if len(req.columns) < 3:
+                raise ValueError("Enter time in the first column, the event (1/0) in the second, and at least one predictor.")
+            cols = [(n, c) for n, c in zip(req.names[2:], req.columns[2:]) if any(v is not None and str(v).strip() != "" for v in c)]
+            if not cols:
+                raise ValueError("Enter at least one predictor column with values (third column onward).")
+            res = multivar.cox(req.columns[0], req.columns[1], [c for _, c in cols], [n for n, _ in cols], alpha=req.alpha)
         elif req.analysis in ("mlr", "logistic"):
             if len(req.columns) < 2:
                 raise ValueError("Enter the outcome in the first column and at least one predictor.")

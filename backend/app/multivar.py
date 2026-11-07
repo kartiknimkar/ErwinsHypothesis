@@ -268,3 +268,103 @@ def pca(columns, names, standardize: bool = True) -> dict:
             "eigenvalues": eig[:m].tolist(), "variance_pct": (100 * var[:m]).tolist(), "cumulative_pct": (100 * np.cumsum(var[:m])).tolist(),
             "kaiser": int(np.sum(eig[:m] > 1)), "vectors": Vt[:m].tolist(), "loadings": loadings.tolist(),
             "scores": scores[:, :m].tolist(), "dropped": int(len(list(zip(*cols))) - n)}
+
+
+def _cox_efron(beta, T, E, X):
+    """Efron partial log-likelihood, gradient and Hessian (handles tied event times)."""
+    eta = X @ beta
+    eta = eta - eta.max()  # stabilizes exp; the partial likelihood is unchanged by a constant shift
+    w = np.exp(eta)
+    k = X.shape[1]
+    ll, g, H = 0.0, np.zeros(k), np.zeros((k, k))
+    for t in np.unique(T[E == 1]):
+        R = T >= t
+        D = (T == t) & (E == 1)
+        d = int(D.sum())
+        s0R, s1R = w[R].sum(), (w[R, None] * X[R]).sum(0)
+        s2R = (X[R].T * w[R]) @ X[R]
+        s0D, s1D = w[D].sum(), (w[D, None] * X[D]).sum(0)
+        s2D = (X[D].T * w[D]) @ X[D]
+        ll += eta[D].sum()
+        g += X[D].sum(0)
+        for l in range(d):
+            f = l / d
+            phi, s1, s2 = s0R - f * s0D, s1R - f * s1D, s2R - f * s2D
+            ll -= math.log(phi)
+            g -= s1 / phi
+            H -= s2 / phi - np.outer(s1, s1) / phi ** 2
+    return ll, g, H
+
+
+def cox(time_col, event_col, x_cols, x_names, alpha: float = 0.05) -> dict:
+    """Cox proportional hazards regression (Efron ties, Newton-Raphson with step halving).
+    Event column: 1 = event (e.g. death), 0 = censored."""
+    rows, dropped = [], 0
+    for i, tv in enumerate(time_col):
+        vals = [_num(tv), _num(event_col[i]) if i < len(event_col) else None] + [_num(c[i]) if i < len(c) else None for c in x_cols]
+        if all(v is not None for v in vals):
+            rows.append(vals)
+        elif any(v is not None for v in vals):
+            dropped += 1
+    if not rows:
+        raise ValueError("No rows have a value in every column.")
+    A = np.array(rows, float)
+    T, E, X = A[:, 0], A[:, 1], A[:, 2:]
+    if not np.all(np.isin(E, (0, 1))):
+        raise ValueError("The event column (second column) must be 1 (event happened) or 0 (censored).")
+    if np.any(T < 0):
+        raise ValueError("Times can't be negative.")
+    n, k = X.shape
+    ne = int(E.sum())
+    if ne < 2:
+        raise ValueError("Need at least 2 events (rows with 1 in the event column).")
+    if np.any(X.std(axis=0) == 0):
+        raise ValueError("A predictor has the same value in every row; remove it.")
+    # fit on centered predictors (same coefficients, better numerics)
+    Xc = X - X.mean(axis=0)
+    beta = np.zeros(k)
+    ll0, _, _ = _cox_efron(beta, T, E, Xc)
+    ll = ll0
+    for _ in range(60):
+        ll, g, H = _cox_efron(beta, T, E, Xc)
+        try:
+            step = np.linalg.solve(-H, g)
+        except np.linalg.LinAlgError:
+            raise ValueError("The model couldn't be fitted (predictors may be redundant).")
+        new, t = beta + step, 1.0
+        while _cox_efron(new, T, E, Xc)[0] < ll - 1e-12 and t > 1e-4:
+            t /= 2
+            new = beta + t * step
+        beta = new
+        if np.max(np.abs(t * step)) < 1e-10:
+            break
+    ll, g, H = _cox_efron(beta, T, E, Xc)
+    if np.any(np.abs(beta) * X.std(axis=0) > 15):
+        raise ValueError("A predictor separates events from non-events (almost) perfectly, so the hazard ratio is infinite. "
+                         "Use fewer predictors or more data.")
+    cov = np.linalg.inv(-H)
+    se = np.sqrt(np.diag(cov))
+    z = beta / se
+    p = 2 * stats.norm.sf(np.abs(z))
+    zc = stats.norm.ppf(1 - alpha / 2)
+    lr = 2 * (ll - ll0)
+    plr = float(stats.chi2.sf(lr, k))
+    _, g0, H0 = _cox_efron(np.zeros(k), T, E, Xc)
+    score = float(g0 @ np.linalg.solve(-H0, g0))
+    wald = float(beta @ np.linalg.solve(cov, beta))
+    # Harrell's concordance: among comparable pairs, does the higher risk score die first?
+    risk = X @ beta
+    conc = disc = tied = 0
+    for i in range(n):
+        if E[i] != 1:
+            continue
+        later = (T > T[i]) | ((T == T[i]) & (E == 0))  # censored at the same time counts as surviving longer
+        conc += int(np.sum(risk[later] < risk[i])); disc += int(np.sum(risk[later] > risk[i])); tied += int(np.sum(risk[later] == risk[i]))
+    pairs = conc + disc + tied
+    coefs = [{"name": nm, "estimate": float(b), "se": float(s), "z": float(zz), "p": float(pp), "stars": stars(float(pp)),
+              "hr": float(math.exp(b)), "hr_ci": [float(math.exp(b - zc * s)), float(math.exp(b + zc * s))]}
+             for nm, b, s, zz, pp in zip(x_names, beta, se, z, p)]
+    return {"test_name": "Cox proportional hazards regression", "kind": "cox", "n": n, "n_events": ne, "dropped": dropped,
+            "coefs": coefs, "loglik": float(ll), "loglik0": float(ll0), "lr_chi2": float(lr), "df": k, "p": plr, "stars": stars(plr),
+            "score_chi2": score, "score_p": float(stats.chi2.sf(score, k)), "wald_chi2": wald, "wald_p": float(stats.chi2.sf(wald, k)),
+            "concordance": (conc + 0.5 * tied) / pairs if pairs else None, "ties": "efron", "alpha": alpha}

@@ -159,6 +159,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Free text labels (g.notes, paper coordinates, draggable, size); 119 tests
 - [x] Y axis break (breakYAxis: two stacked y axes, adjustable lower height), minor ticks, X label angle, X tick interval (XY)
 
+## Phase 0.34: Cox regression (done 2026-11-06)
+- [x] Multiple variables → Cox proportional hazards (Efron ties): hazard ratios + CIs, LR / Wald / score tests,
+      Harrell's C, forest plot; matches lifelines (incl. tied times); guide branch; 122 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)
