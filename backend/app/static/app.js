@@ -300,6 +300,10 @@
       <option value="control" ${to === "control" ? "selected" : ""}>each group with the first column (control)</option></select>
       ${kind === "ordinary" ? `<label for="opt-posthoc">Correction</label><select id="opt-posthoc">${methods.map(([v, l]) => `<option value="${v}" ${ph === v ? "selected" : ""}>${l}</option>`).join("")}</select>` : `<span class="pd">Dunn's test</span>`}</div>`;
   }
+  const MT_METHODS = [["bh", "False discovery rate: Benjamini-Hochberg"], ["bky", "False discovery rate: two-stage step-up (Benjamini, Krieger, Yekutieli)"],
+    ["holm", "Holm-Šídák (controls family-wise error)"], ["bonferroni", "Bonferroni"], ["none", "None (each test on its own)"]];
+  const MT_TEXT = { bh: "the Benjamini-Hochberg false discovery rate", bky: "the two-stage step-up false discovery rate method of Benjamini, Krieger and Yekutieli",
+    holm: "the Holm-Šídák method", bonferroni: "the Bonferroni method", none: null };
   const choiceKey = (s, n) => `${n >= 3 ? 3 : 2}${s.options.design === "repeated" ? "r" : "i"}`;
   const kindFor = (s, n) => { const key = choiceKey(s, n); const k = s.options["kind" + key]; return CHOICES[key].some(c => c[0] === k) ? k : CHOICES[key][0][0]; };
   let MODELS = [
@@ -505,13 +509,14 @@
       request(s) {
         const body = { rows: s.data.map(r => String(r[0] || "").trim()), columns: s.cols.slice(1).map((_, j) => s.data.map(r => num(r[j + 1]))),
           names: s.cols.slice(1).map((c, j) => c || `Group ${letter(j)}`), alpha: s.options.alpha };
-        if (s.options.analysis === "multit") return ["/api/multit", { ...body, kind: s.options.mtKind || "welch", q: s.options.q || 0.05 }];
+        if (s.options.analysis === "multit") return ["/api/multit", { ...body, kind: s.options.mtKind || "welch", q: s.options.q || 0.05, method: s.options.mtMethod || "bh" }];
         return ["/api/twoway", { ...body, rm: !!s.options.rm, rm_both: !!s.options.rm && !!s.options.rmBoth, compare: s.options.twCompare || "within_rows" }];
       },
       renderOptions: s => `<div class="seg"><button data-set="analysis:anova" class="${s.options.analysis !== "multit" ? "on" : ""}">Two-way ANOVA</button><button data-set="analysis:multit" class="${s.options.analysis === "multit" ? "on" : ""}">Multiple t tests (one per row name)</button></div>` +
-        (s.options.analysis === "multit" ? `<p class="hint">One t test for each row name (e.g. each gene or protein), comparing the two columns. Rows with the same name are replicates. P values are corrected for the number of tests with the false discovery rate (Benjamini-Hochberg).</p>
+        (s.options.analysis === "multit" ? `<p class="hint">One t test for each row name (e.g. each gene or protein), comparing the two columns. Rows with the same name are replicates. P values are corrected for the number of tests (choose how below).</p>
           <div class="row"><label>Test</label><select id="opt-mtkind">${[["welch", "Welch's t test"], ["unpaired", "Unpaired t test"], ["mannwhitney", "Mann-Whitney"]].map(([v, l]) => `<option value="${v}" ${(s.options.mtKind || "welch") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
-          <label>FDR (Q)</label><select id="opt-q">${[0.01, 0.05, 0.1].map(v => `<option ${(s.options.q || 0.05) === v ? "selected" : ""}>${v}</option>`).join("")}</select></div>` : `<p class="hint">Tests whether the <b>column factor</b> (${esc(s.cols.slice(1).join(", "))}) matters, whether the <b>row factor</b> (${esc(s.cols[0])}) matters, and whether they <b>interact</b> (the treatment effect differs between rows). Then compares the columns within each row.</p>
+          <label>Correction</label><select id="opt-mtmethod">${MT_METHODS.map(([v, l]) => `<option value="${v}" ${(s.options.mtMethod || "bh") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+          <label>${["holm", "bonferroni", "none"].includes(s.options.mtMethod) ? "α" : "FDR (Q)"}</label><select id="opt-q">${[0.01, 0.05, 0.1].map(v => `<option ${(s.options.q || 0.05) === v ? "selected" : ""}>${v}</option>`).join("")}</select></div>` : `<p class="hint">Tests whether the <b>column factor</b> (${esc(s.cols.slice(1).join(", "))}) matters, whether the <b>row factor</b> (${esc(s.cols[0])}) matters, and whether they <b>interact</b> (the treatment effect differs between rows). Then compares the columns within each row.</p>
           <label class="check"><input type="checkbox" data-opt="rm" ${s.options.rm ? "checked" : ""}> Same subjects measured at every row (repeated measures, e.g. a time course)</label>
           ${s.options.rm ? `<label class="check"><input type="checkbox" data-opt="rmBoth" ${s.options.rmBoth ? "checked" : ""}> The same subjects in every column too (both factors repeated)</label>
             <p class="hint">${s.options.rmBoth ? "Subject 1 = the 1st value under each row name in <b>every</b> column, subject 2 = the 2nd, and so on." : "Enter each subject in the same position under every row name: the 1st value under each time point in a column is subject 1, the 2nd is subject 2, and so on."} Subjects missing a value are left out.</p>`
@@ -1675,6 +1680,7 @@
       if (s.options.compareTo === "all" && ph === "dunnett") s.options.posthoc = "tukey";
       save(); renderOptions(); scheduleRun();
     };
+    const mm = $("opt-mtmethod"); if (mm) mm.onchange = e => { s.options.mtMethod = e.target.value; save(); renderOptions(); scheduleRun(); };
     const tw = $("opt-twcmp"); if (tw) tw.onchange = e => { s.options.twCompare = e.target.value; save(); scheduleRun(); };
     const pd = $("pw-design"); if (pd) pd.onchange = e => { s.options.design = e.target.value; save(); renderOptions(); scheduleRun(); };
     const c3 = $("opt-3cmp"); if (c3) c3.onchange = e => { s.options.threeCompare = e.target.value; save(); scheduleRun(); };
@@ -1913,7 +1919,7 @@
     }
     if (s.type === "twoway" && r.test_name === "Multiple t tests") {
       const test = { welch: "Welch's t tests", unpaired: "unpaired t tests", mannwhitney: "Mann-Whitney tests" }[r.kind] || "t tests";
-      return { methods: `Each ${esc(s.cols[0] || "row")} was compared between ${esc(r.names[0])} and ${esc(r.names[1])} using ${test}; P values were adjusted for multiple comparisons with the Benjamini-Hochberg false discovery rate (Q = ${r.q_level * 100}%). Analyses were performed in ${SW}.`,
+      return { methods: `Each ${esc(s.cols[0] || "row")} was compared between ${esc(r.names[0])} and ${esc(r.names[1])} using ${test}; ${MT_TEXT[r.method || "bh"] ? `P values were adjusted for multiple comparisons with ${MT_TEXT[r.method || "bh"]} (${["holm", "bonferroni"].includes(r.method) ? "α" : "Q"} = ${r.q_level * 100}%).` : "P values were not adjusted for multiple comparisons."} Analyses were performed in ${SW}.`,
         results: `${r.n_discoveries} of ${r.items.length} ${r.n_discoveries === 1 ? "was" : "were"} identified as discoveries${r.n_discoveries ? ` (${r.items.filter(i => i.discovery).sort((x, y) => x.p - y.p).slice(0, 8).map(i => esc(i.name)).join(", ")})` : ""}.` };
     }
     if (s.type === "twoway") {
@@ -2325,7 +2331,7 @@
     h += T.multi(["Row", `Mean ${a}`, `Mean ${b}`, "Difference", "log2 fold change", "P", "q (FDR)", ""], items.map(i => ({ cls: i.discovery ? "hl" : "",
       cells: [esc(i.name), fmt(i.mean_a), fmt(i.mean_b), fmt(i.diff), i.log2fc == null ? "—" : fmt(i.log2fc, 3), pOnly(i.p), pOnly(i.q), i.discovery ? "<b>discovery</b>" : ""] })));
     if (r.skipped.length) h += `<p class="note warn">Skipped (fewer than 2 values in a column): ${r.skipped.map(esc).join(", ")}</p>`;
-    h += `<p class="note">Difference = ${b} − ${a}. q = Benjamini-Hochberg adjusted P value. Sorted by P.</p>`;
+    h += `<p class="note">Difference = ${b} − ${a}. q = adjusted P value (${esc((MT_METHODS.find(m => m[0] === (r.method || "bh")) || MT_METHODS[0])[1])}). Sorted by P.</p>`;
     return h;
   }
   function drawVolcano(el, r, s) {

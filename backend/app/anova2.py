@@ -234,8 +234,45 @@ def repeated_measures(columns, names, kind: str = "rm", alpha: float = 0.05) -> 
     return res
 
 
-def multiple_t(row_labels, col_a, col_b, names=("A", "B"), kind: str = "welch", q: float = 0.05) -> dict:
-    """One t test per row name (rows sharing a name are replicates), with Benjamini-Hochberg FDR."""
+def _bh(p):
+    """Benjamini-Hochberg adjusted P values."""
+    p = np.asarray(p, float)
+    m = len(p)
+    order = np.argsort(p)
+    adj = np.empty(m)
+    prev = 1.0
+    for rank in range(m, 0, -1):
+        i = order[rank - 1]
+        prev = min(prev, p[i] * m / rank)
+        adj[i] = prev
+    return adj
+
+
+def fdr_adjust(p, method: str = "bh", q: float = 0.05):
+    """Returns (adjusted P / q values, discovery flags). method: bh | bky (two-stage step-up of Benjamini,
+    Krieger & Yekutieli, Prism's default) | holm (Holm-Šídák) | bonferroni | none."""
+    from .stats import _adjust
+    p = np.asarray(p, float)
+    m = len(p)
+    if method == "bky":
+        qp = q / (1 + q)
+        bh = _bh(p)
+        r1 = int(np.sum(bh <= qp))
+        if r1 in (0, m):
+            adj = np.minimum(1, bh * (1 + q))
+            return adj, bh <= qp
+        m0 = m - r1
+        adj = np.minimum(1, bh * m0 / m * (1 + q))
+        return adj, bh <= qp * m / m0
+    if method in ("holm", "bonferroni", "none"):
+        adj = _adjust(p, {"holm": "holm", "bonferroni": "bonferroni", "none": "lsd"}[method])
+        return adj, adj < q
+    adj = _bh(p)
+    return adj, adj < q
+
+
+def multiple_t(row_labels, col_a, col_b, names=("A", "B"), kind: str = "welch", q: float = 0.05, method: str = "bh") -> dict:
+    """One t test per row name (rows sharing a name are replicates), with a multiplicity correction (default BH FDR)."""
     from .stats import t_test
     items = {}
     for lab, a, b in zip(row_labels, col_a, col_b):
@@ -260,20 +297,12 @@ def multiple_t(row_labels, col_a, col_b, names=("A", "B"), kind: str = "welch", 
                         "log2fc": math.log2(mb / ma) if ma > 0 and mb > 0 else None})
     if not results:
         raise ValueError("Each row name needs at least 2 values in each of the two columns.")
-    # Benjamini-Hochberg adjusted P (q values)
-    m = len(results)
-    order = sorted(range(m), key=lambda i: results[i]["p"])
-    adj = [0.0] * m
-    prev = 1.0
-    for rank in range(m, 0, -1):
-        i = order[rank - 1]
-        prev = min(prev, results[i]["p"] * m / rank)
-        adj[i] = prev
-    for r, a in zip(results, adj):
-        r["q"] = a
-        r["discovery"] = a < q
+    adj, disc = fdr_adjust([r["p"] for r in results], method, q)
+    for r, a, d in zip(results, adj, disc):
+        r["q"] = float(a)
+        r["discovery"] = bool(d)
         r["stars"] = stars(r["p"])
-    return {"test_name": "Multiple t tests", "kind": kind, "names": list(names), "q_level": q, "items": results,
+    return {"test_name": "Multiple t tests", "kind": kind, "names": list(names), "q_level": q, "items": results, "method": method,
             "skipped": skipped, "n_discoveries": sum(r["discovery"] for r in results), "p": min(r["q"] for r in results)}
 
 

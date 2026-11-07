@@ -282,6 +282,9 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Dark mode checked for menus, help and format panel
 - [x] XY: rows with X but no Y get a predicted Y from the fitted curve (table + open squares on graph); 184 tests
 
+## Phase 0.64: Multiple t test corrections (done 2026-11-07)
+- [x] Benjamini-Hochberg, two-stage step-up BKY (Prism's default), Holm-Šídák, Bonferroni or none; matches statsmodels; 185 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

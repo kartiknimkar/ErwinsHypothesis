@@ -32,3 +32,20 @@ def test_skips_and_errors():
         anova2.multiple_t(["A"], [1], [2])
     c = TestClient(app)
     assert c.post("/api/multit", json={"rows": ["A", "A"], "columns": [[1, 2], [3, 4], [5, 6]], "names": ["a", "b", "c"]}).status_code == 400
+
+
+def test_fdr_methods_match_statsmodels():
+    import numpy as np
+    import pytest
+    mt = pytest.importorskip("statsmodels.stats.multitest")
+    from app import anova2
+    rng = np.random.default_rng(4)
+    for _ in range(20):
+        p = np.concatenate([rng.uniform(0, 0.01, rng.integers(1, 8)), rng.uniform(0, 1, 25)])
+        adj, disc = anova2.fdr_adjust(p, "bky", 0.05)
+        rej, padj, *_ = mt.fdrcorrection_twostage(p, alpha=0.05, method="bky", maxiter=1)
+        assert (disc == rej).all() and np.allclose(adj, padj)
+        a2, d2 = anova2.fdr_adjust(p, "bh", 0.05)
+        assert np.allclose(a2, mt.multipletests(p, method="fdr_bh")[1])
+        a3, _ = anova2.fdr_adjust(p, "holm", 0.05)
+        assert np.allclose(a3, mt.multipletests(p, method="holm-sidak")[1])

@@ -455,6 +455,7 @@ class MultiTRequest(BaseModel):
     names: list[str]
     kind: str = "welch"
     q: float = 0.05
+    method: str = "bh"       # bh | bky | holm | bonferroni | none
 
 
 @app.post("/api/multit")
@@ -465,7 +466,7 @@ def run_multit(req: MultiTRequest):
         if len(cols) != 2:
             raise ValueError("Multiple t tests compare exactly 2 columns. Remove the extra columns or use two-way ANOVA.")
         kind = req.kind if req.kind in ("welch", "unpaired", "mannwhitney") else "welch"
-        res = anova2.multiple_t(req.rows, cols[0], cols[1], names=tuple(names), kind=kind, q=req.q)
+        res = anova2.multiple_t(req.rows, cols[0], cols[1], names=tuple(names), kind=kind, q=req.q, method=req.method)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))
