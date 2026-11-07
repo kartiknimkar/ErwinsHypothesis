@@ -224,6 +224,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Compare one factor's levels within each combination of the other two (Šídák for 2 levels, Tukey for 3+),
       pooled error; table and paper text; 162 tests
 
+## Phase 0.49: PDF export (done 2026-11-07)
+- [x] PDF button: graph or figure layout as a PDF page at the chosen print size and DPI (Pillow, high-resolution
+      image; SVG remains the vector/editable option); 163 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

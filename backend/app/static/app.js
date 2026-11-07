@@ -2650,7 +2650,7 @@
     }
     try {
       const res = await api("/api/exports", { method: "POST", body: JSON.stringify({ filename: `${projectName} - ${s.title}`,
-        data_url: canvas.toDataURL("image/png"), fmt: convert === "tiff" ? "tiff" : null, dpi }) });
+        data_url: canvas.toDataURL("image/png"), fmt: convert === "tiff" || convert === "pdf" ? convert : null, dpi }) });
       toast(`Saved <b>${esc(res.file)}</b> to the exports folder`, "exports");
     } catch (e) { toast(esc(e.message || "Export failed.")); }
   }
@@ -3146,6 +3146,7 @@
   $("btn-png").onclick = () => exportPlot("png");
   $("btn-svg").onclick = () => exportPlot("svg");
   $("btn-tiff").onclick = () => exportPlot("png", "tiff");
+  $("btn-pdf").onclick = () => exportPlot("png", "pdf");
   $("btn-copy").onclick = copyResults;
   $("btn-xlsx").onclick = exportXlsx;
   document.addEventListener("keydown", e => {

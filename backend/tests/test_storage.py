@@ -84,6 +84,21 @@ def test_tiff_and_png_dpi(client):
     assert round(Image.open(home / "exports" / p["file"]).info["dpi"][0]) == 300
 
 
+def test_pdf_export(client):
+    import io
+    import re
+    from PIL import Image
+    c, home = client
+    buf = io.BytesIO(); Image.new("RGB", (600, 300), (255, 255, 255)).save(buf, format="PNG")
+    url = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    r = c.post("/api/exports", json={"filename": "fig", "data_url": url, "fmt": "pdf", "dpi": 300}).json()
+    raw = (home / "exports" / r["file"]).read_bytes()
+    assert r["file"] == "fig.pdf" and raw.startswith(b"%PDF")
+    # page is 600x300 px at 300 dpi = 2 x 1 inch = 144 x 72 points
+    box = re.search(rb"/MediaBox \[\s*0 0 ([\d.]+) ([\d.]+)", raw)
+    assert box and abs(float(box.group(1)) - 144) < 0.5 and abs(float(box.group(2)) - 72) < 0.5
+
+
 def test_prefs_saved_in_projects_folder(client):
     c, home = client
     assert c.get("/api/prefs").json() == {}

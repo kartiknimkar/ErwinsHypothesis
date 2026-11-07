@@ -155,7 +155,7 @@ def save_export(filename: str, data_url: str, fmt: str | None = None, dpi: int |
     else:
         from urllib.parse import unquote
         raw = unquote(payload).encode("utf-8")
-    if ext == "png" and (fmt == "tiff" or dpi):
+    if ext == "png" and (fmt in ("tiff", "pdf") or dpi):
         import io
         from PIL import Image
         img = Image.open(io.BytesIO(raw))
@@ -164,6 +164,10 @@ def save_export(filename: str, data_url: str, fmt: str | None = None, dpi: int |
         if fmt == "tiff":
             img.convert("RGB").save(out, format="TIFF", compression="tiff_lzw", dpi=d_)
             ext = "tif"
+        elif fmt == "pdf":
+            # high-resolution image in a PDF page sized to the graph's print size (DPI sets the page size)
+            img.convert("RGB").save(out, format="PDF", resolution=float(d_[0]))
+            ext = "pdf"
         else:
             img.save(out, format="PNG", dpi=d_, optimize=True)
         raw = out.getvalue()
