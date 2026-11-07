@@ -1175,26 +1175,58 @@
   }
   function cellMenu(e, el) {
     const s = active(), r = +el.dataset.r, c = +el.dataset.c, t = TYPES[s.type];
-    if (isTextCol(t, c)) return;
     e.preventDefault();
     const g = selRange();
     const inSel = g && r >= g.r0 && r <= g.r1 && c >= g.c0 && c <= g.c1;
     const cells = [];
     const R = inSel ? g : { r0: r, r1: r, c0: c, c1: c };
     for (let i = R.r0; i <= R.r1; i++) for (let j = R.c0; j <= R.c1; j++) if (!isTextCol(t, j) && isNum(s.data[i][j])) cells.push([i, j]);
-    if (!cells.length) return;
-    const allEx = cells.every(([i, j]) => isExcluded(s, i, j));
+    const allEx = cells.length && cells.every(([i, j]) => isExcluded(s, i, j));
+    const lastFilled = s.data.reduce((m, row, i) => row.some(v => String(v).trim() !== "") ? i : m, -1);
+    const fillTo = inSel && g.r1 > g.r0 ? g.r1 : Math.max(lastFilled, r + 9);
     const menu = $("row-menu");
-    menu.innerHTML = `<button data-act="ex">${allEx ? "Include" : "Exclude"} ${cells.length > 1 ? `${cells.length} values` : "this value"}</button>
-      <p class="hint" style="margin:4px 8px">${allEx ? "Use it in analyses and graphs again." : "Kept in the table (blue italics) but left out of analyses and graphs."}</p>`;
-    menu.style.left = `${e.clientX}px`; menu.style.top = `${e.clientY}px`; menu.hidden = false;
-    menu.querySelector("button").onclick = () => {
-      recordUndo(true);
-      const set = new Set(s.excluded || []);
-      cells.forEach(([i, j]) => allEx ? set.delete(exKey(i, j)) : set.add(exKey(i, j)));
-      s.excluded = [...set];
-      menu.hidden = true; save(); renderGrid(); paintSel(); scheduleRun();
-    };
+    menu.innerHTML = (cells.length ? `<button data-act="ex">${allEx ? "Include" : "Exclude"} ${cells.length > 1 ? `${cells.length} values` : "this value"}</button>
+      <p class="hint" style="margin:2px 8px 6px">${allEx ? "Use it in analyses and graphs again." : "Kept in the table (blue italics) but left out of analyses and graphs."}</p>` : "") +
+      `<button data-act="asc">Sort rows by this column (A→Z, 1→9)</button><button data-act="desc">Sort rows by this column (Z→A, 9→1)</button>` +
+      (isTextCol(t, c) ? "" : `<div class="fill-row"><b>Fill series</b> rows ${r + 1}–<input type="number" id="fill-to" value="${fillTo + 1}" min="${r + 1}" style="width:54px">
+        <span>start</span><input type="text" id="fill-start" value="${isNum(s.data[r][c]) ? s.data[r][c] : 1}" style="width:54px">
+        <select id="fill-op"><option value="add">+</option><option value="mul">×</option></select><input type="text" id="fill-step" value="1" style="width:46px">
+        <button data-act="fill" class="primary small">Fill</button></div>
+        <p class="hint" style="margin:2px 8px 6px">e.g. start 100, × 0.5 for a 1:2 dilution series.</p>`);
+    menu.style.left = `${Math.min(e.clientX, innerWidth - 340)}px`; menu.style.top = `${Math.min(e.clientY, innerHeight - 200)}px`; menu.hidden = false;
+    menu.querySelectorAll("button[data-act]").forEach(b => b.onclick = () => {
+      const act = b.dataset.act;
+      if (act === "fill") {
+        const a0 = num($("fill-start").value), st = num($("fill-step").value), to = Math.round(num($("fill-to").value) ?? 0) - 1, mul = $("fill-op").value === "mul";
+        if (a0 === null || st === null || to < r) { toast("Enter a start, a step and the last row."); return; }
+        recordUndo(true);
+        while (s.data.length <= to) s.data.push(Array(s.cols.length).fill(""));
+        let v = a0;
+        for (let i = r; i <= to; i++) { s.data[i][c] = String(Number(v.toPrecision(12))); v = mul ? v * st : v + st; }
+      } else if (act === "asc" || act === "desc") {
+        recordUndo(true);
+        const idx = s.data.map((row, i) => i).filter(i => s.data[i].some(v => String(v).trim() !== ""));
+        const key = i => String(s.data[i][c] ?? "").trim();
+        const cmp = (i, j) => {
+          const a1 = key(i), b1 = key(j);
+          if (a1 === "" || b1 === "") return a1 === "" ? (b1 === "" ? 0 : 1) : -1;  // blanks last
+          const na = isNum(a1), nb = isNum(b1);
+          const d = na && nb ? Number(a1) - Number(b1) : na ? -1 : nb ? 1 : a1.localeCompare(b1, undefined, { numeric: true });
+          return act === "asc" ? d : -d;
+        };
+        const order = [...idx].sort((i, j) => cmp(i, j) || i - j);
+        const pos = new Map(order.map((old, k) => [old, k]));
+        const rows = order.map(i => s.data[i]);
+        s.excluded = (s.excluded || []).map(k => k.split(":").map(Number)).filter(([i]) => pos.has(i)).map(([i, j]) => exKey(pos.get(i), j));
+        s.data = [...rows, ...s.data.filter((_, i) => !pos.has(i))];
+      } else {
+        recordUndo(true);
+        const set = new Set(s.excluded || []);
+        cells.forEach(([i, j]) => allEx ? set.delete(exKey(i, j)) : set.add(exKey(i, j)));
+        s.excluded = [...set];
+      }
+      menu.hidden = true; clearSel(); padRows(s); save(); renderGrid(); scheduleRun();
+    });
   }
   document.addEventListener("click", e => { if (!e.target.closest("#row-menu")) $("row-menu").hidden = true; });
   // copy / cut / delete for a selected block, wherever keyboard focus is (grid cell or page)

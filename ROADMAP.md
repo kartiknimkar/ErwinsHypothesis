@@ -239,6 +239,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Transform → "Row statistics": mean, SD, n of each row as a new summary-data analysis (excluded values left out);
       transform dialog scrolls so its button stays visible; 166 tests
 
+## Phase 0.53: Grid conveniences (done 2026-11-07)
+- [x] Right-click any cell: sort rows by that column (numbers, then text; blanks last; exclusions follow their rows),
+      fill series (start, + or × step, to a row; e.g. dilution series); undoable; 167 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

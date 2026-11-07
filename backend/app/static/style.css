@@ -258,3 +258,6 @@ table.res .pd { color: var(--muted); font-size: 11.5px; font-weight: 400; }
 /* long dialogs (transform list): keep the buttons on screen and scroll the choices */
 #transform-backdrop .dialog { max-height: 90vh; display: flex; flex-direction: column; }
 #tf-body { overflow-y: auto; min-height: 0; }
+.row-menu .fill-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 8px 0; font-size: 12px; max-width: 320px; }
+.row-menu .fill-row input, .row-menu .fill-row select { border: 1px solid var(--line); border-radius: 5px; padding: 2px 4px; font-size: 12px; background: var(--panel); color: var(--ink); }
+.row-menu .fill-row button { width: auto; }

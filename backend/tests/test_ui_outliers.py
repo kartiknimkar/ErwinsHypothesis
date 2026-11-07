@@ -152,3 +152,35 @@ def test_new_transforms(server):  # noqa: F811
             assert check(), op
         assert errors == [], errors
         browser.close()
+
+
+def test_sort_and_fill_series(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('Example: two groups')")
+        page.wait_for_timeout(300)
+        cell = lambda r, c: page.input_value(f'#grid input[data-r="{r}"][data-c="{c}"]')
+        page.click('#grid input[data-r="0"][data-c="0"]', button="right")
+        page.click('#row-menu button[data-act="asc"]')
+        page.wait_for_timeout(300)
+        col = [float(cell(r, 0)) for r in range(8)]
+        assert col == sorted(col)
+        assert cell(0, 1) == "6.8"  # whole rows move: 3.8 was paired with 6.8
+        page.click('#grid input[data-r="0"][data-c="1"]', button="right")
+        page.fill("#fill-start", "100"); page.select_option("#fill-op", "mul"); page.fill("#fill-step", "0.5"); page.fill("#fill-to", "4")
+        page.click('#row-menu button[data-act="fill"]')
+        page.wait_for_timeout(300)
+        assert [cell(r, 1) for r in range(4)] == ["100", "50", "25", "12.5"]
+        page.keyboard.press("Control+z")
+        page.wait_for_timeout(300)
+        assert cell(0, 1) == "6.8"
+        assert errors == [], errors
+        browser.close()
