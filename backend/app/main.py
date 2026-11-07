@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import anova2, contingency, curvefit, importer, stats, storage, survival
+from . import anova2, contingency, curvefit, importer, multivar, stats, storage, survival
 
 STATIC = Path(__file__).parent / "static"
 PLOTLY_JS = STATIC / "vendor" / "plotly.min.js"  # plotly.js (MIT), bundled so the app works offline
@@ -220,6 +220,29 @@ def import_file(req: ImportRequest):
         return importer.read_table(req.filename, req.data, req.sheet)
     except (ValueError, UnicodeDecodeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class MultiRequest(BaseModel):
+    columns: list
+    names: list[str]
+    analysis: str = "correlation"   # correlation | roc | bland_altman
+    method: str = "pearson"
+    alpha: float = 0.05
+
+
+@app.post("/api/multi")
+def run_multi(req: MultiRequest):
+    try:
+        if req.analysis == "correlation":
+            res = multivar.correlation_matrix(req.columns, req.names, req.method, req.alpha)
+        else:
+            if len(req.columns) < 2:
+                raise ValueError("Enter two columns.")
+            fn = multivar.roc if req.analysis == "roc" else multivar.bland_altman
+            res = fn(req.columns[0], req.columns[1], names=tuple(req.names[:2]), alpha=req.alpha)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse(_json_safe(res))
 
 
 class SurvivalRequest(BaseModel):
