@@ -183,6 +183,11 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Gehan-Breslow-Wilcoxon test (matches lifelines weightings="wilcoxon"), log-rank test for trend (3+ groups),
       number-at-risk table under the Kaplan-Meier graph; 138 tests
 
+## Phase 0.39: Contingency extras (done 2026-11-07)
+- [x] Chi-square test for trend (Cochran-Armitage, k×2 ordered rows), McNemar's test (exact + corrected chi-square,
+      matched odds ratio), chi-square goodness of fit (+ exact binomial for 2 categories), observed vs expected graph
+- [x] Verified vs statsmodels/scipy; guide branch; 3 new examples; 141 tests
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

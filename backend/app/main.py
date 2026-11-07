@@ -434,12 +434,20 @@ class ContingencyRequest(BaseModel):
     rows: list[str]
     cols: list[str]
     alpha: float = 0.05
+    analysis: str = "table"     # table | mcnemar | gof (table = [[observed, expected], ...])
+    expected_pct: bool = False
 
 
 @app.post("/api/contingency")
 def run_contingency(req: ContingencyRequest):
     try:
-        res = contingency.analyze(req.table, req.rows, req.cols, alpha=req.alpha)
+        if req.analysis == "mcnemar":
+            res = contingency.mcnemar(req.table, req.rows, req.cols, alpha=req.alpha)
+        elif req.analysis == "gof":
+            res = contingency.goodness_of_fit(req.rows, [r[0] if r else None for r in req.table],
+                                              [r[1] if len(r) > 1 else None for r in req.table], req.expected_pct, req.alpha)
+        else:
+            res = contingency.analyze(req.table, req.rows, req.cols, alpha=req.alpha)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return JSONResponse(_json_safe(res))

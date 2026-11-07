@@ -703,21 +703,35 @@
     contingency: {
       label: "Contingency table", newTitle: "Contingency",
       minCols: 3, maxCols: 9, fixedCols: 1, textCol: 0, addLabel: "+ Outcome", minRows: 6,
-      colKind: j => j === 0 ? "Row name" : `Outcome ${j}`, newColName: j => `Outcome ${j}`,
-      hint: "Each row is a group (type its name in the first column). Enter counts (number of subjects) in the outcome columns.",
+      colKind: (j, s) => s && s.options.analysis === "gof" ? ["Category", "Observed count", "Expected"][j] || "(not used)"
+        : s && s.options.analysis === "mcnemar" ? ["First test / case", "Second: positive", "Second: negative"][j] || "(not used)"
+        : j === 0 ? "Row name" : `Outcome ${j}`,
+      newColName: j => `Outcome ${j}`,
+      hint: "Each row is a group (type its name in the first column). Enter counts (number of subjects) in the outcome columns. For paired yes/no data or observed vs expected counts, choose that analysis below.",
       cols: ["Group", "Outcome 1", "Outcome 2"],
       options: { alpha: 0.05 },
       graph: { ylabel: "", mode: "pct" },
-      examples: () => ({ cols: ["Group", "Responded", "No response"], rows: [["Treated", 38, 12], ["Placebo", 23, 27]] }),
+      examples: s => s.options.analysis === "gof" ? { cols: ["Genotype", "Observed", "Expected %"], rows: [["AA", 30, 25], ["Aa", 52, 50], ["aa", 18, 25]] }
+        : s.options.analysis === "mcnemar" ? { cols: ["Before treatment", "After: positive", "After: negative"], rows: [["Positive", 45, 12], ["Negative", 4, 39]] }
+        : s.options.trendExample ? { cols: ["Dose", "Toxicity", "No toxicity"], rows: [["None", 3, 47], ["Low", 7, 43], ["Medium", 12, 38], ["High", 19, 31]] }
+        : { cols: ["Group", "Responded", "No response"], rows: [["Treated", 38, 12], ["Placebo", 23, 27]] },
       request(s) {
         const rows = s.data.filter(r => r.slice(1).some(isNum));
         return ["/api/contingency", { table: rows.map(r => r.slice(1).map(v => num(v))), rows: rows.map((r, i) => String(r[0] || `Row ${i + 1}`)),
-          cols: s.cols.slice(1).map((c, j) => c || `Outcome ${j + 1}`), alpha: s.options.alpha }];
+          cols: s.cols.slice(1).map((c, j) => c || `Outcome ${j + 1}`), alpha: s.options.alpha,
+          analysis: s.options.analysis || "table", expected_pct: s.options.expectedKind !== "count" }];
       },
-      renderOptions: s => `<p class="hint">2×2 tables: Fisher's exact test, odds ratio and relative risk. Larger tables: chi-square test.</p>${alphaSelect(s)}`,
+      renderOptions: s => {
+        const an = s.options.analysis || "table";
+        const seg = `<div class="seg"><button data-set="analysis:table" class="${an === "table" ? "on" : ""}">Groups × outcomes</button><button data-set="analysis:mcnemar" class="${an === "mcnemar" ? "on" : ""}">Paired (McNemar)</button><button data-set="analysis:gof" class="${an === "gof" ? "on" : ""}">Observed vs expected</button></div>`;
+        if (an === "mcnemar") return seg + `<p class="hint">For paired yes/no results: the same subjects tested twice (before/after), or matched case-control pairs. Enter a 2×2 table of <b>pairs</b>: rows = first result (positive, negative), columns = second result. Only pairs that changed matter.</p>${alphaSelect(s)}`;
+        if (an === "gof") return seg + `<p class="hint">Do the observed counts match what you expected (e.g. a 1:2:1 Mendelian ratio)? One row per category: its name, the observed count, and the expected value.</p>
+          <div class="seg"><button data-set="expectedKind:pct" class="${s.options.expectedKind !== "count" ? "on" : ""}">Expected as % or ratio</button><button data-set="expectedKind:count" class="${s.options.expectedKind === "count" ? "on" : ""}">Expected as counts</button></div>${alphaSelect(s)}`;
+        return seg + `<p class="hint">2×2 tables: Fisher's exact test, odds ratio and relative risk. Larger tables: chi-square test. With 2 outcome columns and 3+ rows in a meaningful order (e.g. doses), the chi-square test for trend is added.</p>${alphaSelect(s)}`;
+      },
       graphControls: () => [sel("mode", "Show", [["pct", "Percent of each row"], ["count", "Counts"]]), txt("ylabel", "Y axis label"), chk("stack", "Stacked bars"), chk("horizontal", "Horizontal (sideways)")],
-      renderResults: renderContingencyResults,
-      draw: drawContingency,
+      renderResults: r => r.kind === "gof" ? renderGOF(r) : r.kind === "mcnemar" ? renderMcNemar(r) : renderContingencyResults(r),
+      draw: (el, r, s) => r.kind === "gof" ? drawGOF(el, r, s) : drawContingency(el, r, s),
     },
   };
 
@@ -820,6 +834,9 @@
     add("survival", "Example: survival");
     const figPanels = project.sheets.filter(x => ["Example: two groups", "Example: three groups (ANOVA)", "Example: dose-response (IC50)", "Example: survival"].includes(x.title)).map(x => x.id);
     add("contingency", "Example: contingency");
+    add("contingency", "Example: chi-square for trend", s => { s.options.trendExample = true; });
+    add("contingency", "Example: McNemar (paired yes/no)", s => { s.options.analysis = "mcnemar"; });
+    add("contingency", "Example: observed vs expected", s => { s.options.analysis = "gof"; });
     add("multivar", "Example: correlation matrix");
     add("multivar", "Example: multiple regression", s => { s.options.analysis = "mlr"; });
     add("multivar", "Example: logistic regression", s => { s.options.analysis = "logistic"; });
@@ -1231,7 +1248,10 @@
     ["Time until an event", "survival, relapse, time to failure", { q: "What do you want to know?", opts: [
       ["Compare survival between groups", "e.g. treated vs control", rec("Kaplan-Meier survival + log-rank", "Survival curves, median survival, log-rank test and hazard ratio.", "survival", s => {})],
       ["Effect of several factors at once", "e.g. treatment adjusted for age and tumor size", rec("Cox proportional hazards regression", "Hazard ratios for each predictor, adjusted for the others. Columns: time, event (1/0), then predictors.", "multivar", s => { s.options.analysis = "cox"; s.cols = ["Time", "Event (1/0)", "Predictor 1", "Predictor 2"]; s.data = s.data.map(r => [...r, "", ""].slice(0, 4)); })] ] }],
-    ["Compare proportions (yes/no outcomes)", "e.g. responders vs non-responders by group", rec("Contingency table", "Fisher's exact test (2×2) or chi-square, with odds ratio and relative risk.", "contingency", s => {})],
+    ["Counts or proportions (yes/no outcomes)", "responders, genotypes, before/after positive", { q: "What kind of counts?", opts: [
+      ["Groups × outcomes", "e.g. responders vs non-responders by group", rec("Contingency table", "Fisher's exact test (2×2) or chi-square, with odds ratio and relative risk; trend test for ordered groups.", "contingency", s => {})],
+      ["The same subjects tested twice (paired)", "before/after, or matched pairs", rec("McNemar's test", "Enter a 2×2 table of pairs: rows = first result, columns = second result.", "contingency", s => { s.options.analysis = "mcnemar"; s.cols = ["First result", "Second: positive", "Second: negative"]; })],
+      ["Compare with expected numbers", "e.g. a 1:2:1 genetic ratio", rec("Chi-square goodness of fit", "One row per category: observed count and expected % (or count).", "contingency", s => { s.options.analysis = "gof"; s.cols = ["Category", "Observed", "Expected %"]; })] ] }],
     ["Many variables at once", "correlations, predicting an outcome, PCA", { q: "What do you want to learn?", opts: [
       ["How all the variables correlate", "", rec("Correlation matrix", "Every pair of variables, with a heatmap.", "multivar", s => {})],
       ["Predict a measured outcome", "e.g. blood pressure from age, BMI, dose", rec("Multiple linear regression", "Outcome in the first column, predictors to the right.", "multivar", s => { s.options.analysis = "mlr"; })],
@@ -1482,6 +1502,7 @@
     if (s.type === "multivar") return (s.options.analysis || "correlation") === "correlation" ? [] : s.options.analysis === "logistic" ? ["Curve"] : s.options.analysis === "pca" ? ["Points", "Loadings"] : ["Points"];
     if (s.type === "twoway" && s.options.analysis === "multit") return ["Discoveries"];
     if (s.type === "diagnostic") return s.options.analysis === "roc" ? ["Curve", "Best cutoff"] : ["Points"];
+    if (s.type === "contingency" && s.options.analysis === "gof") return ["Observed", "Expected"];
     return s.cols.slice(1).map((c, j) => c || (s.type === "contingency" ? `Outcome ${j + 1}` : `Group ${letter(j)}`));
   }
   const toHex = c => /^#[0-9a-f]{6}$/i.test(c) ? c : "#000000";
@@ -1694,6 +1715,14 @@
       const m = `Survival was estimated with the Kaplan-Meier method${r.logrank ? " and compared between groups with the log-rank (Mantel-Cox) test" : ""}${r.hazard_ratio ? "; the hazard ratio was calculated with the Mantel-Haenszel method" : ""}. ${ALPHA(r)} Analyses were performed in ${SW}.`;
       const meds = r.curves.map(c => `${esc(c.name)} ${c.median == null ? "not reached" : r2(c.median, 1)}`).join(", ");
       return { methods: m, results: `Median survival: ${meds}.${r.logrank ? ` Survival ${r.p < r.alpha ? "differed significantly" : "did not differ significantly"} between groups (χ²(${r.logrank.df}) = ${r2(r.logrank.chi2)}, ${apaP(r.p)})` : ""}${r.hazard_ratio ? `; hazard ratio (${esc(r.hazard_ratio.label)}) ${r2(r.hazard_ratio.value)}, 95% CI ${r2(r.hazard_ratio.ci[0])} to ${r2(r.hazard_ratio.ci[1])}.` : "."}` };
+    }
+    if (s.type === "contingency" && r.kind === "mcnemar") {
+      return { methods: `Paired proportions were compared with McNemar's test (exact binomial P value, two-sided). ${ALPHA(r)} Analyses were performed in ${SW}.`,
+        results: `Of ${r.b + r.c} discordant pairs, ${r.b} changed from ${esc(r.rows[0]).toLowerCase()} to ${esc(r.cols[1]).toLowerCase()} and ${r.c} the other way (${apaP(r.p)}; odds ratio ${r2(r.odds_ratio.value, 3)}, 95% CI ${r2(r.odds_ratio.ci[0], 3)} to ${r2(r.odds_ratio.ci[1], 3)}).` };
+    }
+    if (s.type === "contingency" && r.kind === "gof") {
+      return { methods: `Observed counts were compared with the expected distribution using the chi-square goodness-of-fit test${r.binomial_p != null ? " and the exact binomial test" : ""}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
+        results: `The observed distribution (${r.names.map((n, i) => `${esc(n)}: ${r.observed[i]}`).join(", ")}) ${r.p < r.alpha ? "differed significantly from" : "did not differ significantly from"} the expected one (χ²(${r.df}) = ${r2(r.chi2)}, ${apaP(r.p)}, N = ${r.total}).` };
     }
     if (s.type === "contingency") {
       return { methods: `The association between group and outcome was tested with ${r.fisher ? "Fisher's exact test (two-sided)" : "the chi-square test"}${r.odds_ratio ? "; odds ratios and relative risks are reported with 95% confidence intervals" : ""}. ${ALPHA(r)} Analyses were performed in ${SW}.`,
@@ -2505,7 +2534,38 @@
     h += T.table(rows);
     if (r.chi_square.min_expected < 5 && !r.fisher) h += `<p class="note warn">⚠︎ Some expected counts are below 5, so the chi-square P value is approximate.</p>`;
     if (r.odds_ratio) h += `<p class="note">Odds ratio and relative risk compare the first row with the second, for the outcome in the first column.</p>`;
+    if (r.trend) h += T.table([T.sec("Chi-square test for trend (rows in order, scores 1, 2, 3…)"), T.row("Chi-square, df", `${fmt(r.trend.chi2)}, 1`),
+      T.row("P value", `${pOnly(r.trend.p)} ${st(stars(r.trend.p))}`), T.row(`Proportion of ${esc(r.cols[0])}`, r.trend.p < r.alpha ? `<b>${r.trend.direction}</b> down the rows` : "no significant trend")]);
     return h;
+  }
+  function renderMcNemar(r) {
+    const pct = Math.round((1 - r.alpha) * 100), sig = r.p < r.alpha;
+    let h = T.summary(sig ? "sig" : "ns", `${sig ? "<b>The proportion changed significantly</b>" : "<b>No significant change</b>"} between the two results (McNemar exact ${fmtP(r.p)}). ${r.b} pair${r.b === 1 ? "" : "s"} went ${esc(r.rows[0])} → ${esc(r.cols[1])} and ${r.c} went ${esc(r.rows[1])} → ${esc(r.cols[0])}.`);
+    h += T.multi(["", ...r.cols.map(esc), "Total"], r.table.map((row, i) => [esc(r.rows[i]), ...row, row[0] + row[1]]));
+    h += T.table([T.sec("McNemar's test"), T.row("Exact P (binomial, two-sided)", `${pOnly(r.p)} ${st(stars(r.p))}`),
+      T.row("Chi-square (continuity corrected), df", `${fmt(r.chi2)}, 1 (P ${pOnly(r.p_chi2)})`),
+      T.row("Discordant pairs", `${r.b} and ${r.c}`), T.row("Odds ratio (b/c)", fmt(r.odds_ratio.value)), T.row(`${pct}% CI`, ci(...r.odds_ratio.ci))]);
+    h += `<p class="note">Only discordant pairs (one result positive, the other negative) carry information; pairs that agree are ignored.</p>`;
+    return h;
+  }
+  function renderGOF(r) {
+    const sig = r.p < r.alpha;
+    let h = T.summary(sig ? "sig" : "ns", `${sig ? "<b>The observed counts differ from the expected ones</b>" : "<b>The observed counts fit the expected ones</b>"} (chi-square ${fmtP(r.p)}${r.binomial_p != null ? `; exact binomial ${fmtP(r.binomial_p)}` : ""}).`);
+    h += T.multi(["Category", "Observed", "Expected", "Observed − expected", "Standardized residual"], r.names.map((n, i) => ({ cls: Math.abs(r.residuals[i]) > 2 ? "hl" : "",
+      cells: [esc(n), r.observed[i], fmt(r.expected[i], 4), fmt(r.observed[i] - r.expected[i], 3), fmt(r.residuals[i], 3)] })));
+    const rows = [T.sec("Chi-square goodness of fit"), T.row("Chi-square, df", `${fmt(r.chi2)}, ${r.df}`), T.row("P value", `${pOnly(r.p)} ${st(stars(r.p))}`)];
+    if (r.binomial_p != null) rows.push(T.row("Exact binomial test P", pOnly(r.binomial_p)));
+    h += T.table(rows);
+    if (r.min_expected < 5) h += `<p class="note warn">⚠︎ Some expected counts are below 5, so the chi-square P value is approximate${r.binomial_p != null ? "; use the exact binomial P" : ""}.</p>`;
+    h += `<p class="note">Highlighted rows (|standardized residual| > 2) contribute most to the difference.</p>`;
+    return h;
+  }
+  function drawGOF(el, r, s) {
+    const g = s.graph;
+    const traces = [{ type: "bar", name: "Observed", x: r.names.map(esc), y: r.observed, marker: { color: color(g, 0, "Observed"), line: { color: "#1b2130", width: 0.8 } } },
+      { type: "bar", name: "Expected", x: r.names.map(esc), y: r.expected, marker: { color: color(g, 1, "Expected") + "66", line: { color: color(g, 1, "Expected"), width: 1.5 } } }];
+    styledReact(el, traces, { ...baseLayout(g), barmode: "group", bargap: 0.3, showlegend: true, meta: "flippable", legend: { orientation: "h", y: 1.08, x: 0 },
+      xaxis: axis(g), yaxis: yAxis(g, g.ylabel || "Count") }, PLOT_CONFIG);
   }
 
   // ======================================================================
