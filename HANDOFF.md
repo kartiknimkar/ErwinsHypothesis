@@ -75,7 +75,8 @@ Every session starts by reading it and ends by updating it (then committing).
    Graph polish: per-group colors done (graph.colors by series name). Export size/DPI done (EXPORT_SIZES in app.js). TIFF done (Pillow); Y tick interval + hide legend done. Still: legend text editing, X tick control
    Other Prism features worth adding: ROUT outliers, (multiple t tests done: anova2.multiple_t, /api/multit),
    (column statistics done: Compare groups mode 'describe', /api/colstats)
-4. Prism .pzfx import done (importer.read_pzfx; tested only on synthetic files built to Prism's XML layout,
+4. Exclusions done (sheet.excluded = ['r:c'], masked(s) used for requests/draws).
+   Prism .pzfx import done (importer.read_pzfx; tested only on synthetic files built to Prism's XML layout,
    ask the user to try a real file). (done) Excel/CSV import (`backend/app/importer.py`, /api/import). Excel export done (storage.save_results_xlsx, /api/exports/xlsx)
 5. (done, needs first CI run) Packaged desktop app: `backend/app/desktop.py` (pywebview window,
    browser fallback), `packaging/ErwinsHypothesis.spec` (PyInstaller onedir, ~200 MB),

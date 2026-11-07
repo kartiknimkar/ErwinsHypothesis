@@ -121,6 +121,10 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
       contingency, multiple-variable tables → matching analyses; excluded values dropped with a note;
       SD/SEM summary formats import the means with a note. Not yet verified on a real Prism file.
 
+## Phase 0.28: Exclude values (done 2026-11-06)
+- [x] Right-click a cell/block → Exclude/Include; blue italics; left out of analyses, graphs and layouts;
+      stays aligned on row insert/delete and column removal; undoable
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

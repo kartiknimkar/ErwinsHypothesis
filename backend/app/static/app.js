@@ -352,11 +352,11 @@
         if (!ids.length) throw new Error("Tick the analyses to include in this figure (left).");
         const panels = await Promise.all(ids.map(async id => {
           const sh = project.sheets.find(x => x.id === id);
-          const [url, body] = TYPES[sh.type].request(sh);
+          const [url, body] = TYPES[sh.type].request(masked(sh));
           try {
             const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
             const json = await res.json();
-            return res.ok ? { sheet: sh, result: json } : { sheet: sh, error: json.detail || "Not enough data." };
+            return res.ok ? { sheet: masked(sh), result: json } : { sheet: sh, error: json.detail || "Not enough data." };
           } catch { return { sheet: sh, error: "Can't reach the analysis engine." }; }
         }));
         return { kind: "layout", panels };
@@ -503,6 +503,7 @@
   }
   function applyExample(s) {
     const ex = TYPES[s.type].examples(s);
+    s.excluded = [];
     s.cols = [...ex.cols];
     s.data = ex.rows.map(r => r.map(v => String(v)));
     padRows(s);
@@ -545,7 +546,24 @@
   // ======================================================================
   const history = {};
   let groupOpen = false, groupTimer = null;
-  const snap = s => JSON.stringify({ cols: s.cols, data: s.data });
+  const snap = s => JSON.stringify({ cols: s.cols, data: s.data, excluded: s.excluded || [] });
+  // ---- excluded values: kept in the table, left out of analyses and graphs
+  const exKey = (r, c) => `${r}:${c}`;
+  const isExcluded = (s, r, c) => !!(s.excluded && s.excluded.includes(exKey(r, c)));
+  function masked(s) {
+    if (!s.excluded || !s.excluded.length) return s;
+    const set = new Set(s.excluded);
+    return { ...s, data: s.data.map((row, r) => row.map((v, c) => set.has(exKey(r, c)) ? "" : v)) };
+  }
+  function shiftExcludedRows(s, at, delta) {   // rows inserted (delta > 0) or deleted (delta < 0) at index `at`
+    if (!s.excluded) return;
+    s.excluded = s.excluded.map(k => k.split(":").map(Number)).filter(([r]) => delta > 0 || r < at || r >= at - delta)
+      .map(([r, c]) => exKey(r >= at ? r + delta : r, c));
+  }
+  function dropExcludedCol(s, j) {
+    if (!s.excluded) return;
+    s.excluded = s.excluded.map(k => k.split(":").map(Number)).filter(([, c]) => c !== j).map(([r, c]) => exKey(r, c > j ? c - 1 : c));
+  }
   function hist(s) { return history[s.id] || (history[s.id] = { undo: [], redo: [] }); }
   function recordUndo(force = false) {
     const s = active(), h = hist(s);
@@ -562,7 +580,7 @@
     if (!from.length) return;
     to.push(snap(s));
     const st = JSON.parse(from.pop());
-    s.cols = st.cols; s.data = st.data;
+    s.cols = st.cols; s.data = st.data; s.excluded = st.excluded || [];
     groupOpen = false; selA = selB = null;
     save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun(); updateUndoButtons();
   }
@@ -665,7 +683,7 @@
       h += `<tr><td class="rownum" data-row="${i}" title="Click to select the row; right-click to insert or delete rows">${i + 1}</td>`;
       r.forEach((v, j) => {
         const text = j === t.textCol;
-        const bad = !text && String(v).trim() !== "" && !isNum(v) ? " bad" : "";
+        const bad = (!text && String(v).trim() !== "" && !isNum(v) ? " bad" : "") + (isExcluded(s, i, j) ? " excl" : "");
         h += `<td><input class="cell${text ? " txt" : ""}${bad}" data-r="${i}" data-c="${j}" value="${esc(v)}" ${text ? "" : 'inputmode="decimal"'} spellcheck="false"></td>`;
       });
       h += "</tr>";
@@ -773,6 +791,8 @@
   document.addEventListener("mouseup", () => { dragging = false; });
   // right-click a row number: insert / delete rows
   function onGridContext(e) {
+    const cellEl = e.target.closest("input.cell");
+    if (cellEl) { cellMenu(e, cellEl); return; }
     const rn = e.target.closest("[data-row]");
     if (!rn) return;
     e.preventDefault();
@@ -786,11 +806,34 @@
     menu.querySelectorAll("button").forEach(b => b.onclick = () => {
       recordUndo(true);
       const blank = () => Array(s.cols.length).fill("");
-      if (b.dataset.act === "above") s.data.splice(rows[0], 0, blank());
-      else if (b.dataset.act === "below") s.data.splice(rows[1] + 1, 0, blank());
-      else s.data.splice(rows[0], rows[1] - rows[0] + 1);
+      if (b.dataset.act === "above") { s.data.splice(rows[0], 0, blank()); shiftExcludedRows(s, rows[0], 1); }
+      else if (b.dataset.act === "below") { s.data.splice(rows[1] + 1, 0, blank()); shiftExcludedRows(s, rows[1] + 1, 1); }
+      else { s.data.splice(rows[0], rows[1] - rows[0] + 1); shiftExcludedRows(s, rows[0], -(rows[1] - rows[0] + 1)); }
       menu.hidden = true; clearSel(); padRows(s); save(); renderGrid(); scheduleRun();
     });
+  }
+  function cellMenu(e, el) {
+    const s = active(), r = +el.dataset.r, c = +el.dataset.c, t = TYPES[s.type];
+    if (c === t.textCol) return;
+    e.preventDefault();
+    const g = selRange();
+    const inSel = g && r >= g.r0 && r <= g.r1 && c >= g.c0 && c <= g.c1;
+    const cells = [];
+    const R = inSel ? g : { r0: r, r1: r, c0: c, c1: c };
+    for (let i = R.r0; i <= R.r1; i++) for (let j = R.c0; j <= R.c1; j++) if (j !== t.textCol && isNum(s.data[i][j])) cells.push([i, j]);
+    if (!cells.length) return;
+    const allEx = cells.every(([i, j]) => isExcluded(s, i, j));
+    const menu = $("row-menu");
+    menu.innerHTML = `<button data-act="ex">${allEx ? "Include" : "Exclude"} ${cells.length > 1 ? `${cells.length} values` : "this value"}</button>
+      <p class="hint" style="margin:4px 8px">${allEx ? "Use it in analyses and graphs again." : "Kept in the table (blue italics) but left out of analyses and graphs."}</p>`;
+    menu.style.left = `${e.clientX}px`; menu.style.top = `${e.clientY}px`; menu.hidden = false;
+    menu.querySelector("button").onclick = () => {
+      recordUndo(true);
+      const set = new Set(s.excluded || []);
+      cells.forEach(([i, j]) => allEx ? set.delete(exKey(i, j)) : set.add(exKey(i, j)));
+      s.excluded = [...set];
+      menu.hidden = true; save(); renderGrid(); paintSel(); scheduleRun();
+    };
   }
   document.addEventListener("click", e => { if (!e.target.closest("#row-menu")) $("row-menu").hidden = true; });
   // copy / cut / delete for a selected block, wherever keyboard focus is (grid cell or page)
@@ -835,7 +878,7 @@
     const hasData = s.data.some(r => String(r[j]).trim() !== "");
     if (hasData && !confirm(`Remove the column "${s.cols[j]}" and its data? (You can undo.)`)) return;
     recordUndo(true);
-    s.cols.splice(j, 1); s.data.forEach(r => r.splice(j, 1));
+    s.cols.splice(j, 1); s.data.forEach(r => r.splice(j, 1)); dropExcludedCol(s, j);
     save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun();
   }
   function addColumn() {
@@ -979,6 +1022,7 @@
       recordUndo(true);
       s.cols = Array.from({ length: width }, (_, j) => (header && first[j]) || (j < s.cols.length ? s.cols[j] : t.newColName(j)));
       s.data = (header ? rest : rows).map(r => Array.from({ length: width }, (_, j) => r[j] ?? ""));
+      s.excluded = [];
       padRows(s); save(); renderGrid(); renderOptions(); renderFormat(); scheduleRun();
       const cut = Math.max(...rows.map(r => r.length)) > t.maxCols ? ` Only the first ${t.maxCols} columns fit this table.` : "";
       toast(`Imported ${s.data.filter(r => r.some(v => v !== "")).length} rows from <b>${esc(file.name)}</b>${res.sheet ? ` (${esc(res.sheet)})` : ""}.${cut}`);
@@ -1168,7 +1212,7 @@
       renderResults(); drawPlot();
       return;
     }
-    const [url, body] = TYPES[s.type].request(s);
+    const [url, body] = TYPES[s.type].request(masked(s));
     try {
       const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const json = await res.json();
@@ -1185,6 +1229,8 @@
     if (lastError) { box.innerHTML = T.summary("err", `<b>Not enough to analyze yet.</b> ${esc(lastError)}`); return; }
     if (!lastResult) { box.innerHTML = ""; return; }
     box.innerHTML = TYPES[s.type].renderResults(lastResult, s);
+    const nx = (s.excluded || []).length;
+    if (nx) box.insertAdjacentHTML("afterbegin", `<p class="note warn" style="margin-top:0">${nx} excluded value${nx === 1 ? " is" : "s are"} not used (shown in <i>blue italics</i> in the table). Right-click to include again.</p>`);
     let rep = null;
     try { rep = reportText(lastResult, s); } catch { rep = null; }
     if (rep) {
@@ -1894,7 +1940,7 @@
       return;
     }
     if (el.querySelector(".empty")) el.innerHTML = "";
-    TYPES[s.type].draw(el, lastResult, s);
+    TYPES[s.type].draw(el, lastResult, masked(s));
     if (s.graph.legend === "hide" && el.layout && el.layout.showlegend) Plotly.relayout(el, { showlegend: false });
   }
 
@@ -2224,7 +2270,7 @@
   $("btn-clear").onclick = () => {
     const s = active();
     recordUndo(true);
-    s.data = blankRows(TYPES[s.type].minRows, s.cols.length); save(); renderGrid(); scheduleRun();
+    s.data = blankRows(TYPES[s.type].minRows, s.cols.length); s.excluded = []; save(); renderGrid(); scheduleRun();
     toast("Data cleared. Press Ctrl+Z to undo.");
   };
   $("btn-dup").onclick = () => {

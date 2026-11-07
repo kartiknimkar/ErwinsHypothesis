@@ -128,5 +128,11 @@ def test_grid_block_selection_copy_delete_rows(server):
         assert col0(3) == ["4.2", "", "5.1"]
         page.click('[data-row="1"]', button="right"); page.click('#row-menu button[data-act="delete"]'); page.wait_for_timeout(200)
         assert col0(3) == ["4.2", "5.1", "3.8"]
+        # exclude a value: kept in the table, left out of the analysis
+        page.click(cell(0, 0), button="right"); page.click("#row-menu button"); page.wait_for_timeout(1000)
+        assert "excl" in page.get_attribute(cell(0, 0), "class")
+        assert "excluded value" in page.inner_text("#results")
+        page.click('[data-row="0"]', button="right"); page.click('#row-menu button[data-act="above"]'); page.wait_for_timeout(200)
+        assert "excl" in page.get_attribute(cell(1, 0), "class") and "excl" not in page.get_attribute(cell(0, 0), "class")
         assert errors == [], errors
         browser.close()
