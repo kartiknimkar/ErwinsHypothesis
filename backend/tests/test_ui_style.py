@@ -70,7 +70,8 @@ def test_styles_apply_to_every_graph_and_svg_is_editable(server):  # noqa: F811
             new = set(glob.glob(os.path.join(exports, "*.svg"))) - before
             assert new, "no layout SVG written"
             svg = open(new.pop(), encoding="utf-8").read()
-            assert svg.count('<g id="panel-') >= 2 and "<text" in svg
+            assert svg.count('data-name="Panel ') >= 2 and "<text" in svg
+            assert "clip-path" not in svg and ' class="' not in svg
         assert errors == [], errors
         browser.close()
 

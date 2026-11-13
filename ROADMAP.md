@@ -373,6 +373,14 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Contingency, McNemar and goodness-of-fit checklist (expected counts, percentages entered by mistake, order of rows, real pairs); 225 tests
 - [x] Kendall tau-b correlation (regression results and correlation matrix) and a CI for Spearman r; 227 tests
 
+## Phase 0.9: Working better, editable figures (started 2026-11-13)
+- [x] SVG export rebuilt for editing: no clipping masks or invisible boxes, every point/bar/error bar/line/label its own object in named groups, plain attributes, size in points; renders identically
+- [ ] Drawing tools (text, arrows, lines, boxes, brackets) on graphs
+- [ ] Per-series styling popover
+- [ ] Axis frame/offset styles, symbol picker for labels
+- [ ] Preview at export size (WYSIWYG)
+- [ ] Drag-and-drop import, shortcut sheet, first-run tour
+
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
 - [ ] Backend: FastAPI app, health endpoint, test setup (pytest)

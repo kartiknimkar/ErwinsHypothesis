@@ -2965,17 +2965,16 @@
     const [wIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["2"];
     const ncol = Math.min(s.options.ncol || 2, r.panels.length), nrow = Math.ceil(r.panels.length / ncol);
     const pw = Math.round(wIn * 96 / ncol), ph = Math.round(pw * 0.78), W = pw * ncol, H = ph * nrow;
-    let body = "";
+    const panels = [];
     for (let i = 0; i < r.panels.length; i++) {
       const div = document.getElementById(`lp-${i}`);
       if (!div || !div.data) continue;
-      const url = await Plotly.toImage(div, { format: "svg", width: pw, height: ph });
-      let svg = decodeURIComponent(url.replace(/^data:image\/svg\+xml,/, ""));
-      svg = svg.replace(/^<svg/, `<svg x="${(i % ncol) * pw}" y="${Math.floor(i / ncol) * ph}"`);
-      body += `<g id="panel-${String.fromCharCode(65 + i)}">${svg}</g>`;
-      if (s.options.letters) body += `<text x="${(i % ncol) * pw + 6}" y="${Math.floor(i / ncol) * ph + (g.letterSize || 16) + 2}" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="${g.letterSize || 16}">${String.fromCharCode(65 + i)}</text>`;
+      const L = String.fromCharCode(65 + i), x = (i % ncol) * pw, y = Math.floor(i / ncol) * ph;
+      const svg = await editableSVG(div, pw, ph, r.panels[i].sheet.graph, r.panels[i].sheet.title);
+      const letter = s.options.letters ? `<text id="Panel_letter_${L}" data-name="Panel letter ${L}" x="${x + 6}" y="${y + (g.letterSize || 16) + 2}" font-family="Arial" font-weight="bold" font-size="${g.letterSize || 16}">${L}</text>` : "";
+      panels.push({ svg, x, y, name: `Panel ${L}: ${esc(r.panels[i].sheet.title)}`, idPrefix: `Panel_${L}_`, extra: letter });
     }
-    const doc = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${body}</svg>`;
+    const doc = window.EHSvg.combine(panels, W, H, { widthPt: +(W * 0.75).toFixed(2), heightPt: +(H * 0.75).toFixed(2), title: esc(s.title) });
     try {
       const res = await api("/api/exports", { method: "POST", body: JSON.stringify({ filename: `${projectName} - ${s.title}`, data_url: "data:image/svg+xml," + encodeURIComponent(doc) }) });
       toast(`Saved <b>${esc(res.file)}</b> (editable SVG) to the exports folder`, "exports");
@@ -3453,9 +3452,71 @@
       toast("Graph copied. Paste it into PowerPoint, Word or an email (Ctrl+V).");
     } catch (e) { toast("Couldn't copy the picture here. Use PNG instead (it saves to the exports folder)."); }
   }
+  // names of the traces on a drawn graph, keyed by Plotly's uid (used to name groups in the SVG)
+  function traceNames(div) {
+    const byUid = {}, list = [];
+    // Plotly redraws a copy for export, so give every trace a fixed uid that the copy keeps
+    (div.data || []).forEach((t, i) => { if (!t.uid) t.uid = `eh${i}`; });
+    const full = div._fullData || [];
+    let last = "";
+    // series share a color: an unnamed trace takes the name of a named trace with its color
+    const colorOf = f => { const m = (f && f.marker) || {}; const c = Array.isArray(m.color) ? null : m.color || (f.line && f.line.color); if (!c) return null;
+      const m2 = String(c).replace(/\s/g, "").match(/^rgba?\((\d+),(\d+),(\d+)/i);
+      return m2 ? "#" + m2.slice(1, 4).map(v => (+v).toString(16).padStart(2, "0")).join("") : /^#[0-9a-f]{6}/i.test(c) ? String(c).slice(0, 7).toLowerCase() : null; };
+    const byColor = {};
+    (div.data || []).forEach((t, i) => { const c = colorOf(full[i] || t); if (c && t.name && !/^trace \d+$/.test(t.name) && !byColor[c]) byColor[c] = String(t.name).replace(/<[^>]+>/g, "").trim(); });
+    (div.data || []).forEach((t, i) => {
+      const f = full[i] || t, clean = v => String(v || "").replace(/<[^>]+>/g, "").trim();
+      let nm = clean(t.name) && !/^trace \d+$/.test(t.name) ? clean(t.name) : "";
+      // column graphs: traces sit at numeric positions labelled by the axis ticks
+      const mode0 = f.mode || t.mode || "", hasErr = !!((f.error_y && f.error_y.visible) || (f.error_x && f.error_x.visible));
+      const what = hasErr ? "mean and error bar" : (f.type || t.type) === "bar" ? "bars" : mode0.includes("markers") ? "points" : mode0.includes("lines") ? "line" : (f.type || "series");
+      const cName = !nm && byColor[colorOf(f)];
+      if (cName) nm = `${cName} – ${what}`;
+      if (!nm) {
+        const L = div.layout || {}, horiz = f.orientation === "h";
+        const ax = (horiz ? L.yaxis : L.xaxis) || {}, pos = (horiz ? t.y : t.x) || [];
+        const nums = Array.isArray(pos) ? pos.map(Number).filter(v => isFinite(v)) : [];
+        if (ax.tickvals && ax.ticktext && nums.length) {
+          const m = nums.reduce((a2, b2) => a2 + b2, 0) / nums.length;
+          let best = -1, bd = Infinity;
+          ax.tickvals.forEach((tv, k) => { const d = Math.abs(Number(tv) - m); if (d < bd) { bd = d; best = k; } });
+          if (best >= 0 && bd < 0.5) nm = `${clean(ax.ticktext[best])} – ${what}`;
+        }
+        const ht = (t.hovertemplate || "").match(/^([A-Za-z][^:<%(]{0,30}):/);
+        if (!nm && ht) nm = `${clean(ht[1])}${/^fit$/i.test(ht[1].trim()) ? "ted curve" : ` – ${what}`}`;
+      }
+      if (nm) { if (!/curve|line/i.test(nm) && (f.type === "bar" || mode0.includes("markers"))) last = nm.replace(/ – .*$/, ""); }
+      else {
+        nm = what === "line" && !last ? "Line" : `${last || clean(t.legendgroup) || (/points|error/.test(what) ? "Data" : "Series " + (i + 1))} – ${what}`;
+      }
+      byUid[t.uid] = nm;
+      list.push({ type: f.type || t.type || "scatter", name: nm });
+    });
+    return { byUid, list };
+  }
+  // a clean, fully editable SVG of a drawn graph (see svgclean.js)
+  async function editableSVG(div, wPx, hPx, g, title) {
+    const names = traceNames(div);
+    const url = await Plotly.toImage(div, { format: "svg", width: wPx, height: hPx });
+    const raw = decodeURIComponent(url.replace(/^data:image\/svg\+xml,/, ""));
+    try {
+      return window.EHSvg.clean(raw, { traceNames: names.byUid, traceList: names.list, font: g.fontFamily || "Arial", widthPt: +(wPx * 0.75).toFixed(2), heightPt: +(hPx * 0.75).toFixed(2), title }).svg;
+    } catch (e) { console.warn("SVG clean-up failed, saving Plotly's SVG", e); return raw; }
+  }
+  window.__eh = Object.assign(window.__eh || {}, { editableSVG });  // used by the tests
   async function exportPlot(format, convert) {
     if (!lastResult) { toast("Add some data first, then export the graph."); return; }
     if (active().type === "layout") return exportLayout(format === "png" ? (convert || "png") : null);
+    if (format === "svg") {
+      try {
+        const s = active(), g = s.graph, [wIn, hIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["15"];
+        const svg = await editableSVG($("plot"), Math.round(wIn * 96), Math.round(hIn * 96), g, s.title);
+        const res = await api("/api/exports", { method: "POST", body: JSON.stringify({ filename: `${projectName} - ${s.title}`, data_url: "data:image/svg+xml," + encodeURIComponent(svg) }) });
+        toast(`Saved <b>${esc(res.file)}</b>: every point, line and label is a separate, editable object (Illustrator, Inkscape, PowerPoint "Convert to Shape")`, "exports");
+      } catch (e) { toast(esc(e.message || "Export failed.")); }
+      return;
+    }
     try {
       const g = active().graph, [wIn, hIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["15"];
       // 96 CSS pixels per inch; PNG resolution comes from the scale factor

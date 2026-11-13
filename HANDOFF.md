@@ -70,6 +70,20 @@ Every session starts by reading it and ends by updating it (then committing).
       `styleCtx` = the sheet's graph settings (set in drawPlot / per panel in drawLayout). New style keys live in
       COMMON_GRAPH. Layout SVG export: exportLayoutSVG (nested <svg> per panel). Test: tests/test_ui_style.py.
 
+## FOCUS NOW (user, 2026-11-13): stop adding statistical tests for a while; make the app itself work better,
+## on par with the best software and easy to use; more ways to update and decorate graphs; SVG exports fully
+## editable (every line and point its own object, ungroupable). Stats chunks (bu), (bv) below are parked.
+- [x] (w1) clean editable SVG (static/svgclean.js + app.js editableSVG/traceNames): no clipping masks (inside → unclipped,
+      outside → dropped, only elements truly crossing the plot edge keep their own small clip), no invisible boxes, named groups
+      ("Control – points", "X axis", "Legend: …", "Label: …") via data-name (Illustrator/Affinity) + inkscape:label, plain
+      attributes, hex colors, one font, round points as <circle>, size in pt. Layout SVG = one group per panel. Checked:
+      rsvg render identical to Plotly's SVG for all 28 examples (tests/test_ui_svg.py)
+- [ ] (w2) drawing tools on the graph: text, arrow, line, box, circle, significance bracket; move/resize/delete; saved + exported
+- [ ] (w3) per-series styling popover (color, symbol, size, line dash, fill pattern, show/hide) by clicking a series or legend entry
+- [ ] (w4) axes: Prism-style frame/offset axes, X tick interval, bold/italic titles, superscript/subscript + symbol picker (μ α β Δ ± °)
+- [ ] (w5) WYSIWYG: preview the graph at the export size/aspect so exports match the screen; aspect-ratio control
+- [ ] (w6) usability: drag-and-drop file import, keyboard shortcut sheet (?), clearer toolbar groups, first-run tour
+
 ## AUTO-WORK MODE (user, 2026-11-07): keep going chunk by chunk without asking, until the session runs out.
 Each turn: schedule the next auto-continue with send_later (1 min), do one chunk, test, commit, push, tell user in one line.
 Chunk list (mark [x] when done; when all done, pick new chunks from the ideas below and add them here):
