@@ -4164,7 +4164,11 @@
     applyTheme(t);
     api("/api/prefs", { method: "PUT", body: JSON.stringify({ theme: t }) }).catch(() => {});
   };
-  api("/api/prefs").then(p => { applyTheme(p.theme); myStyle = p.myStyle || null; }).catch(() => {});
+  api("/api/prefs").then(p => {
+    applyTheme(p.theme); myStyle = p.myStyle || null;
+    // first launch: offer the tour (not in automated browsers)
+    if (!p.tourDone && !navigator.webdriver) setTimeout(startTour, 1200);
+  }).catch(() => {});
   $("btn-undo").onclick = () => undoRedo("undo");
   $("btn-redo").onclick = () => undoRedo("redo");
   $("btn-format").onclick = () => {
@@ -4173,6 +4177,56 @@
     $("btn-format").classList.toggle("on", !f.hidden); $("btn-format").setAttribute("aria-expanded", String(!f.hidden));
   };
   wireDrawBar();
+  // ---- drop a file anywhere to import it -------------------------------------------------
+  let dragDepth = 0;
+  const hasFiles = e => e.dataTransfer && [...(e.dataTransfer.types || [])].includes("Files");
+  document.addEventListener("dragenter", e => { if (!hasFiles(e)) return; dragDepth++; $("drop-zone").hidden = false; });
+  document.addEventListener("dragleave", e => { if (!hasFiles(e)) return; if (--dragDepth <= 0) { dragDepth = 0; $("drop-zone").hidden = true; } });
+  document.addEventListener("dragover", e => { if (hasFiles(e)) e.preventDefault(); });
+  document.addEventListener("drop", e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); dragDepth = 0; $("drop-zone").hidden = true;
+    const f = e.dataTransfer.files[0];
+    if (!f) return;
+    if (!/\.(xlsx|xlsm|csv|tsv|txt|pzfx)$/i.test(f.name)) { toast("Drop an Excel (.xlsx), CSV or Prism (.pzfx) file."); return; }
+    importData(f);
+  });
+  // ---- a short first-run tour ----------------------------------------------------------------
+  const TOUR = [
+    ["#btn-new", "Start here: pick the kind of data. Not sure? <b>Help me choose</b> asks a few plain questions and sets it up."],
+    ["#grid", "Paste numbers straight from Excel (Ctrl+V), or click <b>Example</b> to see how it works. Results update as you type."],
+    ["#results", "Results come with a plain-language summary and an <b>assumptions checklist</b> that says what to watch out for."],
+    ["#draw-bar", "Click any title, label or series on the graph to change it. Use this toolbar for arrows, boxes and significance brackets."],
+    ["#btn-svg", "Export: <b>SVG</b> keeps every point, line and label editable in Illustrator, Inkscape or PowerPoint. The graph on screen is the export size."],
+  ];
+  let tourAt = -1;
+  function showTourStep() {
+    const box = $("tour");
+    const [sel, text] = TOUR[tourAt] || [];
+    const target = sel && document.querySelector(sel);
+    document.querySelectorAll(".tour-hl").forEach(x => x.classList.remove("tour-hl"));
+    if (!target || target.offsetParent === null) { if (tourAt < TOUR.length - 1) { tourAt++; return showTourStep(); } return endTour(); }
+    target.classList.add("tour-hl");
+    target.scrollIntoView({ block: "nearest" });
+    $("tour-text").innerHTML = text;
+    $("tour-step").textContent = `${tourAt + 1} of ${TOUR.length}`;
+    $("tour-next").textContent = tourAt === TOUR.length - 1 ? "Done" : "Next";
+    box.hidden = false;
+    const r = target.getBoundingClientRect(), bw = box.offsetWidth, bh = box.offsetHeight;
+    let x = r.right + 12, y = r.top;
+    if (x + bw > window.innerWidth - 8) { x = Math.max(8, r.left - bw - 12); }
+    if (x < 8 || (r.left - bw - 12 < 8 && r.right + 12 + bw > window.innerWidth - 8)) { x = Math.min(window.innerWidth - bw - 8, Math.max(8, r.left)); y = r.bottom + 10; }
+    box.style.left = `${x}px`; box.style.top = `${Math.max(8, Math.min(window.innerHeight - bh - 8, y))}px`;
+  }
+  function startTour() { $("help-backdrop").hidden = true; tourAt = 0; showTourStep(); }
+  function endTour() {
+    $("tour").hidden = true; tourAt = -1;
+    document.querySelectorAll(".tour-hl").forEach(x => x.classList.remove("tour-hl"));
+    api("/api/prefs", { method: "PUT", body: JSON.stringify({ tourDone: true }) }).catch(() => {});
+  }
+  $("tour-next").onclick = () => { tourAt++; if (tourAt >= TOUR.length) endTour(); else showTourStep(); };
+  $("tour-skip").onclick = endTour;
+  $("btn-tour").onclick = startTour;
   document.addEventListener("mousedown", e => { const pop = $("series-pop"); if (!pop.hidden && !pop.contains(e.target) && !e.target.closest("#plot")) pop.hidden = true; });
   $("btn-png").onclick = () => exportPlot("png");
   $("btn-svg").onclick = () => exportPlot("svg");
@@ -4185,12 +4239,12 @@
   $("help-close").onclick = () => { $("help-backdrop").hidden = true; };
   $("help-backdrop").onclick = e => { if (e.target.id === "help-backdrop") $("help-backdrop").hidden = true; };
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") { $("series-pop").hidden = true; hideProjects(); $("transform-backdrop").hidden = true; $("guide-backdrop").hidden = true; $("help-backdrop").hidden = true; $("row-menu").hidden = true; }
+    if (e.key === "Escape") { $("series-pop").hidden = true; if (tourAt >= 0) endTour(); hideProjects(); $("transform-backdrop").hidden = true; $("guide-backdrop").hidden = true; $("help-backdrop").hidden = true; $("row-menu").hidden = true; }
     if (e.key === "?" && !e.ctrlKey && !e.metaKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && !e.target.isContentEditable) { e.preventDefault(); $("help-backdrop").hidden = false; }
     const mod = e.ctrlKey || e.metaKey;
     if (!mod) return;
     if (e.key.toLowerCase() === "s") { e.preventDefault(); saveNow(); toast("Saved."); return; }
-    const inGridOrBody = e.target === document.body || e.target.closest("#grid");
+    const inGridOrBody = e.target === document.body || e.target.closest("#grid, #plot-wrap, #draw-bar button");
     if (!inGridOrBody) return;
     if (e.key.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); undoRedo("undo"); }
     else if (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey)) { e.preventDefault(); undoRedo("redo"); }

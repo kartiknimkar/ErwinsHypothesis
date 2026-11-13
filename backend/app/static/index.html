@@ -64,6 +64,7 @@
     <div class="dialog" role="dialog" aria-labelledby="help-title">
       <div class="dialog-head"><h3 id="help-title">Quick help</h3><button id="help-close" class="icon" aria-label="Close">✕</button></div>
       <div class="help-body">
+        <p><button class="ghost small" id="btn-tour">Take the 1-minute tour</button></p>
         <h4>Getting started</h4>
         <ul><li><b>+ New analysis</b> picks the kind of data; <b>Help me choose</b> asks plain questions and sets it up for you.</li>
           <li>Paste straight from Excel into the table. <b>Example</b> fills in sample data so you can see how it works.</li>
@@ -83,7 +84,12 @@
           <tr><td>Click a title, axis title or legend entry</td><td>Type new text right on the graph</td></tr>
           <tr><td>Drag the legend or a text label</td><td>Move it</td></tr>
           <tr><td><b>Format ▾</b></td><td>Fonts, colors, points, lines, bars, patterns, axes, legend, export size</td></tr>
-          <tr><td><b>SVG</b></td><td>Editable vector file for Illustrator, Inkscape or PowerPoint</td></tr>
+          <tr><td>Click a data point or legend entry</td><td>Change that series' color, symbol, size, line style or pattern, or hide it</td></tr>
+          <tr><td>Draw toolbar</td><td>Add text, arrows, lines, boxes, circles and significance brackets; drag to move or resize</td></tr>
+          <tr><td><kbd>Delete</kbd> / <kbd>Esc</kbd></td><td>Delete the selected shape / back to Select</td></tr>
+          <tr><td><code>cm^{2}</code>, <code>CO_{2}</code></td><td>Superscript and subscript in any title or label (symbol buttons under Format → Text)</td></tr>
+          <tr><td><b>SVG</b></td><td>Editable vector file: every point, line and label is its own object (Illustrator, Inkscape, Affinity, PowerPoint "Convert to Shape")</td></tr>
+          <tr><td>Size under the graph</td><td>The graph is drawn at its export size, so the file looks exactly like the screen</td></tr>
         </table>
         <h4>Everywhere</h4>
         <table class="keys">
@@ -100,6 +106,9 @@
   <div id="row-menu" class="menu row-menu" hidden></div>
 
   <div id="toast" class="toast" hidden></div>
+  <div id="drop-zone" class="drop-zone" hidden><div>Drop to import into this analysis<small>Excel (.xlsx), CSV or a Prism file (.pzfx)</small></div></div>
+  <div id="tour" class="tour" hidden role="dialog" aria-live="polite"><div class="tour-text" id="tour-text"></div>
+    <div class="tour-foot"><span id="tour-step" class="pd"></span><button class="ghost small" id="tour-skip">Skip</button><button class="primary small" id="tour-next">Next</button></div></div>
 
   <div class="layout">
     <aside class="sidebar">

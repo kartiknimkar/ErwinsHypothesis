@@ -212,3 +212,44 @@ def test_preview_is_drawn_at_export_size(server):  # noqa: F811
         page.wait_for_timeout(300)
         assert errors == [], errors
         browser.close()
+
+
+def test_drop_file_to_import_and_tour(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        # no tour pops up by itself in an automated browser
+        page.wait_for_timeout(1500)
+        assert not page.is_visible("#tour")
+        page.click("#btn-new")
+        page.click("#new-menu [data-type='ttest']")
+        page.wait_for_timeout(400)
+        # drop a CSV onto the window
+        page.evaluate("""() => {
+          const dt = new DataTransfer();
+          dt.items.add(new File(['Before,After\\n1.1,2.3\\n1.4,2.9\\n1.2,2.5\\n1.6,3.1\\n'], 'dropped.csv', {type: 'text/csv'}));
+          document.dispatchEvent(new DragEvent('dragenter', {dataTransfer: dt, bubbles: true}));
+          document.body.dispatchEvent(new DragEvent('drop', {dataTransfer: dt, bubbles: true, cancelable: true}));
+        }""")
+        page.wait_for_function("[...document.querySelectorAll('#grid input')].some(i => i.value === 'After')", timeout=8000)
+        assert "Imported 4 rows" in page.inner_text("#toast")
+        assert not page.is_visible("#drop-zone")
+        page.wait_for_selector("#plot .main-svg")
+        # the tour, started from Help, walks through and closes
+        page.keyboard.press("?")
+        page.click("#btn-tour")
+        assert page.is_visible("#tour")
+        for _ in range(6):
+            if not page.is_visible("#tour"):
+                break
+            page.click("#tour-next"); page.wait_for_timeout(100)
+        assert not page.is_visible("#tour") and page.query_selector(".tour-hl") is None
+        assert errors == [], errors
+        browser.close()

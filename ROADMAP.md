@@ -379,7 +379,7 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Per-series look: click a series or legend entry (or Format → Series) to set color, symbol, size, line style, thickness, bar pattern, hide
 - [x] Axis lines: offset (Prism style), box or none; bold/italic titles; symbol buttons; ^{superscript} and _{subscript} in any label
 - [x] The graph on screen is drawn at its export size (what you see is what you export), with custom sizes
-- [ ] Drag-and-drop import, shortcut sheet, first-run tour
+- [x] Drop a file anywhere to import; Help lists every graph tool; a 1-minute first-run tour
 
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
