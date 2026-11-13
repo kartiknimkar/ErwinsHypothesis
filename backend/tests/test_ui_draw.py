@@ -262,3 +262,51 @@ def test_drop_file_to_import_and_tour(server):  # noqa: F811
         assert not page.is_visible("#tour") and page.query_selector(".tour-hl") is None
         assert errors == [], errors
         browser.close()
+
+
+def test_saved_named_looks(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('two groups')")
+        page.wait_for_selector("#plot .main-svg"); page.wait_for_timeout(500)
+        page.click("#btn-format")
+        old_font = page.input_value('#graph-format [data-g="fontFamily"]')
+        page.select_option('#graph-format [data-g="fontFamily"]', "Georgia")
+        row = page.locator(".series-tbl tbody tr").first
+        row.locator('[data-k="symbol"]').select_option("square"); page.wait_for_timeout(200)
+        page.click("#btn-save-look")
+        page.fill("#look-name", "Lab standard")
+        page.click("#btn-look-ok"); page.wait_for_timeout(500)
+        assert "Lab standard" in page.inner_text("#toast")
+        # put this graph back
+        page.select_option('#graph-format [data-g="fontFamily"]', old_font)
+        page.click("#btn-reset-colors"); page.wait_for_timeout(200)
+        page.click("#btn-format")
+        # apply to another analysis
+        page.click("#sheet-list li:has-text('three groups')")
+        page.wait_for_selector("#plot .main-svg"); page.wait_for_timeout(500)
+        page.click("#btn-format")
+        page.select_option("#style-preset", "look:Lab standard"); page.wait_for_timeout(500)
+        assert page.input_value('#graph-format [data-g="fontFamily"]') == "Georgia"
+        assert page.locator(".series-tbl tbody tr").first.locator('[data-k="symbol"]').input_value() == "square"
+        assert page.evaluate("document.getElementById('plot').data.some(t => t.marker && t.marker.symbol === 'square')")
+        # undo restores, then delete the saved look
+        page.keyboard.press("Escape")
+        page.evaluate("document.activeElement && document.activeElement.blur()")
+        page.keyboard.press("Control+z"); page.wait_for_timeout(400)
+        page.click("#btn-format"); page.click("#btn-format")
+        assert page.input_value('#graph-format [data-g="fontFamily"]') != "Georgia"
+        page.click("#btn-save-look")
+        page.click('[data-look-del="Lab standard"]'); page.wait_for_timeout(400)
+        assert "look:Lab standard" not in page.inner_html("#style-preset")
+        page.click("#btn-format")
+        assert errors == [], errors
+        browser.close()

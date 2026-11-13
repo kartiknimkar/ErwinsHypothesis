@@ -380,6 +380,7 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Axis lines: offset (Prism style), box or none; bold/italic titles; symbol buttons; ^{superscript} and _{subscript} in any label
 - [x] The graph on screen is drawn at its export size (what you see is what you export), with custom sizes
 - [x] Drop a file anywhere to import; Help lists every graph tool; a 1-minute first-run tour
+- [x] Copy graph = picture + editable vector; arrow keys nudge and Ctrl+D duplicates a shape; named saved looks (incl. each series' look); packaged build re-checked
 
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol

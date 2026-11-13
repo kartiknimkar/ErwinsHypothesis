@@ -96,7 +96,8 @@ Every session starts by reading it and ends by updating it (then committing).
 - [x] (w7) PyInstaller rebuild (204 MB) bundles svgclean.js; packaged app draws, shows the draw bar and writes a clean SVG into its own exports folder
 - [x] (w8) graph Copy puts PNG + the clean SVG (image/svg+xml, where ClipboardItem.supports it) on the clipboard; PNG-only fallback
 - [x] (w9) selected shape: arrow keys nudge 1% (Shift 5%) of the axis range (log-aware, shiftShape), Ctrl+D duplicates
-- [ ] (w10) graph templates gallery: save a whole graph (look + drawings + series looks) as a named template, apply to any analysis
+- [x] (w10) named looks: Format → "Save look as…" keeps Format settings + each series' look by position (prefs.looks; lookOf/applyLook);
+      Style preset lists "Your saved looks"; delete with ✕. (Drawings are not part of a look: their positions belong to one graph's data.)
 
 ## AUTO-WORK MODE (user, 2026-11-07): keep going chunk by chunk without asking, until the session runs out.
 Each turn: schedule the next auto-continue with send_later (1 min), do one chunk, test, commit, push, tell user in one line.

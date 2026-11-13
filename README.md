@@ -34,7 +34,16 @@ clean, modern interface. Everything runs on your own computer.
   (both ways or above only), survival curves (survival or death), histograms, Q-Q, forest, volcano and more
 - Full styling: fonts, sizes, colors, point shape/opacity/outline, line and error-bar thickness, bar opacity and hatch
   patterns, axes, ticks, gridlines, legend position, transparent background; edit titles and legend text right on the graph
-- Export PNG, TIFF, PDF or **editable SVG** at journal sizes and 150–600 DPI; multi-panel figure layouts (A, B, C…)
+- Click any data point or legend entry to change just that series (color, symbol, size, line style, thickness, bar
+  pattern, hide); Prism-style offset axes or a box; bold/italic titles; μ α Δ ± ° buttons; `cm^{2}` and `CO_{2}` for
+  superscripts and subscripts in any label
+- **Draw on the graph:** text, arrows, lines, boxes, circles and labelled significance brackets; drag, resize, recolor,
+  nudge with the arrow keys, duplicate (Ctrl+D), delete, undo
+- The graph on screen is drawn at its export size, so the file looks exactly like what you see; built-in and your own
+  saved looks ("Save look as…") apply to any graph
+- Export PNG, TIFF, PDF or **fully editable SVG** at journal sizes and 150–600 DPI: no clipping masks, every point, bar,
+  error bar, line and label is its own object in named groups ("Control – points", "Y axis…", "Legend: …"), ready for
+  Illustrator, Inkscape, Affinity or PowerPoint (Convert to Shape); multi-panel figure layouts (A, B, C…)
 
 **Working with data and results**
 - Type or paste from Excel; import .xlsx / .csv or GraphPad Prism projects (.pzfx); sort rows, fill series, exclude values,
