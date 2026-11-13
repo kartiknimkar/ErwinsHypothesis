@@ -54,7 +54,7 @@
   // the look of a graph (not its content): what presets, "My style" and "apply to every graph" copy
   const STYLE_KEYS = ["fontFamily", "fontSize", "textColor", "titleSize", "tickSize", "palette", "pointSymbol", "pointSize", "pointOpacity", "pointLine",
     "pointLineColor", "lineScale", "errWidth", "capWidth", "errDir", "barOpacity", "barLine", "pattern", "axisWidth", "tickDir", "tickLen", "minorTicks",
-    "grid", "bg", "legendPos", "exportSize", "exportDpi", "meanWidth", "meanColor", "yFormat", "xFormat", "tickAngle"];
+    "grid", "bg", "legendPos", "exportSize", "exportDpi", "meanWidth", "meanColor", "yFormat", "xFormat", "tickAngle", "frame", "titleWeight", "drawStyle"];
   const pickStyle = g => Object.fromEntries(STYLE_KEYS.filter(k => g[k] !== undefined).map(k => [k, g[k]]));
   let myStyle = null;
   const STYLE_PRESETS = {
@@ -119,7 +119,11 @@
     const n = parseInt(m[1], 16);
     return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
   }
-  const plainText = v => String(v ?? "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+  const SPECIAL_CHARS = ["μ", "α", "β", "γ", "δ", "Δ", "κ", "λ", "σ", "τ", "Ω", "±", "°", "×", "÷", "≤", "≥", "≈", "→", "²", "³", "⁻¹", "‰", "™"];
+  let lastTextBox = null;
+  // ^{...} → superscript, _{...} → subscript in titles, axis titles, labels and legend names
+  const richText = t => typeof t === "string" ? t.replace(/\^\{([^}]*)\}/g, "<sup>$1</sup>").replace(/_\{([^}]*)\}/g, "<sub>$1</sub>") : t;
+  const plainText = v => String(v ?? "").replace(/<sup>(.*?)<\/sup>/gi, "^{$1}").replace(/<sub>(.*?)<\/sub>/gi, "_{$1}").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
   // turn a vertical graph sideways: swap X/Y of every trace, shape and label, and list categories top to bottom
   function flipLayout(data, layout) {
     data.forEach(t => {
@@ -170,6 +174,122 @@
     layout.shapes = [...(layout.shapes || []),
       ...[frac, frac + gap].map(y => ({ type: "line", xref: "paper", yref: "paper", x0: -0.018, x1: 0.018, y0: y - 0.012, y1: y + 0.012, line: { color: c, width: w } }))];
   }
+  // ---- per-series look (Format → Series, or click a series / legend entry on the graph) ----
+  const SYMBOLS = [["", "Default"], ["circle", "● Circle"], ["square", "■ Square"], ["diamond", "◆ Diamond"], ["triangle-up", "▲ Triangle"], ["triangle-down", "▼ Triangle down"],
+    ["circle-open", "○ Open circle"], ["square-open", "□ Open square"], ["diamond-open", "◇ Open diamond"], ["triangle-up-open", "△ Open triangle"], ["x", "✕ Cross"], ["cross", "✚ Plus"], ["star", "★ Star"]];
+  const DASHES = [["", "Default"], ["solid", "Solid ———"], ["dash", "Dashed – – –"], ["dot", "Dotted · · · ·"], ["dashdot", "Dash-dot –·–·"], ["longdash", "Long dash — —"]];
+  const FILLS = [["", "Default"], ["none", "No pattern"], ["/", "Diagonal ////"], ["\\", "Diagonal \\\\"], ["x", "Cross-hatch"], [".", "Dots"], ["-", "Horizontal"], ["|", "Vertical"], ["+", "Grid"]];
+  const normHex = c => {
+    if (!c || typeof c !== "string") return null;
+    const m = c.replace(/\s/g, "").match(/^rgba?\((\d+),(\d+),(\d+)/i);
+    if (m) return "#" + m.slice(1, 4).map(v => (+v).toString(16).padStart(2, "0")).join("");
+    return /^#[0-9a-f]{6}/i.test(c) ? c.slice(0, 7).toLowerCase() : null;
+  };
+  function sheetOfGraph(g) { return (project && project.sheets.find(x => x.graph === g)) || null; }
+  function seriesColorMap(g) {
+    const sh = sheetOfGraph(g), map = {};
+    if (!sh) return map;
+    seriesNames(sh).forEach((n, i) => { const c = normHex(color(g, i, n)); if (c && !map[c]) map[c] = n; });
+    return map;
+  }
+  function traceSeries(t, map) {
+    const mk = t.marker || {};
+    for (const c of [mk.color, t.line && t.line.color, mk.line && mk.line.color, t.fillcolor]) {
+      const h = normHex(Array.isArray(c) ? null : c);
+      if (h && map[h]) return map[h];
+    }
+    return null;
+  }
+  function applySeriesStyles(data, g) {
+    const ser = g.series;
+    if (!ser || !Object.keys(ser).length) return;
+    const map = seriesColorMap(g);
+    data.forEach(t => {
+      const name = traceSeries(t, map), st = name && ser[name];
+      if (!st) return;
+      const mk = t.marker, meanMark = mk && /^line-/.test(mk.symbol || "");
+      if (mk && /markers/.test(t.mode || "") && !meanMark && (t.type === "scatter" || !t.type)) {
+        if (st.symbol) mk.symbol = st.symbol;
+        if (num(st.size)) mk.size = num(st.size);
+      }
+      if (t.line && /lines/.test(t.mode || "")) {
+        if (st.dash) t.line = { ...t.line, dash: st.dash };
+        if (num(st.lineWidth)) t.line = { ...t.line, width: num(st.lineWidth) };
+      }
+      if (t.type === "bar" && mk && st.pattern) mk.pattern = st.pattern === "none" ? { shape: "" }
+        : { shape: st.pattern, fgcolor: normHex(mk.line && mk.line.color) || "#1b2130", size: 7, solidity: 0.28, fillmode: "overlay" };
+      if (st.hidden) t.visible = false;
+    });
+  }
+  function setSeriesStyle(g, name, k, v) {
+    recordUndo();
+    const cur = { ...((g.series || {})[name] || {}) };
+    if (v === "" || v === false || v == null) delete cur[k]; else cur[k] = k === "size" || k === "lineWidth" ? Number(v) : v;
+    g.series = { ...(g.series || {}), [name]: cur };
+    if (!Object.keys(cur).length) delete g.series[name];
+    save(); drawPlot();
+  }
+  // a small panel next to the clicked series
+  function seriesPopover(name, x, y) {
+    const s = active(), g = s.graph, names = seriesNames(s), i = names.indexOf(name);
+    if (i < 0) return;
+    const st = (g.series || {})[name] || {}, pop = $("series-pop");
+    const opt = (list, v) => list.map(([o, l]) => `<option value="${esc(o)}" ${String(v ?? "") === o ? "selected" : ""}>${l}</option>`).join("");
+    pop.innerHTML = `<div class="sp-head"><b>${esc(name)}</b><button class="icon" id="sp-close" title="Close">✕</button></div>
+      <label>Color<input type="color" id="sp-color" value="${toHex(color(g, i, name))}"></label>
+      <label>Symbol<select data-k="symbol">${opt(SYMBOLS, st.symbol)}</select></label>
+      <label>Point size<input type="number" data-k="size" min="1" max="40" value="${esc(st.size ?? "")}" placeholder="${g.pointSize}"></label>
+      <label>Line style<select data-k="dash">${opt(DASHES, st.dash)}</select></label>
+      <label>Line thickness<input type="number" data-k="lineWidth" min="0.25" max="10" step="0.25" value="${esc(st.lineWidth ?? "")}" placeholder="auto"></label>
+      <label>Bar pattern<select data-k="pattern">${opt(FILLS, st.pattern)}</select></label>
+      <label class="check"><input type="checkbox" data-k="hidden" ${st.hidden ? "checked" : ""}> Hide this series</label>
+      <div class="sp-foot"><button class="ghost small" id="sp-reset">Reset</button></div>`;
+    pop.hidden = false;
+    const W = 230, H = pop.offsetHeight || 300;
+    pop.style.left = `${Math.max(8, Math.min(window.innerWidth - W - 8, x + 12))}px`;
+    pop.style.top = `${Math.max(8, Math.min(window.innerHeight - H - 8, y - 20))}px`;
+    $("sp-close").onclick = () => { pop.hidden = true; };
+    $("sp-color").oninput = () => { recordUndo(); g.colors = { ...(g.colors || {}), [name]: $("sp-color").value }; save(); drawPlot(); };
+    pop.querySelectorAll("[data-k]").forEach(el => el.oninput = el.onchange = () => {
+      setSeriesStyle(g, name, el.dataset.k, el.type === "checkbox" ? el.checked : el.value);
+      if (!$("graph-format").hidden) renderFormat();
+    });
+    $("sp-reset").onclick = () => { recordUndo(true); if (g.series) delete g.series[name]; if (g.colors) delete g.colors[name]; save(); drawPlot(); seriesPopover(name, x, y); if (!$("graph-format").hidden) renderFormat(); };
+  }
+  function wireSeriesClicks(el) {
+    if (el.id !== "plot" || !el.on || el._ehSeriesWired === el._fullLayout) return;
+    el._ehSeriesWired = el._fullLayout;
+    const find = curve => {
+      const t = el._fullData && el._fullData[curve];
+      return t ? traceSeries(t, seriesColorMap(active().graph)) : null;
+    };
+    el.on("plotly_click", ev => {
+      if (drawMode !== "select" || !ev || !ev.points || !ev.points.length) return;
+      const nm = find(ev.points[0].curveNumber);
+      if (nm) seriesPopover(nm, ev.event.clientX, ev.event.clientY);
+    });
+    el.on("plotly_legendclick", ev => {
+      const nm = find(ev.curveNumber);
+      if (!nm) return true;
+      const r = el.getBoundingClientRect();
+      seriesPopover(nm, (ev.event && ev.event.clientX) || r.right - 260, (ev.event && ev.event.clientY) || r.top + 40);
+      return false;   // don't hide the series; the panel has a Hide option
+    });
+  }
+  // axis lines: left + bottom (default), offset like Prism (a gap at the corner), a full box, or none
+  function applyFrame(layout, g) {
+    const fr = g.frame || "prism";
+    if (fr === "prism") return;
+    const axes = Object.keys(layout).filter(k => /^[xy]axis\d*$/.test(k) && layout[k].showline);
+    if (fr === "none") { axes.forEach(k => { layout[k].showline = false; }); return; }
+    if (fr === "box") { axes.forEach(k => { layout[k].mirror = true; }); return; }
+    // offset: pull each axis line away from the corner (single X and Y axis only)
+    if (fr === "offset" && layout.xaxis && layout.yaxis && !layout.yaxis2 && !layout.xaxis2 && !layout.xaxis.overlaying) {
+      const gap = 0.03;
+      layout.xaxis = { ...layout.xaxis, domain: [gap, 1], anchor: "free", position: 0 };
+      layout.yaxis = { ...layout.yaxis, domain: [gap, 1], anchor: "free", position: 0 };
+    }
+  }
   function applyStyle(data, layout, g) {
     if (!g) return;
     if (g.horizontal && layout.meta === "flippable") flipLayout(data, layout);
@@ -214,6 +334,25 @@
     layout.annotations = [...(layout.annotations || []), ...(g.notes || []).map(n => ({ text: esc(n.text || " "), x: n.x ?? 0.5, y: n.y ?? 0.95,
       xref: "paper", yref: "paper", showarrow: false, font: { size: Number(n.size) || (Number(g.fontSize) || 13) } }))];
     (layout.shapes || []).forEach(sh => { if (sh.line && sh.line.width) sh.line.width *= ls; });
+    applyFrame(layout, g);
+    const tw = g.titleWeight || "normal";
+    if (tw !== "normal") {
+      const f = { weight: tw.startsWith("bold") ? "bold" : "normal", style: tw.endsWith("italic") ? "italic" : "normal" };
+      Object.keys(layout).filter(k => /^[xy]axis\d*$/.test(k)).forEach(k => {
+        const a = layout[k];
+        if (a.title && (typeof a.title === "string" || a.title.text)) a.title = { ...(typeof a.title === "object" ? a.title : { text: a.title }), font: { ...((a.title && a.title.font) || {}), ...f } };
+      });
+      if (layout.title && typeof layout.title === "object") layout.title.font = { ...(layout.title.font || {}), ...f };
+    }
+    Object.keys(layout).filter(k => /^[xy]axis\d*$/.test(k)).forEach(k => {
+      const a = layout[k];
+      if (a.title && typeof a.title === "object") a.title.text = richText(a.title.text);
+      else if (typeof a.title === "string") a.title = richText(a.title);
+      if (Array.isArray(a.ticktext)) a.ticktext = a.ticktext.map(richText);
+    });
+    if (layout.title && typeof layout.title === "object") layout.title.text = richText(layout.title.text);
+    (layout.annotations || []).forEach(an => { an.text = richText(an.text); });
+    data.forEach(t => { if (typeof t.name === "string") t.name = richText(t.name); });
     addDrawings(layout, g);
     let barIdx = 0;
     data.forEach(t => {
@@ -246,6 +385,7 @@
         barIdx++;
       }
     });
+    applySeriesStyles(data, g);
   }
   // ---- drawings made on the graph (Draw toolbar): shapes, arrows; text labels live in g.notes ----
   const SHAPE_KEYS = ["type", "x0", "y0", "x1", "y1", "path", "xref", "yref", "line", "fillcolor", "opacity", "label", "layer", "name"];
@@ -280,7 +420,7 @@
     el._ehArrow0 = (layout.annotations || []).length - nArrows;
     el._ehShape0 = (layout.shapes || []).length - nShapes;
     const p = Plotly.react(el, data, layout, config);
-    Promise.resolve(p).then(() => wireGraphEdits(el));
+    Promise.resolve(p).then(() => { wireGraphEdits(el); wireSeriesClicks(el); });
     return p;
   }
   // keep edits made directly on the graph (titles, legend text/position, text labels)
@@ -1887,7 +2027,8 @@
       txt("ymin", "Y min", "auto"), txt("ymax", "Y max", "auto"), txt("ytick", "Y tick every", "auto"), chk("logY", "Log Y axis"),
       head("Text"), sel("fontFamily", "Font", [["Arial", "Arial"], ["Helvetica", "Helvetica"], ["Times New Roman", "Times New Roman"], ["Calibri", "Calibri"], ["Verdana", "Verdana"], ["Georgia", "Georgia"], ["Courier New", "Courier New"]]),
       rng("fontSize", "Base font size", 8, 24), txt("titleSize", "Axis title size", "auto"), txt("tickSize", "Tick label size", "auto"),
-      { k: "textColor", label: "Text & axis color", kind: "color" },
+      sel("titleWeight", "Titles", [["normal", "Regular"], ["bold", "Bold"], ["italic", "Italic"], ["bolditalic", "Bold italic"]]),
+      { k: "textColor", label: "Text & axis color", kind: "color" }, { kind: "symbols" },
       head("Colors"), sel("palette", "Palette", [["vivid", "Vivid"], ["colorblind", "Colorblind-safe"], ["classic", "Classic"], ["pastel", "Pastel"], ["grayscale", "Grayscale"]]),
       head("Points"), sel("pointSymbol", "Shape", [["default", "Default"], ["circle", "Circle"], ["square", "Square"], ["diamond", "Diamond"], ["triangle-up", "Triangle"],
         ["circle-open", "Open circle"], ["square-open", "Open square"], ["triangle-up-open", "Open triangle"], ["x", "Cross"]]),
@@ -1897,7 +2038,8 @@
       sel("errDir", "Error bar direction", [["both", "Both directions"], ["up", "Above only (away from zero)"]]),
       head("Bars & fills"), sel("barOpacity", "Fill opacity", [["", "Automatic"], ["0", "0% (outline only)"], ["0.15", "15%"], ["0.3", "30%"], ["0.5", "50%"], ["0.75", "75%"], ["1", "100% (solid)"]]),
       rng("barLine", "Outline width", 0, 4, 0.25), sel("pattern", "Pattern", [["none", "None"], ["/", "Diagonal ////"], ["\\", "Diagonal \\\\"], ["x", "Cross-hatch"], [".", "Dots"], ["-", "Horizontal"], ["|", "Vertical"], ["vary", "Different per series"]]),
-      head("Axes & background"), rng("axisWidth", "Axis thickness", 0.5, 4, 0.25), sel("tickDir", "Ticks", [["outside", "Outside"], ["inside", "Inside"], ["none", "None"]]),
+      head("Axes & background"), sel("frame", "Axis lines", [["prism", "Left and bottom"], ["offset", "Left and bottom, offset (Prism style)"], ["box", "Box (all four sides)"], ["none", "No axis lines"]]),
+      rng("axisWidth", "Axis thickness", 0.5, 4, 0.25), sel("tickDir", "Ticks", [["outside", "Outside"], ["inside", "Inside"], ["none", "None"]]),
       rng("tickLen", "Tick length", 0, 12), chk("minorTicks", "Minor ticks"), chk("grid", "Gridlines"),
       sel("yFormat", "Y numbers", [["auto", "Automatic"], ["d0", "1,234"], ["d1", "1,234.5"], ["d2", "1,234.56"], ["d3", "1.234 (3 decimals)"], ["sci", "Scientific (1.2e+3)"], ["comma", "Thousands separator"]]),
       sel("xFormat", "X numbers", [["auto", "Automatic"], ["d0", "1,234"], ["d1", "1,234.5"], ["d2", "1,234.56"], ["sci", "Scientific (1.2e+3)"], ["comma", "Thousands separator"]]),
@@ -1922,10 +2064,24 @@
         ${((g.draw && g.draw.arrows) || []).map((a2, i) => `<div class="note-row"><input type="text" data-arrow="${i}" value="${esc(a2.text || "")}" placeholder="Arrow ${i + 1} (optional text at its tail)"><input type="color" data-arrow-color="${i}" value="${toHex(a2.color || "#1b2130")}" title="Arrow color"><button class="icon" data-arrow-del="${i}" title="Remove this arrow">✕</button></div>`).join("")}
         <div class="row"><button class="ghost small" id="btn-add-note">+ Add text label</button>${(g.draw && ((g.draw.shapes || []).length || (g.draw.arrows || []).length)) ? `<button class="ghost small" id="btn-clear-draw" title="Remove every arrow, line, box, circle and bracket you drew">Remove drawings</button>` : ""}${g.axisText || g.legendNames || g.legendXY ? `<button class="ghost small" id="btn-reset-edits" title="Undo text and legend edits made on the graph">Reset graph edits</button>` : ""}</div></div>`;
       if (c.kind === "color") return `<label>${c.label}<input type="color" data-g="${c.k}" value="${toHex(v)}"></label>`;
+      if (c.kind === "symbols") return `<div class="wide symbols"><span class="pd">Insert into the text box you last clicked:</span>${SPECIAL_CHARS.map(ch => `<button class="sym" data-sym="${esc(ch)}" title="Insert ${esc(ch)}">${esc(ch)}</button>`).join("")}
+        <span class="pd">Superscript: <code>cm^{2}</code> · subscript: <code>CO_{2}</code></span></div>`;
       return `<label>${c.label}<input type="text" data-g="${c.k}" value="${esc(v ?? "")}" placeholder="${esc(c.ph || "")}"></label>`;
-    }).join("") + (!seriesNames(s).length ? "" : `<div class="wide colors"><span>Series colors</span>${seriesNames(s).map((n, i) =>
-      `<label class="swatch" title="${esc(n)}"><input type="color" data-color="${esc(n)}" value="${toHex(color(g, i, n))}"><span>${esc(n)}</span></label>`).join("")}
-      ${g.colors && Object.keys(g.colors).length ? `<button class="ghost small" id="btn-reset-colors">Reset</button>` : ""}</div>`);
+    }).join("") + (!seriesNames(s).length ? "" : `<div class="wide series-tbl"><div class="fhead">Series <span class="pd">(or click a series or legend entry on the graph)</span></div>
+      <table><thead><tr><th></th><th>Color</th><th>Symbol</th><th>Size</th><th>Line</th><th>Pattern</th><th>Show</th></tr></thead><tbody>${seriesNames(s).map((n, i) => {
+        const st = (g.series || {})[n] || {};
+        const opt = (list, v) => list.map(([o, l]) => `<option value="${esc(o)}" ${String(v ?? "") === o ? "selected" : ""}>${l}</option>`).join("");
+        return `<tr><td class="sname" title="${esc(n)}">${esc(n)}</td><td><input type="color" data-color="${esc(n)}" value="${toHex(color(g, i, n))}"></td>
+          <td><select data-ser="${esc(n)}" data-k="symbol">${opt(SYMBOLS, st.symbol)}</select></td>
+          <td><input type="number" data-ser="${esc(n)}" data-k="size" value="${esc(st.size ?? "")}" placeholder="${g.pointSize}" min="1" max="40" style="width:52px"></td>
+          <td><select data-ser="${esc(n)}" data-k="dash">${opt(DASHES, st.dash)}</select></td>
+          <td><select data-ser="${esc(n)}" data-k="pattern">${opt(FILLS, st.pattern)}</select></td>
+          <td><input type="checkbox" data-ser="${esc(n)}" data-k="hidden" ${st.hidden ? "" : "checked"}></td></tr>`;
+      }).join("")}</tbody></table>
+      ${(g.colors && Object.keys(g.colors).length) || (g.series && Object.keys(g.series).length) ? `<button class="ghost small" id="btn-reset-colors">Reset series looks</button>` : ""}</div>`);
+    $("graph-format").querySelectorAll("[data-ser]").forEach(el => {
+      el.oninput = el.onchange = () => setSeriesStyle(g, el.dataset.ser, el.dataset.k, el.type === "checkbox" ? !el.checked : el.value);
+    });
     $("graph-format").querySelectorAll("[data-color]").forEach(el => {
       el.oninput = () => { g.colors = { ...(g.colors || {}), [el.dataset.color]: el.value }; save(); drawPlot(); };
       el.onchange = () => renderFormat();
@@ -1964,7 +2120,19 @@
     const cd = $("btn-clear-draw");
     if (cd) cd.onclick = () => { recordUndo(true); g.draw = { shapes: [], arrows: [] }; save(); renderFormat(); drawPlot(); selectShape(-1); toast("Drawings removed. Undo brings them back."); };
     const rc = $("btn-reset-colors");
-    if (rc) rc.onclick = () => { g.colors = {}; save(); renderFormat(); drawPlot(); };
+    if (rc) rc.onclick = () => { recordUndo(true); g.colors = {}; g.series = {}; save(); renderFormat(); drawPlot(); };
+    fmtBox.querySelectorAll("input[type=text]").forEach(el => el.addEventListener("focus", () => { lastTextBox = el; }));
+    fmtBox.querySelectorAll("[data-sym]").forEach(b => {
+      b.onmousedown = e => e.preventDefault();   // keep the caret in the text box
+      b.onclick = () => {
+        const el = lastTextBox && document.body.contains(lastTextBox) ? lastTextBox : fmtBox.querySelector('[data-g="ylabel"], [data-g="title"]');
+        if (!el) return;
+        const a0 = el.selectionStart ?? el.value.length, a1 = el.selectionEnd ?? el.value.length;
+        el.value = el.value.slice(0, a0) + b.dataset.sym + el.value.slice(a1);
+        el.focus(); el.setSelectionRange(a0 + b.dataset.sym.length, a0 + b.dataset.sym.length);
+        el.dispatchEvent(new Event("input"));
+      };
+    });
     $("graph-format").querySelectorAll("[data-g]").forEach(el => {
       el.oninput = el.onchange = () => {
         g[el.dataset.g] = el.type === "checkbox" ? el.checked : el.type === "range" ? Number(el.value) : el.value;
@@ -3960,9 +4128,11 @@
   $("btn-redo").onclick = () => undoRedo("redo");
   $("btn-format").onclick = () => {
     const f = $("graph-format"); f.hidden = !f.hidden;
+    if (!f.hidden) renderFormat();
     $("btn-format").classList.toggle("on", !f.hidden); $("btn-format").setAttribute("aria-expanded", String(!f.hidden));
   };
   wireDrawBar();
+  document.addEventListener("mousedown", e => { const pop = $("series-pop"); if (!pop.hidden && !pop.contains(e.target) && !e.target.closest("#plot")) pop.hidden = true; });
   $("btn-png").onclick = () => exportPlot("png");
   $("btn-svg").onclick = () => exportPlot("svg");
   $("btn-tiff").onclick = () => exportPlot("png", "tiff");
@@ -3974,7 +4144,7 @@
   $("help-close").onclick = () => { $("help-backdrop").hidden = true; };
   $("help-backdrop").onclick = e => { if (e.target.id === "help-backdrop") $("help-backdrop").hidden = true; };
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") { hideProjects(); $("transform-backdrop").hidden = true; $("guide-backdrop").hidden = true; $("help-backdrop").hidden = true; $("row-menu").hidden = true; }
+    if (e.key === "Escape") { $("series-pop").hidden = true; hideProjects(); $("transform-backdrop").hidden = true; $("guide-backdrop").hidden = true; $("help-backdrop").hidden = true; $("row-menu").hidden = true; }
     if (e.key === "?" && !e.ctrlKey && !e.metaKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && !e.target.isContentEditable) { e.preventDefault(); $("help-backdrop").hidden = false; }
     const mod = e.ctrlKey || e.metaKey;
     if (!mod) return;

@@ -83,8 +83,10 @@ Every session starts by reading it and ends by updating it (then committing).
       g.draw.shapes, editable), Bracket (drawn line → path with a label; label typed in the toolbar). Color/thickness/dash/fill
       apply to the selected shape or the next one (g.drawStyle). Delete key / button; undo; "Remove drawings" in Format.
       User shapes/arrows are appended last (el._ehShape0/_ehArrow0 mark where they start).
-- [ ] (w3) per-series styling popover (color, symbol, size, line dash, fill pattern, show/hide) by clicking a series or legend entry
-- [ ] (w4) axes: Prism-style frame/offset axes, X tick interval, bold/italic titles, superscript/subscript + symbol picker (μ α β Δ ± °)
+- [x] (w3) per-series look (g.series[name] = {symbol,size,dash,lineWidth,pattern,hidden} + g.colors): click a point or legend entry →
+      #series-pop panel; Format → Series table. Traces are matched to series by color (seriesColorMap/traceSeries), so it works for every graph type
+- [x] (w4) axes: g.frame prism|offset|box|none (applyFrame), g.titleWeight, symbol buttons insert μ α Δ ± ° ² … at the caret,
+      ^{..} / _{..} → superscript / subscript everywhere (richText; plainText maps edits back). X tick interval already existed (xtick)
 - [ ] (w5) WYSIWYG: preview the graph at the export size/aspect so exports match the screen; aspect-ratio control
 - [ ] (w6) usability: drag-and-drop file import, keyboard shortcut sheet (?), clearer toolbar groups, first-run tour
 
