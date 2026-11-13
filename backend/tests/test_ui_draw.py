@@ -179,3 +179,36 @@ def test_axis_frames_bold_titles_and_superscripts(server):  # noqa: F811
         page.wait_for_timeout(300)
         assert errors == [], errors
         browser.close()
+
+
+def test_preview_is_drawn_at_export_size(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('two groups')")
+        page.wait_for_selector("#plot .main-svg"); page.wait_for_timeout(600)
+        lay = page.evaluate("[document.getElementById('plot').layout.width, document.getElementById('plot').layout.height]")
+        assert lay == [528, 403]   # 5.5 x 4.2 in at 96 per inch
+        assert "5.5 × 4.2 in" in page.inner_text("#plot-size")
+        # scaled to fit the card, never wider than it
+        wrap_w = page.evaluate("document.getElementById('plot-wrap').clientWidth")
+        shown_w = page.evaluate("document.getElementById('plot').getBoundingClientRect().width")
+        assert shown_w <= wrap_w + 1
+        page.click("#btn-format")
+        page.select_option('#graph-format [data-g="exportSize"]', "custom")
+        page.wait_for_selector('#graph-format [data-g="exportW"]')
+        page.fill('#graph-format [data-g="exportW"]', "3"); page.fill('#graph-format [data-g="exportH"]', "3")
+        page.wait_for_timeout(500)
+        assert page.evaluate("[document.getElementById('plot').layout.width, document.getElementById('plot').layout.height]") == [288, 288]
+        page.select_option('#graph-format [data-g="exportSize"]', "15")
+        page.click("#btn-format")
+        page.wait_for_timeout(300)
+        assert errors == [], errors
+        browser.close()

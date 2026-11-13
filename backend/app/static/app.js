@@ -73,7 +73,17 @@
     pcaPlot: "biplot", pcaLabels: false, title: "", palette: "vivid", pointSize: 8, fontSize: 13, ymin: "", ymax: "", logY: false, exportSize: "15", exportDpi: "300" };
   // export sizes in inches (width x height); journals usually ask for 300-600 DPI
   const EXPORT_SIZES = { "1": [3.5, 2.8, "Single column (3.5 × 2.8 in)"], "15": [5.5, 4.2, "1.5 column (5.5 × 4.2 in)"],
-    "2": [7.2, 5, "Double column (7.2 × 5 in)"], "slide": [10, 6.5, "Slide (10 × 6.5 in)"], "sq": [4, 4, "Square (4 × 4 in)"] };
+    "2": [7.2, 5, "Double column (7.2 × 5 in)"], "slide": [10, 6.5, "Slide (10 × 6.5 in)"], "sq": [4, 4, "Square (4 × 4 in)"],
+    "custom": [null, null, "Custom size…"] };
+  // export (and on-screen preview) size of a graph in inches
+  function exportSize(g, fallback = "15") {
+    if (g && g.exportSize === "custom") {
+      const w = Math.min(20, Math.max(1, Number(g.exportW) || 5.5)), h = Math.min(20, Math.max(1, Number(g.exportH) || 4.2));
+      return [w, h];
+    }
+    const e = EXPORT_SIZES[g && g.exportSize] || EXPORT_SIZES[fallback];
+    return [e[0], e[1]];
+  }
 
   function axis(g, extra = {}) {
     return { showline: true, linewidth: 1.5, linecolor: "#1b2130", ticks: "outside", tickwidth: 1.5, ticklen: 5,
@@ -411,6 +421,26 @@
       arrowwidth: Number(a.width) || 1.5, arrowcolor: a.color || "#1b2130", font: { color: a.color || "#1b2130", size: Number(g.fontSize) || 13 } }))];
     layout.shapes = [...(layout.shapes || []), ...(d.shapes || []).map(sh => ({ ...JSON.parse(JSON.stringify(sh)), editable: true }))];
   }
+  function fitPlot(el = $("plot")) {
+    const wrap = $("plot-wrap");
+    if (!el._ehSize || !wrap) return;
+    const [W, H] = el._ehSize, avail = Math.max(200, wrap.clientWidth || W);
+    const k = Math.min(avail / W, 620 / H, 1.6);
+    el.style.width = `${W}px`; el.style.height = `${H}px`;
+    el.style.transform = Math.abs(k - 1) < 0.005 ? "" : `scale(${k.toFixed(4)})`;
+    el.style.transformOrigin = "top left";
+    wrap.style.height = `${Math.round(H * k)}px`;
+    el.style.marginLeft = `${Math.max(0, Math.round((avail - W * k) / 2))}px`;
+    $("plot-size").textContent = `${(W / 96).toFixed(1)} × ${(H / 96).toFixed(1)} in${Math.abs(k - 1) < 0.005 ? "" : ` · shown at ${Math.round(k * 100)}%`}`;
+  }
+  function unfitPlot(el = $("plot")) {
+    el._ehSize = null;
+    el.style.width = el.style.transform = el.style.marginLeft = "";
+    const wrap = $("plot-wrap"); if (wrap) wrap.style.height = "";
+    $("plot-size").textContent = "";
+  }
+  window.addEventListener("resize", () => fitPlot());
+  if (window.ResizeObserver) new ResizeObserver(() => fitPlot()).observe(document.getElementById("plot-wrap"));
   function styledReact(el, data, layout, config) {
     const g = styleCtx;
     applyStyle(data, layout, g);
@@ -419,6 +449,14 @@
     el._ehNote0 = (layout.annotations || []).length - ((g && g.notes) || []).length - nArrows;
     el._ehArrow0 = (layout.annotations || []).length - nArrows;
     el._ehShape0 = (layout.shapes || []).length - nShapes;
+    if (el.id === "plot" && g) {
+      // what you see is what you export: draw at the export size, then scale the picture to fit the card
+      const [wIn, hIn] = exportSize(g), W = Math.round(wIn * 96), H = Math.round(hIn * 96);
+      layout.width = W; layout.height = H; layout.autosize = false;
+      config = { ...config, responsive: false };
+      el._ehSize = [W, H];
+      fitPlot(el);
+    }
     const p = Plotly.react(el, data, layout, config);
     Promise.resolve(p).then(() => { wireGraphEdits(el); wireSeriesClicks(el); });
     return p;
@@ -2048,7 +2086,8 @@
         rng("breakSize", "Lower part height %", 15, 80, 5)] : []), sel("bg", "Background", [["white", "White"], ["transparent", "Transparent (for figures)"], ["light", "Light gray plot area"]]),
       sel("legendPos", "Legend", [["auto", "Automatic"], ["tr", "Top right (inside)"], ["tl", "Top left (inside)"], ["outside", "Right (outside)"], ["top", "Above graph"], ["bottom", "Below graph"], ["hide", "Hide"]]),
       head("Text labels"), { kind: "notes" },
-      head("Export"), sel("exportSize", "Size", Object.entries(EXPORT_SIZES).map(([k, v]) => [k, v[2]])),
+      head("Export"), sel("exportSize", "Size (the preview shows this size)", Object.entries(EXPORT_SIZES).map(([k, v]) => [k, v[2]])),
+      ...(g.exportSize === "custom" ? [txt("exportW", "Width (inches)", "5.5"), txt("exportH", "Height (inches)", "4.2")] : []),
       sel("exportDpi", "Resolution (PNG/TIFF)", [["150", "150 DPI (screen)"], ["300", "300 DPI (print)"], ["600", "600 DPI (high)"]])];
     $("graph-format").innerHTML = ctrls.map(c => {
       const v = g[c.k];
@@ -2138,6 +2177,7 @@
         g[el.dataset.g] = el.type === "checkbox" ? el.checked : el.type === "range" ? Number(el.value) : el.value;
         if (/label$/.test(el.dataset.g)) delete g.axisText;   // a typed axis label replaces one edited on the graph
         if (el.dataset.g === "legendPos") delete g.legendXY;
+        if (el.dataset.g === "exportSize") setTimeout(renderFormat, 0);
         if (el.type === "range") el.previousElementSibling.textContent = el.value;
         save(); drawPlot();
       };
@@ -3184,7 +3224,7 @@
   }
   async function exportLayoutSVG() {
     const s = active(), r = lastResult, g = s.graph;
-    const [wIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["2"];
+    const [wIn] = exportSize(g, "2");
     const ncol = Math.min(s.options.ncol || 2, r.panels.length), nrow = Math.ceil(r.panels.length / ncol);
     const pw = Math.round(wIn * 96 / ncol), ph = Math.round(pw * 0.78), W = pw * ncol, H = ph * nrow;
     const panels = [];
@@ -3206,7 +3246,7 @@
     const s = active(), r = lastResult, g = s.graph;
     if (!r || !r.panels.length) return;
     if (!convert) return exportLayoutSVG();
-    const [wIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["2"];
+    const [wIn] = exportSize(g, "2");
     const ncol = Math.min(s.options.ncol || 2, r.panels.length), nrow = Math.ceil(r.panels.length / ncol);
     const dpi = Number(g.exportDpi || 300), scale = dpi / 96;
     const pw = Math.round(wIn * 96 / ncol), ph = Math.round(pw * 0.78);
@@ -3333,6 +3373,7 @@
     const s = active(), el = $("plot");
     el.style.height = s.type === "layout" && lastResult ? "auto" : "";
     $("draw-bar").hidden = !lastResult || s.type === "layout";
+    if (!lastResult || s.type === "layout") unfitPlot(el);
     if (!lastResult) {
       Plotly.purge(el);
       el.innerHTML = `<div class="empty"><div>Your graph appears here once there is enough data.
@@ -3784,7 +3825,7 @@
   async function copyGraphImage() {
     if (!lastResult || active().type === "layout") { toast(active().type === "layout" ? "For figures, export PNG and paste that." : "Add some data first."); return; }
     try {
-      const g = active().graph, [wIn, hIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["15"];
+      const g = active().graph, [wIn, hIn] = exportSize(active().graph);
       const url = await Plotly.toImage($("plot"), { format: "png", width: Math.round(wIn * 96), height: Math.round(hIn * 96), scale: 3 });
       const blob = await (await fetch(url)).blob();
       await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
@@ -3849,7 +3890,7 @@
     if (active().type === "layout") return exportLayout(format === "png" ? (convert || "png") : null);
     if (format === "svg") {
       try {
-        const s = active(), g = s.graph, [wIn, hIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["15"];
+        const s = active(), g = s.graph, [wIn, hIn] = exportSize(s.graph);
         const svg = await editableSVG($("plot"), Math.round(wIn * 96), Math.round(hIn * 96), g, s.title);
         const res = await api("/api/exports", { method: "POST", body: JSON.stringify({ filename: `${projectName} - ${s.title}`, data_url: "data:image/svg+xml," + encodeURIComponent(svg) }) });
         toast(`Saved <b>${esc(res.file)}</b>: every point, line and label is a separate, editable object (Illustrator, Inkscape, PowerPoint "Convert to Shape")`, "exports");
@@ -3857,7 +3898,7 @@
       return;
     }
     try {
-      const g = active().graph, [wIn, hIn] = EXPORT_SIZES[g.exportSize] || EXPORT_SIZES["15"];
+      const g = active().graph, [wIn, hIn] = exportSize(active().graph);
       // 96 CSS pixels per inch; PNG resolution comes from the scale factor
       const url = await Plotly.toImage($("plot"), { format, width: Math.round(wIn * 96), height: Math.round(hIn * 96),
         scale: format === "png" ? Number(g.exportDpi || 300) / 96 : 1 });

@@ -340,3 +340,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .graph-format .symbols code { font-size: 11px; background: var(--soft); padding: 0 3px; border-radius: 3px; }
 .graph-format .sym { min-width: 24px; height: 24px; padding: 0 4px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); cursor: pointer; font-size: 13px; }
 .graph-format .sym:hover { background: var(--hover); }
+
+/* the graph is drawn at its export size and scaled to fit */
+.plot-wrap { position: relative; overflow: hidden; }
+.plot-wrap .plot[style*="width"] { border-radius: 0; }
+.plot-size { color: var(--muted); font-size: 11px; text-align: right; margin-top: 4px; min-height: 14px; }

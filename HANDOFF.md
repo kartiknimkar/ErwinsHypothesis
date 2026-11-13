@@ -87,7 +87,9 @@ Every session starts by reading it and ends by updating it (then committing).
       #series-pop panel; Format → Series table. Traces are matched to series by color (seriesColorMap/traceSeries), so it works for every graph type
 - [x] (w4) axes: g.frame prism|offset|box|none (applyFrame), g.titleWeight, symbol buttons insert μ α Δ ± ° ² … at the caret,
       ^{..} / _{..} → superscript / subscript everywhere (richText; plainText maps edits back). X tick interval already existed (xtick)
-- [ ] (w5) WYSIWYG: preview the graph at the export size/aspect so exports match the screen; aspect-ratio control
+- [x] (w5) WYSIWYG: styledReact draws #plot at the export size (layout.width/height, responsive off) and fitPlot() scales it with a
+      CSS transform into #plot-wrap (ResizeObserver); "5.5 × 4.2 in · shown at 126%" under the graph; custom size (exportW/exportH).
+      Plotly hover/click/draw work under the transform (checked: drawn box lands where the mouse went)
 - [ ] (w6) usability: drag-and-drop file import, keyboard shortcut sheet (?), clearer toolbar groups, first-run tour
 
 ## AUTO-WORK MODE (user, 2026-11-07): keep going chunk by chunk without asking, until the session runs out.
