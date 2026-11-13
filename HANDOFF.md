@@ -78,7 +78,11 @@ Every session starts by reading it and ends by updating it (then committing).
       ("Control – points", "X axis", "Legend: …", "Label: …") via data-name (Illustrator/Affinity) + inkscape:label, plain
       attributes, hex colors, one font, round points as <circle>, size in pt. Layout SVG = one group per panel. Checked:
       rsvg render identical to Plotly's SVG for all 28 examples (tests/test_ui_svg.py)
-- [ ] (w2) drawing tools on the graph: text, arrow, line, box, circle, significance bracket; move/resize/delete; saved + exported
+- [x] (w2) Draw toolbar above the graph (index.html #draw-bar; app.js setDrawMode/afterShapeDrawn/selectShape/addDrawings):
+      Select, Text (g.notes), Arrow (g.draw.arrows → annotations with draggable head/tail), Line, Box, Circle (Plotly draw modes →
+      g.draw.shapes, editable), Bracket (drawn line → path with a label; label typed in the toolbar). Color/thickness/dash/fill
+      apply to the selected shape or the next one (g.drawStyle). Delete key / button; undo; "Remove drawings" in Format.
+      User shapes/arrows are appended last (el._ehShape0/_ehArrow0 mark where they start).
 - [ ] (w3) per-series styling popover (color, symbol, size, line dash, fill pattern, show/hide) by clicking a series or legend entry
 - [ ] (w4) axes: Prism-style frame/offset axes, X tick interval, bold/italic titles, superscript/subscript + symbol picker (μ α β Δ ± °)
 - [ ] (w5) WYSIWYG: preview the graph at the export size/aspect so exports match the screen; aspect-ratio control

@@ -176,6 +176,24 @@
               </div>
             </div>
             <div id="graph-format" class="graph-format" hidden></div>
+            <div id="draw-bar" class="draw-bar" role="toolbar" aria-label="Draw on the graph">
+              <div class="seg tools">
+                <button data-draw="select" class="on" title="Select: click a shape to move or resize it (Esc)"><svg viewBox="0 0 16 16"><path d="M3 2l9 5-4 1.2L6.3 13z"/></svg>Select</button>
+                <button data-draw="text" title="Add a text label (then click it to type)"><svg viewBox="0 0 16 16"><path d="M3 3h10M8 3v10M6 13h4"/></svg>Text</button>
+                <button data-draw="arrow" title="Add an arrow; drag its head or tail to place it"><svg viewBox="0 0 16 16"><path d="M3 13L13 3M7 3h6v6"/></svg>Arrow</button>
+                <button data-draw="line" title="Draw a line: drag on the graph"><svg viewBox="0 0 16 16"><path d="M3 13L13 3"/></svg>Line</button>
+                <button data-draw="rect" title="Draw a box: drag on the graph"><svg viewBox="0 0 16 16"><rect x="3" y="4" width="10" height="8"/></svg>Box</button>
+                <button data-draw="circle" title="Draw a circle or ellipse: drag on the graph"><svg viewBox="0 0 16 16"><ellipse cx="8" cy="8" rx="5.5" ry="4.5"/></svg>Circle</button>
+                <button data-draw="bracket" title="Significance bracket: drag across the groups you compare"><svg viewBox="0 0 16 16"><path d="M3 11V5h10v6M8 2v1"/></svg>Bracket</button>
+              </div>
+              <label class="dctl" title="Color"><input type="color" id="draw-color" value="#1b2130"></label>
+              <label class="dctl" title="Line thickness"><select id="draw-width"><option>0.75</option><option>1</option><option selected>1.5</option><option>2</option><option>3</option><option>4</option></select></label>
+              <label class="dctl" title="Line style"><select id="draw-dash"><option value="solid">———</option><option value="dash">– – –</option><option value="dot">· · · ·</option></select></label>
+              <label class="dctl" title="Fill (boxes and circles)"><select id="draw-fill"><option value="none">No fill</option><option value="0.15">Light fill</option><option value="0.35">Medium fill</option><option value="1">Solid fill</option></select></label>
+              <input type="text" id="draw-label" class="dctl" placeholder="Label, e.g. **" title="Text on the selected bracket or line" hidden>
+              <button id="draw-del" class="ghost small" title="Delete the selected shape (Delete key)" disabled>Delete</button>
+              <span class="draw-hint" id="draw-hint"></span>
+            </div>
             <div id="plot" class="plot"></div>
           </section>
 

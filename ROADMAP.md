@@ -375,7 +375,7 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 
 ## Phase 0.9: Working better, editable figures (started 2026-11-13)
 - [x] SVG export rebuilt for editing: no clipping masks or invisible boxes, every point/bar/error bar/line/label its own object in named groups, plain attributes, size in points; renders identically
-- [ ] Drawing tools (text, arrows, lines, boxes, brackets) on graphs
+- [x] Drawing tools on graphs: text, arrows, lines, boxes, circles, labelled significance brackets; move, resize, recolor, delete, undo; saved and exported
 - [ ] Per-series styling popover
 - [ ] Axis frame/offset styles, symbol picker for labels
 - [ ] Preview at export size (WYSIWYG)
