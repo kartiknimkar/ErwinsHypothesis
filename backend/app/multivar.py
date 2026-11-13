@@ -44,10 +44,10 @@ def correlation_matrix(columns, names, method: str = "pearson", alpha: float = 0
             a = np.array([p[0] for p in pairs]); b = np.array([p[1] for p in pairs])
             if np.ptp(a) == 0 or np.ptp(b) == 0:
                 continue
-            res = stats.pearsonr(a, b) if method == "pearson" else stats.spearmanr(a, b)
+            res = stats.pearsonr(a, b) if method == "pearson" else stats.kendalltau(a, b) if method == "kendall" else stats.spearmanr(a, b)
             r, p = float(res.statistic), float(res.pvalue)
             R[i][j], P[i][j] = r, p
-            if method == "pearson" and n > 3 and abs(r) < 1:
+            if method != "kendall" and n > 3 and abs(r) < 1:
                 zr, se = math.atanh(r), 1 / math.sqrt(n - 3)
                 CI[i][j] = [math.tanh(zr - z * se), math.tanh(zr + z * se)]
     pairs_out = []
@@ -62,7 +62,7 @@ def correlation_matrix(columns, names, method: str = "pearson", alpha: float = 0
         for d, a_, s_ in zip(pairs_out, adj, disc):
             d["p_adj"], d["significant"], d["stars"] = float(a_), bool(s_), stars(float(a_))
     pairs_out.sort(key=lambda d: d["p"])
-    return {"adjust": adjust, "test_name": f"Correlation matrix ({'Pearson' if method == 'pearson' else 'Spearman'})",
+    return {"adjust": adjust, "test_name": f"Correlation matrix ({ {'pearson': 'Pearson', 'kendall': 'Kendall tau-b'}.get(method, 'Spearman')})",
             "method": method, "names": names, "r": R, "p": P, "n": N, "pairs": pairs_out, "alpha": alpha,
             "describe": [{"name": nm, "n": len(_clean(c)), "mean": float(np.mean(_clean(c))),
                           "sd": float(np.std(_clean(c), ddof=1))} for nm, c in zip(names, cols)]}

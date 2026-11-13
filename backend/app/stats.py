@@ -587,10 +587,23 @@ def correlation(x, y, alpha: float = 0.05) -> dict:
     pr = stats.pearsonr(xs, ys)
     ci = pr.confidence_interval(1 - alpha) if len(xs) > 3 else None
     sr = stats.spearmanr(xs, ys)
+    kt = stats.kendalltau(xs, ys)  # tau-b (handles ties)
     return {"n": len(xs),
             "pearson_r": float(pr.statistic), "pearson_p": float(pr.pvalue),
             "pearson_ci": [float(ci.low), float(ci.high)] if ci is not None else None,
-            "spearman_r": float(sr.statistic), "spearman_p": float(sr.pvalue)}
+            "spearman_r": float(sr.statistic), "spearman_p": float(sr.pvalue),
+            "spearman_ci": fisher_ci(float(sr.statistic), len(xs), alpha),
+            "kendall_tau": float(kt.statistic), "kendall_p": float(kt.pvalue)}
+
+
+def fisher_ci(r: float, n: int, alpha: float = 0.05):
+    """CI of a correlation coefficient via Fisher's z (SE = 1/sqrt(n − 3)); used for Spearman r as for Pearson r."""
+    if n <= 3 or not np.isfinite(r):
+        return None
+    if abs(r) >= 1:
+        return [float(r), float(r)]
+    z, se, q = math.atanh(r), 1 / math.sqrt(n - 3), stats.norm.ppf(1 - alpha / 2)
+    return [math.tanh(z - q * se), math.tanh(z + q * se)]
 
 
 def linear_regression(x, y, alpha: float = 0.05, band_points: int = 100, origin: bool = False) -> dict:

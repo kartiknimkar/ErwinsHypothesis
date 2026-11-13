@@ -371,6 +371,7 @@ Each item is built, tested, committed, and checked off in `HANDOFF.md`.
 - [x] Curve fits and linear regression get a checklist too (points per parameter, ambiguous parameters, runs test, residual normality, equal scatter, outliers); 221 tests
 - [x] Two-way and three-way ANOVA checklist (cell sizes, residual normality, equal SDs across cells or sphericity, outliers per cell); 223 tests
 - [x] Contingency, McNemar and goodness-of-fit checklist (expected counts, percentages entered by mistake, order of rows, real pairs); 225 tests
+- [x] Kendall tau-b correlation (regression results and correlation matrix) and a CI for Spearman r; 227 tests
 
 ## Phase 0: Foundations
 - [x] Repo layout, roadmap, handoff protocol
