@@ -93,9 +93,9 @@ Every session starts by reading it and ends by updating it (then committing).
 - [x] (w6) drop an .xlsx/.csv/.pzfx anywhere to import (#drop-zone), Help lists the new graph tools + "Take the tour",
       5-step first-run tour (#tour; prefs.tourDone; never auto-starts when navigator.webdriver, so tests aren't blocked),
       Ctrl+Z also works after clicking the graph or draw toolbar
-- [ ] (w7) package check: rebuild the PyInstaller app and smoke-test the new UI files (svgclean.js) are bundled
-- [ ] (w8) Copy graph as editable shapes for PowerPoint (clipboard SVG where the browser allows) + EMF-free fallback note
-- [ ] (w9) keyboard nudging of the selected shape (arrow keys), duplicate (Ctrl+D), align brackets to group centers
+- [x] (w7) PyInstaller rebuild (204 MB) bundles svgclean.js; packaged app draws, shows the draw bar and writes a clean SVG into its own exports folder
+- [x] (w8) graph Copy puts PNG + the clean SVG (image/svg+xml, where ClipboardItem.supports it) on the clipboard; PNG-only fallback
+- [x] (w9) selected shape: arrow keys nudge 1% (Shift 5%) of the axis range (log-aware, shiftShape), Ctrl+D duplicates
 - [ ] (w10) graph templates gallery: save a whole graph (look + drawings + series looks) as a named template, apply to any analysis
 
 ## AUTO-WORK MODE (user, 2026-11-07): keep going chunk by chunk without asking, until the session runs out.

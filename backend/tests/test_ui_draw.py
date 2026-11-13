@@ -83,6 +83,15 @@ def test_draw_box_bracket_arrow_and_export(server):  # noqa: F811
         page.keyboard.press("Control+z")
         page.wait_for_timeout(600)
         assert [s["type"] for s in _user_shapes(page)].count("rect") == 1
+        # nudge with the arrow keys, duplicate with Ctrl+D
+        idx = page.evaluate("document.getElementById('plot').layout.shapes.findIndex(s => s.editable && s.type === 'rect')")
+        page.evaluate(f"() => {{ const el = document.getElementById('plot'); el._fullLayout._activeShapeIndex = {idx}; el.dispatchEvent(new MouseEvent('mouseup')); }}")
+        page.wait_for_timeout(200)
+        x0 = page.evaluate(f"document.getElementById('plot').layout.shapes[{idx}].x0")
+        page.keyboard.press("ArrowRight"); page.wait_for_timeout(250)
+        assert page.evaluate(f"document.getElementById('plot').layout.shapes[{idx}].x0") > x0
+        page.keyboard.press("Control+d"); page.wait_for_timeout(300)
+        assert [s["type"] for s in _user_shapes(page)].count("rect") == 2
         # clean up so other tests see the example unchanged
         page.click("#btn-format")
         page.click("#btn-clear-draw")

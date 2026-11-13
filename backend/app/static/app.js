@@ -3449,7 +3449,7 @@
       if (sh.line && sh.line.width) $("draw-width").value = String(sh.line.width);
       $("draw-dash").value = (sh.line && sh.line.dash) || "solid";
       $("draw-label").value = (sh.label && sh.label.text) || "";
-      $("draw-hint").textContent = "Selected. Change its color, thickness or label above, or press Delete.";
+      $("draw-hint").textContent = "Selected: arrow keys move it (Shift = bigger steps), Ctrl+D duplicates, Delete removes it.";
     } else $("draw-hint").textContent = HINTS[drawMode] || "";
   }
   function updateSelected(fn) {
@@ -3460,6 +3460,30 @@
     fn(sh); save(); drawPlot();
     const keep = drawSel; setTimeout(() => selectShape(keep), 0);
     return true;
+  }
+  // move a shape by a fraction of the visible axis range (works on log axes too)
+  function shiftShape(sh, fx, fy) {
+    const fl = $("plot")._fullLayout || {};
+    const ax = fl[(sh.xref || "x").replace(/^x/, "xaxis")] || fl.xaxis, ay = fl[(sh.yref || "y").replace(/^y/, "yaxis")] || fl.yaxis;
+    const mover = (a, f) => {
+      if (!a || !a.range || !f) return v => v;
+      const d = (a.range[1] - a.range[0]) * f;
+      return a.type === "log" ? v => (v > 0 ? Math.pow(10, Math.log10(v) + d) : v) : v => Number(v) + d;
+    };
+    const mx = mover(ax, fx), my = mover(ay, fy);
+    if (sh.path) sh.path = sh.path.replace(/(-?[\d.]+(?:e[-+]?\d+)?),(-?[\d.]+(?:e[-+]?\d+)?)/gi, (m, x, y) => `${mx(Number(x))},${my(Number(y))}`);
+    else { ["x0", "x1"].forEach(k => { if (sh[k] != null) sh[k] = mx(sh[k]); }); ["y0", "y1"].forEach(k => { if (sh[k] != null) sh[k] = my(sh[k]); }); }
+  }
+  function duplicateSelected() {
+    const s = active(), shapes = (s.graph.draw && s.graph.draw.shapes) || [];
+    const sh = shapes[drawSel];
+    if (!sh) return;
+    recordUndo(true);
+    const copy = JSON.parse(JSON.stringify(sh));
+    shiftShape(copy, 0.03, -0.03);
+    shapes.push(copy); save(); drawPlot();
+    const i = shapes.length - 1; setTimeout(() => selectShape(i), 0);
+    toast("Duplicated. Move it with the arrow keys (Shift for bigger steps) or drag it.");
   }
   function deleteSelected() {
     const s = active(), shapes = (s.graph.draw && s.graph.draw.shapes) || [];
@@ -3495,6 +3519,13 @@
     document.addEventListener("keydown", e => {
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
       if ((e.key === "Delete" || e.key === "Backspace") && drawSel >= 0) { e.preventDefault(); deleteSelected(); }
+      if (drawSel >= 0 && /^Arrow(Left|Right|Up|Down)$/.test(e.key) && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        const st = e.shiftKey ? 0.05 : 0.01;
+        const [fx, fy] = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, st], ArrowDown: [0, -st] }[e.key];
+        updateSelected(sh => shiftShape(sh, fx, fy));
+      }
+      if (drawSel >= 0 && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") { e.preventDefault(); duplicateSelected(); }
       if (e.key === "Escape" && drawMode !== "select") setDrawMode("select");
     });
   }
@@ -3825,12 +3856,23 @@
   async function copyGraphImage() {
     if (!lastResult || active().type === "layout") { toast(active().type === "layout" ? "For figures, export PNG and paste that." : "Add some data first."); return; }
     try {
-      const g = active().graph, [wIn, hIn] = exportSize(active().graph);
-      const url = await Plotly.toImage($("plot"), { format: "png", width: Math.round(wIn * 96), height: Math.round(hIn * 96), scale: 3 });
-      const blob = await (await fetch(url)).blob();
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      toast("Graph copied. Paste it into PowerPoint, Word or an email (Ctrl+V).");
-    } catch (e) { toast("Couldn't copy the picture here. Use PNG instead (it saves to the exports folder)."); }
+      const s = active(), g = s.graph, [wIn, hIn] = exportSize(g), W = Math.round(wIn * 96), H = Math.round(hIn * 96);
+      const url = await Plotly.toImage($("plot"), { format: "png", width: W, height: H, scale: 3 });
+      const items = { "image/png": await (await fetch(url)).blob() };
+      // also the editable vector version, for programs that accept it (newer PowerPoint/Word, Inkscape, Figma)
+      let vector = false;
+      try {
+        if (window.ClipboardItem && ClipboardItem.supports && ClipboardItem.supports("image/svg+xml")) {
+          const svg = await editableSVG($("plot"), W, H, g, s.title);
+          items["image/svg+xml"] = new Blob([svg], { type: "image/svg+xml" });
+          vector = true;
+        }
+      } catch { vector = false; }
+      try { await navigator.clipboard.write([new ClipboardItem(items)]); }
+      catch { delete items["image/svg+xml"]; vector = false; await navigator.clipboard.write([new ClipboardItem(items)]); }
+      toast(vector ? "Graph copied as a picture and as an editable vector. Paste with Ctrl+V; programs that accept vector graphics (e.g. Inkscape, Figma) get the editable version. For PowerPoint editing, use SVG → Insert → Convert to Shape."
+        : "Graph copied. Paste it into PowerPoint, Word or an email (Ctrl+V). For an editable version use SVG.");
+    } catch (e) { toast("Couldn't copy the picture here. Use PNG or SVG instead (they save to the exports folder)."); }
   }
   // names of the traces on a drawn graph, keyed by Plotly's uid (used to name groups in the SVG)
   function traceNames(div) {
