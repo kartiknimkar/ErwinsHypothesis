@@ -645,3 +645,10 @@ body[data-view="data"] .grid-wrap { max-height: calc(100vh - 205px); }
 .dial .dial-mid input { width: 40px !important; border: 0 !important; background: transparent !important; padding: 0 !important; font-size: 15px !important; }
 .dial .dial-mid input:focus { background: var(--panel) !important; }
 .menu button[hidden] { display: none; }
+.stk-body .options { grid-template-columns: minmax(0, 1fr); }
+.stk-body .options * { min-width: 0; }
+.stk-body .options select { max-width: 100%; }
+.stk-body .options .seg { display: flex; flex-wrap: wrap; }
+.stk-body .options .seg button { flex: 1 1 30%; white-space: normal; }
+.stk-body .options pre, .stk-body .options code, .stk-body .options .eq { white-space: pre-wrap; word-break: break-word; }
+.stk-body .options label { overflow-wrap: anywhere; }
