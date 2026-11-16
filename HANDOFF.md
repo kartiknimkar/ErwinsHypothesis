@@ -99,6 +99,15 @@ Every session starts by reading it and ends by updating it (then committing).
 - [x] (w10) named looks: Format → "Save look as…" keeps Format settings + each series' look by position (prefs.looks; lookOf/applyLook);
       Style preset lists "Your saved looks"; delete with ✕. (Drawings are not part of a look: their positions belong to one graph's data.)
 
+- [x] (w11, 2026-11-15) look v2 (end of style.css: graphite chrome, dotted "stage" behind the graph, sentence-case headings, tabular numbers,
+      status bar; Plotly modebar hidden), workflow strip (#flow-strip, renderFlow: Data → Analysis → Result → Checks, click to jump),
+      views Split / Data / Graph editor (setView, body[data-view], Alt+1/2/3; editor docks #graph-format beside a large graph),
+      zoom −/Fit/+ (plotZoom), right-click menu (#graph-menu, showGraphMenu/graphAction), double-click an axis → #axis-pop (own
+      double-press timing: Plotly swallows dblclick), shapes: click anywhere inside to select (own mousedown hit on path[data-index];
+      "no fill" = CLEAR_FILL so interiors are clickable, dropped by svgclean), front/back, opacity, Ctrl+C/V, copy/paste a look,
+      text labels: bold, italic, color. Tests: tests/test_ui_editor.py
+- Ideas next: align/distribute several shapes, multi-select, snap brackets to group centers, rulers, per-axis second Y axis, in-place legend styling
+
 ## AUTO-WORK MODE (user, 2026-11-07): keep going chunk by chunk without asking, until the session runs out.
 Each turn: schedule the next auto-continue with send_later (1 min), do one chunk, test, commit, push, tell user in one line.
 Chunk list (mark [x] when done; when all done, pick new chunks from the ideas below and add them here):
