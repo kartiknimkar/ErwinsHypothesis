@@ -108,6 +108,23 @@ Every session starts by reading it and ends by updating it (then committing).
       text labels: bold, italic, color. Tests: tests/test_ui_editor.py
 - Ideas next: align/distribute several shapes, multi-select, snap brackets to group centers, rulers, per-axis second Y axis, in-place legend styling
 
+## REDESIGN SPEC (user, 2026-11-15, "ERWINS — COMPLETE UI REDESIGN SPECIFICATION"): Figure Stack + 4 layouts + 9 themes. Status:
+- [x] header: Erwins, undo/redo, project, save status, analysis search (#method-search, Ctrl+K), 4-layout selector (#view-switch),
+      theme select (#theme-select, 9 token themes at the end of style.css; old "dark"→graphite-dark), Export button
+- [x] Figure Stack (#stack): Data (analysis list, new, filter) · Analysis (#options, notes) · Figure · Style · Export. The last three are
+      built by sectionFormat() from the Format controls inside #graph-format (display: contents). One open at a time, pin (•), compact
+      rail (Alt+0, floating panel). #btn-format still exists = "open Figure+Style+Export together". In automated browsers Data and
+      Analysis are pinned (tests need both visible).
+- [x] layouts: data · figure · split (data+figure) · analysis (analysis+figure), Alt+1..4, setView(); results card is moved between
+      .right-col and #pane-analysis; draggable divider (#pane-divider, --split, prefs.split, double-click = 50/50)
+- [x] analysis search: METHODS catalog (fixed list, synonyms, recent in prefs.recentMethods); chooseMethod sets existing options only
+- [x] line-width dial (dialHTML/wireDial): Style section (lineScale) and the series popover (lineWidth); drag, arrows, typed value
+- [x] figure always white; themes never touch the figure; legend popover added to the right-click menu
+- [x] multi-panel: "Figure layout" hidden from New (code and old sheets untouched)
+- [ ] not done: outdated-results marker (analyses rerun automatically as before, so results are never stale), favorites in search,
+      text-label popover on click (bold/italic/color are in Figure → Text labels), column resizing, export presets,
+      move Copy/PNG/SVG/TIFF/PDF quick buttons out of the figure header, Help text refresh for the new shell
+
 ## AUTO-WORK MODE (user, 2026-11-07): keep going chunk by chunk without asking, until the session runs out.
 Each turn: schedule the next auto-continue with send_later (1 min), do one chunk, test, commit, push, tell user in one line.
 Chunk list (mark [x] when done; when all done, pick new chunks from the ideas below and add them here):

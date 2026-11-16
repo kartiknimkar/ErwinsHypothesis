@@ -195,7 +195,7 @@ def test_style_presets(server):  # noqa: F811
         page.wait_for_selector("#sheet-list li")
         page.click("#sheet-list li:has-text('three groups')")
         page.wait_for_timeout(400)
-        if page.is_hidden("#graph-format"):
+        if page.get_attribute("#graph-format", "hidden") is not None:
             page.click("#btn-format")
         for k in ("classic", "minimal", "bw", "talk", "figure"):
             page.select_option("#style-preset", k)
@@ -222,7 +222,7 @@ def test_my_style_and_apply_to_all(server):  # noqa: F811
         page.wait_for_selector("#sheet-list li")
         page.click("#sheet-list li:has-text('three groups')")
         page.wait_for_timeout(400)
-        if page.is_hidden("#graph-format"):
+        if page.get_attribute("#graph-format", "hidden") is not None:
             page.click("#btn-format")
         page.select_option('#graph-format [data-g="fontFamily"]', "Georgia")
         page.wait_for_timeout(200)

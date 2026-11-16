@@ -295,7 +295,7 @@ def test_undo_covers_format_and_options(server):  # noqa: F811
         page.wait_for_selector("#sheet-list li")
         page.click("#sheet-list li:has-text('Example: two groups')")
         page.wait_for_timeout(400)
-        if page.is_hidden("#graph-format"):
+        if page.get_attribute("#graph-format", "hidden") is not None:
             page.click("#btn-format")
         orig = page.input_value('#graph-format [data-g="style"]')  # the server is shared, so earlier tests may have changed it
         new = "box" if orig != "box" else "violin"
@@ -409,7 +409,7 @@ def test_median_iqr_and_rep_points(server):  # noqa: F811
         page.wait_for_selector("#sheet-list li")
         page.click("#sheet-list li:has-text('three groups')")
         page.wait_for_timeout(500)
-        if page.is_hidden("#graph-format"):
+        if page.get_attribute("#graph-format", "hidden") is not None:
             page.click("#btn-format")
         page.select_option('#graph-format [data-g="style"]', "dots")
         page.select_option('#graph-format [data-g="err"]', "iqr")
@@ -445,7 +445,7 @@ def test_copy_results_as_table_and_twoway_n(server):  # noqa: F811
         page.wait_for_timeout(300)
         types = page.evaluate("navigator.clipboard.read().then(items => items.flatMap(i => i.types))")
         assert "text/html" in types and "text/plain" in types
-        if page.is_hidden("#graph-format"):
+        if page.get_attribute("#graph-format", "hidden") is not None:
             page.click("#btn-format")
         page.check('#graph-format [data-g="showN"]')
         page.wait_for_timeout(400)
@@ -474,7 +474,7 @@ def test_grid_footer_and_number_format(server):  # noqa: F811
         page.fill('#grid input[data-r="8"][data-c="0"]', "10")
         page.wait_for_timeout(500)
         assert "n 9" in page.inner_text("#grid tfoot")
-        if page.is_hidden("#graph-format"):
+        if page.get_attribute("#graph-format", "hidden") is not None:
             page.click("#btn-format")
         page.select_option('#graph-format [data-g="yFormat"]', "d2")
         page.wait_for_timeout(400)

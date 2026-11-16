@@ -9,14 +9,24 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 12c3.5 0 4.5-7 7-7s3.5 14 6 14 3.500-7 7-7"/><circle cx="12" cy="12" r="1.7"/></svg></span><span>Erwin's Hypothesis</span></div>
+    <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 12c3.5 0 4.5-7 7-7s3.5 14 6 14 3.500-7 7-7"/><circle cx="12" cy="12" r="1.7"/></svg></span><span>Erwins</span></div>
+    <div class="hdr-undo"><button id="btn-undo" aria-label="Undo" class="icon" title="Undo (Ctrl+Z)" disabled>↶</button><button id="btn-redo" aria-label="Redo" class="icon" title="Redo (Ctrl+Y)" disabled>↷</button></div>
     <div class="project-name-wrap">
       <input id="project-name" class="project-name" spellcheck="false" aria-label="Project name" title="Project name: click to rename">
       <span id="save-status" class="save-status"></span>
     </div>
+    <div class="method-search-wrap"><input id="method-search" type="search" placeholder="Find a test or analysis…  (Ctrl+K)" aria-label="Find a statistical test or analysis" autocomplete="off" spellcheck="false">
+      <div id="method-results" class="menu method-results" hidden role="listbox"></div></div>
+    <div class="view-switch" id="view-switch" role="group" aria-label="Workspace layout">
+      <button data-view="data" title="Data focus (Alt+1)" aria-label="Data focus"><svg class="ic" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.500"/><path d="M2 6.500h12M2 9.800h12M6 3v10"/></svg></button>
+      <button data-view="figure" title="Figure focus (Alt+2)" aria-label="Figure focus"><svg class="ic" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.500"/><path d="M4.500 10.500c1.500 0 2-4 3.500-4s1.500 2.500 3.500 2.500"/></svg></button>
+      <button data-view="split" class="on" title="Data + figure (Alt+3)" aria-label="Data and figure side by side"><svg class="ic" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.500"/><path d="M8 3v10M2 6.500h6M2 9.800h6M9.500 10c1 0 1-2.500 2-2.500s.8 1.200 1.500 1.200"/></svg></button>
+      <button data-view="analysis" title="Analysis + figure (Alt+4)" aria-label="Analysis and figure side by side"><svg class="ic" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.500"/><path d="M8 3v10M3.800 11V8.500M5.300 11V6M6.800 11V9M9.500 10c1 0 1-2.500 2-2.500s.8 1.200 1.500 1.200"/></svg></button>
+    </div>
     <div class="topbar-actions">
+      <select id="theme-select" title="Color theme (the figure itself always stays white)" aria-label="Color theme"></select>
+      <button id="btn-export-open" class="primary small" title="Export this figure">Export</button>
       <button id="btn-help" class="icon" title="Quick help and keyboard shortcuts (?)" aria-label="Quick help">?</button>
-      <button id="btn-theme" class="icon" title="Switch light / dark mode" aria-label="Switch light or dark mode">☾</button>
       <button id="btn-report" class="ghost small" title="Save one HTML report with every analysis (graphs, results, text for your paper) to the exports folder">Report</button>
       <button id="btn-workbook" class="ghost small" title="Save every analysis (results and data) to one Excel file in the exports folder">All to Excel</button>
       <button id="btn-projects" class="ghost small">Projects</button>
@@ -116,7 +126,10 @@
     <div class="tour-foot"><span id="tour-step" class="pd"></span><button class="ghost small" id="tour-skip">Skip</button><button class="primary small" id="tour-next">Next</button></div></div>
 
   <div class="layout">
-    <aside class="sidebar">
+    <aside class="sidebar stack" id="stack" aria-label="Figure stack">
+      <section class="stk" data-sec="data">
+        <div class="stk-head"><button class="stk-toggle" data-stk="data" aria-expanded="false" title="Data"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6.5h12M2 9.8h12M6 3v10"/></svg><span>Data</span><span class="chev" aria-hidden="true"></span></button><button class="icon stk-pin" data-pin="data" title="Keep this section open" aria-label="Keep Data open">•</button></div>
+        <div class="stk-body">
       <div class="new-wrap">
         <button id="btn-new" class="primary block">+ New analysis</button>
         <button id="btn-guide" class="ghost block guide-btn">Not sure which test? Help me choose</button>
@@ -131,14 +144,25 @@
           <button data-type="multivar"><span class="badge t-multivar">MV</span><span><b>Multiple variables</b><small>Correlation · multiple &amp; logistic regression · PCA</small></span></button>
           <button data-type="diagnostic"><span class="badge t-diagnostic">Dx</span><span><b>ROC &amp; method comparison</b><small>ROC curve · Bland-Altman agreement</small></span></button>
           <button data-type="power"><span class="badge t-power">n</span><span><b>Power &amp; sample size</b><small>Plan how many subjects you need</small></span></button>
-          <button data-type="layout"><span class="badge t-layout">▦</span><span><b>Figure layout</b><small>Combine graphs into one figure (A, B, C…)</small></span></button>
+          <button data-type="layout" hidden><span class="badge t-layout">▦</span><span><b>Figure layout</b><small>Combine graphs into one figure (A, B, C…)</small></span></button>
           <button data-type="survival"><span class="badge t-survival">S</span><span><b>Survival</b><small>Kaplan-Meier · log-rank · hazard ratio</small></span></button>
           <button data-type="contingency"><span class="badge t-contingency">#</span><span><b>Contingency table</b><small>Chi-square · Fisher's exact · odds ratio</small></span></button>
         </div>
       </div>
       <input id="sheet-filter" class="sheet-filter" type="search" placeholder="Find an analysis…" aria-label="Find an analysis" hidden>
       <ul id="sheet-list" class="sheet-list"></ul>
-      <div class="side-foot">Autosaved to <b>projects</b>. Exports go to <b>exports</b>.</div>
+        </div>
+      </section>
+      <section class="stk" data-sec="analysis">
+        <div class="stk-head"><button class="stk-toggle" data-stk="analysis" aria-expanded="false" title="Analysis"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13h12M4 13V8M8 13V4M12 13V9.5"/></svg><span>Analysis</span><span class="chev" aria-hidden="true"></span></button><button class="icon stk-pin" data-pin="analysis" title="Keep this section open" aria-label="Keep Analysis open">•</button></div>
+        <div class="stk-body">
+          <div id="options" class="options"></div>
+          <details class="notes-box" id="notes-box"><summary>Notes</summary>
+            <textarea id="sheet-notes" rows="3" placeholder="Your notes for this analysis (e.g. where the data came from, decisions you made). Saved with the project and included in the report."></textarea></details>
+        </div>
+      </section>
+      <div id="graph-format" class="graph-format" hidden></div>
+      <div class="stack-foot"><button id="btn-compact" class="icon" title="Narrow icon rail / full stack (Alt+0)" aria-label="Toggle compact stack">«</button><span class="side-foot">Autosaved to <b>projects</b>. Exports go to <b>exports</b>.</span></div>
     </aside>
 
     <main class="workspace">
@@ -147,16 +171,10 @@
         <input id="sheet-title" class="sheet-title" spellcheck="false" aria-label="Analysis name">
         <span id="sheet-kind" class="pill"></span>
         <div class="spacer"></div>
-        <div class="view-switch" id="view-switch" role="group" aria-label="Workspace view">
-          <button data-view="split" class="on" title="Data, graph and results side by side (Alt+1)">Split</button>
-          <button data-view="data" title="Just the data table and analysis choices (Alt+2)">Data</button>
-          <button data-view="graph" title="Graph editor: a large graph with every setting beside it (Alt+3)">Graph editor</button>
-        </div>
         <button id="btn-reuse" class="ghost small" title="Analyze this same data table another way (e.g. as XY, correlation or method comparison)">Analyze another way ▾</button>
         <div id="reuse-menu" class="menu reuse-menu" hidden></div>
         <button id="btn-dup" aria-label="Duplicate this analysis" class="icon" title="Duplicate this analysis (same data and settings)">⧉</button>
-        <button id="btn-undo" aria-label="Undo" class="icon" title="Undo (Ctrl+Z)" disabled>↶</button>
-        <button id="btn-redo" aria-label="Redo" class="icon" title="Redo (Ctrl+Y)" disabled>↷</button>
+
         <button id="btn-delete" aria-label="Delete this analysis" class="icon danger" title="Delete this analysis">🗑</button>
       </div>
 
@@ -176,11 +194,9 @@
           </div>
           <p class="hint" id="data-hint"></p>
           <div class="grid-wrap"><table id="grid" class="grid"></table></div>
-          <div class="card-head sub"><h2>Analysis</h2></div>
-          <div id="options" class="options"></div>
-          <details class="notes-box" id="notes-box"><summary>Notes</summary>
-            <textarea id="sheet-notes" rows="3" placeholder="Your notes for this analysis (e.g. where the data came from, decisions you made). Saved with the project and included in the report."></textarea></details>
         </section>
+        <div id="pane-analysis" class="pane-analysis"></div>
+        <div id="pane-divider" class="pane-divider" role="separator" aria-orientation="vertical" tabindex="0" title="Drag to resize (arrow keys also work)"></div>
 
         <div class="right-col">
           <section class="card">
@@ -195,7 +211,6 @@
                 <button id="btn-pdf" class="ghost small" title="PDF at the chosen print size and resolution (for vector artwork use SVG)">PDF</button>
               </div>
             </div>
-            <div id="graph-format" class="graph-format" hidden></div>
             <div id="draw-bar" class="draw-bar" role="toolbar" aria-label="Draw on the graph">
               <div class="seg tools">
                 <button data-draw="select" class="on" title="Select: click a shape to move or resize it (Esc)"><svg viewBox="0 0 16 16"><path d="M3 2l9 5-4 1.2L6.3 13z"/></svg>Select</button>

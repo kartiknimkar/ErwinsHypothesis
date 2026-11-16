@@ -243,6 +243,109 @@
       if (st.hidden) t.visible = false;
     });
   }
+  // ---- Figure Stack: Data, Analysis (static in the page) + Figure, Style, Export (filled from the Format controls) ----
+  const STK_ICONS = {"data": "<svg class=\"ic\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.5\"/><path d=\"M2 6.5h12M2 9.8h12M6 3v10\"/></svg>", "analysis": "<svg class=\"ic\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M2 13h12M4 13V8M8 13V4M12 13V9.5\"/></svg>", "figure": "<svg class=\"ic\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M2.5 2v11.5H14\"/><path d=\"M4.5 10.5c2-.3 3-5.800 4.500-5.800s1.500 3.300 4.500 3.300\"/></svg>", "style": "<svg class=\"ic\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><circle cx=\"8\" cy=\"8\" r=\"5.500\"/><path d=\"M8 2.500a5.500 5.500 0 010 11z\" fill=\"currentColor\"/></svg>", "export": "<svg class=\"ic\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M8 2v8M5 7l3 3 3-3M3 13h10\"/></svg>"};
+  const STK_LABELS = { figure: "Figure", style: "Style", export: "Export" };
+  const HEAD_SECTION = { "Graph": "figure", "Axes & background": "figure", "Text labels": "figure", "Text": "style", "Colors": "style", "Points": "style",
+    "Lines & error bars": "style", "Bars & fills": "style", "Export": "export" };
+  const stack = { open: "data", pins: new Set(), compact: false };
+  function sectionFormat(box, s, g) {
+    const parts = { figure: [], style: [], export: [] };
+    let cur = "figure";
+    [...box.children].forEach(k => {
+      if (k.classList.contains("fhead")) cur = HEAD_SECTION[k.textContent.trim()] || cur;
+      const to = k.classList.contains("series-tbl") || k.classList.contains("style-actions") || k.querySelector("#style-preset") ? "style" : cur;
+      if (k.classList.contains("fhead") && ["Graph", "Export"].includes(k.textContent.trim())) return;   // the card title says it already
+      parts[to].push(k);
+    });
+    box.innerHTML = ["figure", "style", "export"].map(k => `<section class="stk" data-sec="${k}">
+      <div class="stk-head"><button class="stk-toggle" data-stk="${k}" aria-expanded="false" title="${STK_LABELS[k]}">${STK_ICONS[k]}<span>${STK_LABELS[k]}</span><span class="chev" aria-hidden="true"></span></button><button class="icon stk-pin" data-pin="${k}" title="Keep this section open" aria-label="Keep ${STK_LABELS[k]} open">•</button></div>
+      <div class="stk-body fmt"></div></section>`).join("");
+    Object.entries(parts).forEach(([k, nodes]) => { const b = box.querySelector(`[data-sec="${k}"] .stk-body`); nodes.forEach(n => b.appendChild(n)); });
+    // Style: the line-width dial (same setting as the "Line thickness" slider)
+    const sb = box.querySelector('[data-sec="style"] .stk-body');
+    const dialWrap = document.createElement("div"); dialWrap.className = "wide dial-row";
+    dialWrap.innerHTML = dialHTML("dial-linescale", Number(g.lineScale) || 1, 0.25, 4, 0.25, "Line width", "×") + `<p class="hint">Drag the dial, use the arrow keys, or type a value. It scales every line and curve on this figure; click one series on the figure to set its own width.</p>`;
+    sb.insertBefore(dialWrap, sb.children[1] || null);
+    wireDial(dialWrap.querySelector(".dial"), v => { recordUndo(); g.lineScale = v; save(); drawPlot(); const r = box.querySelector('[data-g="lineScale"]'); if (r) { r.value = v; if (r.previousElementSibling) r.previousElementSibling.textContent = v; } });
+    // Export: file name, format and one clear action (the export engine is unchanged)
+    const eb = box.querySelector('[data-sec="export"] .stk-body');
+    const ex = document.createElement("div"); ex.className = "wide export-row";
+    ex.innerHTML = `<label>File name<input type="text" id="export-name" value="${esc(g.exportName || "")}" placeholder="${esc(`${projectName} - ${s.title}`)}"></label>
+      <label>Format<select id="export-fmt">${[["png", "PNG (picture)"], ["svg", "SVG (fully editable)"], ["tiff", "TIFF (journals)"], ["pdf", "PDF"]].map(([v, l]) => `<option value="${v}" ${(g.exportFmt || "png") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      <button class="primary" id="btn-export-go">Export figure</button><button class="ghost" id="btn-export-copy">Copy to clipboard</button>`;
+    eb.appendChild(ex);
+    ex.querySelector("#export-name").oninput = e => { g.exportName = e.target.value; save(); };
+    ex.querySelector("#export-fmt").onchange = e => { g.exportFmt = e.target.value; save(); };
+    ex.querySelector("#btn-export-go").onclick = () => { const f = g.exportFmt || "png"; f === "svg" ? exportPlot("svg") : f === "png" ? exportPlot("png") : exportPlot("png", f); };
+    ex.querySelector("#btn-export-copy").onclick = copyGraphImage;
+    applyStack();
+  }
+  function applyStack() {
+    document.body.classList.toggle("stack-compact", stack.compact);
+    document.querySelectorAll("#stack .stk").forEach(el => {
+      const k = el.dataset.sec, on = stack.open === k || (!stack.compact && stack.pins.has(k));
+      el.classList.toggle("open", on); el.classList.toggle("active", stack.open === k);
+      el.querySelector(".stk-toggle").setAttribute("aria-expanded", String(on));
+      const pin = el.querySelector(".stk-pin"); pin.classList.toggle("on", stack.pins.has(k)); pin.setAttribute("aria-pressed", String(stack.pins.has(k)));
+    });
+    $("btn-compact").textContent = stack.compact ? "»" : "«";
+  }
+  function saveStack() { api("/api/prefs", { method: "PUT", body: JSON.stringify({ stack: { open: stack.open, pins: [...stack.pins], compact: stack.compact } }) }).catch(() => {}); }
+  function openStack(k, toggle = false) { stack.open = toggle && stack.open === k ? null : k; applyStack(); saveStack(); }
+  function wireStack() {
+    $("stack").addEventListener("click", e => {
+      const t = e.target.closest("[data-stk]"), pn = e.target.closest("[data-pin]");
+      if (pn) { const k = pn.dataset.pin; stack.pins.has(k) ? stack.pins.delete(k) : stack.pins.add(k); applyStack(); saveStack(); return; }
+      if (t) openStack(t.dataset.stk, true);
+    });
+    $("btn-compact").onclick = () => { stack.compact = !stack.compact; applyStack(); saveStack(); setTimeout(() => fitPlot(), 0); };
+    document.addEventListener("mousedown", e => {   // compact rail: the floating panel closes when you click elsewhere
+      if (stack.compact && stack.open && !e.target.closest("#stack, .series-pop, .menu, .toast")) { stack.open = null; applyStack(); }
+    });
+    $("btn-export-open").onclick = () => { openStack("export"); const b = document.querySelector('#stack [data-sec="export"]'); if (b) b.scrollIntoView({ block: "nearest" }); };
+  }
+  // ---- circular dial (line width). Drag, arrow keys, or type the number in its center ----
+  function dialHTML(id, value, min, max, step, label, unit) {
+    return `<div class="dial" id="${id}" data-min="${min}" data-max="${max}" data-step="${step}" data-value="${value}" data-unit="${unit}" role="slider" tabindex="0" aria-label="${label}" aria-valuemin="${min}" aria-valuemax="${max}" aria-valuenow="${value}">
+      <svg viewBox="0 0 84 84"><circle class="track" cx="42" cy="42" r="34"/><circle class="arc" cx="42" cy="42" r="34"/><circle class="knob" r="5"/></svg>
+      <div class="dial-mid"><small>${label}</small><input type="text" inputmode="decimal" aria-label="${label} value" value="${value}"><small>${unit}</small></div></div>`;
+  }
+  function wireDial(el, onChange) {
+    if (!el) return;
+    const min = +el.dataset.min, max = +el.dataset.max, step = +el.dataset.step, inp = el.querySelector("input");
+    const A0 = 135, SWEEP = 270, C = 2 * Math.PI * 34;   // the arc starts bottom-left and sweeps 270° clockwise
+    const paint = v => {
+      const f = (v - min) / (max - min), ang = (A0 + SWEEP * f) * Math.PI / 180;
+      const arc = el.querySelector(".arc"), tr = el.querySelector(".track"), kn = el.querySelector(".knob");
+      [arc, tr].forEach(c => { c.setAttribute("transform", `rotate(${A0} 42 42)`); });
+      tr.setAttribute("stroke-dasharray", `${C * SWEEP / 360} ${C}`);
+      arc.setAttribute("stroke-dasharray", `${C * SWEEP / 360 * f} ${C}`);
+      kn.setAttribute("cx", 42 + 34 * Math.cos(ang)); kn.setAttribute("cy", 42 + 34 * Math.sin(ang));
+      el.dataset.value = v; el.setAttribute("aria-valuenow", v);
+      if (document.activeElement !== inp) inp.value = v;
+    };
+    const set = (v, fire = true) => { v = Math.min(max, Math.max(min, Math.round(v / step) * step)); v = +v.toFixed(4); paint(v); if (fire) onChange(v); };
+    const fromEvent = ev => {
+      const r = el.getBoundingClientRect();
+      let a = Math.atan2(ev.clientY - (r.top + r.height / 2), ev.clientX - (r.left + r.width / 2)) * 180 / Math.PI;
+      a = (a - A0 + 720) % 360;
+      if (a > SWEEP) a = a > SWEEP + (360 - SWEEP) / 2 ? 0 : SWEEP;
+      set(min + (max - min) * a / SWEEP);
+    };
+    el.querySelector("svg").addEventListener("pointerdown", ev => {
+      ev.preventDefault(); el.focus(); fromEvent(ev);
+      const mv = e2 => fromEvent(e2), up = () => { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); };
+      window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
+    });
+    el.addEventListener("keydown", ev => {
+      if (ev.target === inp && !/^Arrow(Up|Down)$/.test(ev.key)) { if (ev.key === "Enter") inp.blur(); return; }
+      const d = { ArrowUp: step, ArrowRight: step, ArrowDown: -step, ArrowLeft: -step }[ev.key];
+      if (d) { ev.preventDefault(); set(+el.dataset.value + d); }
+    });
+    inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (isFinite(v)) set(v); else inp.value = el.dataset.value; });
+    paint(+el.dataset.value);
+  }
   function setSeriesStyle(g, name, k, v) {
     recordUndo();
     const cur = { ...((g.series || {})[name] || {}) };
@@ -262,7 +365,7 @@
       <label>Symbol<select data-k="symbol">${opt(SYMBOLS, st.symbol)}</select></label>
       <label>Point size<input type="number" data-k="size" min="1" max="40" value="${esc(st.size ?? "")}" placeholder="${g.pointSize}"></label>
       <label>Line style<select data-k="dash">${opt(DASHES, st.dash)}</select></label>
-      <label>Line thickness<input type="number" data-k="lineWidth" min="0.25" max="10" step="0.25" value="${esc(st.lineWidth ?? "")}" placeholder="auto"></label>
+      <div class="dial-row">${dialHTML("dial-series", Number(st.lineWidth) || 2, 0.25, 8, 0.25, "Line width", "pt")}</div>
       <label>Bar pattern<select data-k="pattern">${opt(FILLS, st.pattern)}</select></label>
       <label class="check"><input type="checkbox" data-k="hidden" ${st.hidden ? "checked" : ""}> Hide this series</label>
       <div class="sp-foot"><button class="ghost small" id="sp-reset">Reset</button></div>`;
@@ -271,6 +374,7 @@
     pop.style.left = `${Math.max(8, Math.min(window.innerWidth - W - 8, x + 12))}px`;
     pop.style.top = `${Math.max(8, Math.min(window.innerHeight - H - 8, y - 20))}px`;
     $("sp-close").onclick = () => { pop.hidden = true; };
+    wireDial(pop.querySelector(".dial"), v => { setSeriesStyle(g, name, "lineWidth", v); });
     $("sp-color").oninput = () => { recordUndo(); g.colors = { ...(g.colors || {}), [name]: $("sp-color").value }; save(); drawPlot(); };
     pop.querySelectorAll("[data-k]").forEach(el => el.oninput = el.onchange = () => {
       setSeriesStyle(g, name, el.dataset.k, el.type === "checkbox" ? el.checked : el.value);
@@ -444,8 +548,8 @@
     const wrap = $("plot-wrap");
     if (!el._ehSize || !wrap) return;
     const [W, H] = el._ehSize, avail = Math.max(200, (wrap.clientWidth || W) - 28);
-    const tall = document.body.dataset.view === "graph" ? Math.max(380, window.innerHeight - 250) : 620;
-    const fit = Math.min(avail / W, tall / H, document.body.dataset.view === "graph" ? 2.4 : 1.6);
+    const tall = Math.max(300, window.innerHeight - 300);
+    const fit = Math.min(avail / W, tall / H, document.body.dataset.view === "figure" ? 2.6 : 1.8);
     const k = fit * plotZoom;
     wrap.classList.toggle("zoomed", plotZoom > 1.001);
     el.style.width = `${W}px`; el.style.height = `${H}px`;
@@ -2145,6 +2249,7 @@
           <td><input type="checkbox" data-ser="${esc(n)}" data-k="hidden" ${st.hidden ? "" : "checked"}></td></tr>`;
       }).join("")}</tbody></table>
       ${(g.colors && Object.keys(g.colors).length) || (g.series && Object.keys(g.series).length) ? `<button class="ghost small" id="btn-reset-colors">Reset series looks</button>` : ""}</div>`);
+    sectionFormat($("graph-format"), s, g);
     $("graph-format").querySelectorAll("[data-ser]").forEach(el => {
       el.oninput = el.onchange = () => setSeriesStyle(g, el.dataset.ser, el.dataset.k, el.type === "checkbox" ? !el.checked : el.value);
     });
@@ -3609,8 +3714,9 @@
     box.innerHTML = steps.map(st => `<button class="flow-step ${st.state}" data-to="${esc(st.to)}" title="Go to ${esc(st.label.toLowerCase())}"><span class="dot" aria-hidden="true"></span><b>${st.label}</b><span>${esc(st.text)}</span></button>`).join('<span class="flow-sep" aria-hidden="true"></span>');
     box.querySelectorAll("[data-to]").forEach(b => b.onclick = () => {
       const view = document.body.dataset.view || "split";
-      const needData = b.dataset.to === ".data-card" || b.dataset.to === "#options";
-      if ((needData && view === "graph") || (!needData && view === "data")) setView("split");
+      if (b.dataset.to === "#options") openStack("analysis");
+      else if (b.dataset.to === ".data-card") { if (view === "figure" || view === "analysis") setView("split"); }
+      else if (view === "data" || view === "figure") setView("analysis");
       const el = document.querySelector(b.dataset.to);
       if (!el) return;
       if (el.tagName === "DETAILS") el.open = true;
@@ -3619,16 +3725,130 @@
     });
     $("sb-left").textContent = `${project.sheets.length} ${project.sheets.length === 1 ? "analysis" : "analyses"} in this project`;
   }
+  // four workspace layouts: data | figure | split (data + figure) | analysis (analysis + figure)
+  const VIEWS = ["data", "figure", "split", "analysis"];
   function setView(v, remember = true) {
-    if (!["split", "data", "graph"].includes(v)) v = "split";
+    if (v === "graph") v = "figure";
+    if (!VIEWS.includes(v)) v = "split";
     document.body.dataset.view = v;
-    document.querySelectorAll("#view-switch [data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === v));
-    const f = $("graph-format");
-    if (v === "graph") { f.hidden = false; renderFormat(); }
-    else if (!$("btn-format").classList.contains("on")) f.hidden = true;
+    document.querySelectorAll("#view-switch [data-view]").forEach(b => { b.classList.toggle("on", b.dataset.view === v); b.setAttribute("aria-pressed", String(b.dataset.view === v)); });
+    // the results card sits under the figure, or in the left pane in the analysis layout (same element: nothing is recalculated)
+    const res = $("results").closest(".card"), home = document.querySelector(".right-col"), left = $("pane-analysis");
+    if (v === "analysis") { if (res.parentNode !== left) left.appendChild(res); }
+    else if (res.parentNode !== home) home.appendChild(res);
     plotZoom = 1;
     setTimeout(() => fitPlot(), 0);
     if (remember) api("/api/prefs", { method: "PUT", body: JSON.stringify({ view: v }) }).catch(() => {});
+  }
+  function setSplit(pct, remember = true) {
+    pct = Math.min(75, Math.max(22, pct));
+    document.querySelector(".panes").style.setProperty("--split", pct.toFixed(1) + "%");
+    $("pane-divider").setAttribute("aria-valuenow", Math.round(pct));
+    fitPlot();
+    if (remember) { clearTimeout(setSplit.t); setSplit.t = setTimeout(() => api("/api/prefs", { method: "PUT", body: JSON.stringify({ split: pct }) }).catch(() => {}), 400); }
+  }
+  function wireDivider() {
+    const d = $("pane-divider"), panes = document.querySelector(".panes");
+    const cur = () => parseFloat(panes.style.getPropertyValue("--split")) || 50;
+    d.addEventListener("pointerdown", ev => {
+      ev.preventDefault(); d.classList.add("drag");
+      const mv = e2 => { const r = panes.getBoundingClientRect(); setSplit((e2.clientX - r.left) / r.width * 100); };
+      const up = () => { d.classList.remove("drag"); window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); };
+      window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
+    });
+    d.addEventListener("dblclick", () => setSplit(50));
+    d.addEventListener("keydown", ev => { if (ev.key === "ArrowLeft") { ev.preventDefault(); setSplit(cur() - 2); } if (ev.key === "ArrowRight") { ev.preventDefault(); setSplit(cur() + 2); } });
+  }
+
+  // ======================================================================
+  // analysis search: a fixed catalog of the methods this app has (no AI, no guessing)
+  // ======================================================================
+  const M = (name, cat, desc, type, opts = {}, syn = "") => ({ name, cat, desc, type, opts, syn });
+  const METHODS = [
+    M("Unpaired t test", "Compare two groups", "Two independent groups, similar spread", "ttest", { mode: "compare", design: "independent", kind2i: "unpaired" }, "student t-test two sample independent"),
+    M("Welch's t test", "Compare two groups", "Two independent groups, spread may differ", "ttest", { mode: "compare", design: "independent", kind2i: "welch" }, "t-test unequal variance"),
+    M("Paired t test", "Compare two groups", "The same subjects measured twice", "ttest", { mode: "compare", design: "repeated", kind2r: "paired" }, "t-test before after matched dependent"),
+    M("Ratio paired t test", "Compare two groups", "Paired data where the change is a ratio", "ttest", { mode: "compare", design: "repeated", kind2r: "ratio_paired" }, "fold change"),
+    M("Mann-Whitney test", "Compare two groups", "Nonparametric, two independent groups", "ttest", { mode: "compare", design: "independent", kind2i: "mannwhitney" }, "mann whitney u wilcoxon rank sum nonparametric"),
+    M("Wilcoxon signed-rank test", "Compare two groups", "Nonparametric paired test", "ttest", { mode: "compare", design: "repeated", kind2r: "wilcoxon" }, "matched pairs nonparametric"),
+    M("Kolmogorov-Smirnov test", "Compare two groups", "Compares two whole distributions", "ttest", { mode: "compare", design: "independent", kind2i: "ks" }, "ks"),
+    M("One-way ANOVA", "Compare three or more groups", "With Tukey, Dunnett, Holm-Šídák, Bonferroni…", "ttest", { mode: "compare", design: "independent", kind3i: "ordinary" }, "one way anova oneway tukey dunnett post hoc multiple comparisons"),
+    M("Welch's ANOVA", "Compare three or more groups", "Spread may differ; Games-Howell or Dunnett T3", "ttest", { mode: "compare", design: "independent", kind3i: "welch" }, "brown forsythe games howell"),
+    M("Kruskal-Wallis test", "Compare three or more groups", "Nonparametric, with Dunn's comparisons", "ttest", { mode: "compare", design: "independent", kind3i: "kruskal" }, "kruskal wallis dunn nonparametric anova"),
+    M("Repeated-measures one-way ANOVA", "Compare three or more groups", "Same subjects in every group", "ttest", { mode: "compare", design: "repeated", kind3r: "rm" }, "rm anova within subjects"),
+    M("Friedman test", "Compare three or more groups", "Nonparametric repeated measures", "ttest", { mode: "compare", design: "repeated", kind3r: "friedman" }),
+    M("Column statistics", "Describe data", "Mean, SD, CI, normality and one-sample tests", "ttest", { mode: "describe" }, "descriptive statistics one sample t test normality shapiro"),
+    M("Frequency distribution", "Describe data", "Histogram, Q-Q plot, normality tests", "ttest", { mode: "freq" }, "histogram qq normality distribution"),
+    M("Compare groups from mean, SD, n", "Summary data", "t test or ANOVA from summary numbers", "summary"),
+    M("Two-way ANOVA", "Two or three factors", "Two factors, with multiple comparisons; repeated measures optional", "twoway", { analysis: "" }, "two way anova 2way mixed model interaction"),
+    M("Multiple t tests", "Two or three factors", "One t test per row, with FDR or Holm-Šídák", "twoway", { analysis: "multit" }, "fdr volcano discovery benjamini"),
+    M("Two-way ANOVA from mean, SD, n", "Two or three factors", "Two-way ANOVA from summary numbers", "summary2"),
+    M("Three-way ANOVA", "Two or three factors", "Three factors with all interactions", "threeway", {}, "three way anova 3way"),
+    M("Nested t test / nested ANOVA", "Nested data", "Replicates within subjects (mixed model)", "nested", {}, "hierarchical mixed effects pseudoreplication"),
+    M("Linear regression", "XY", "Best-fit line, confidence bands, compare slopes", "regression", { model: "linear" }, "simple linear regression slope intercept standard curve"),
+    M("Nonlinear regression: dose-response", "XY", "IC50 / EC50, four-parameter curve", "regression", { model: "dr_inhibit" }, "nonlinear regression curve fit ic50 ec50 4pl sigmoidal hill"),
+    M("Nonlinear regression: Michaelis-Menten", "XY", "Enzyme kinetics, Vmax and Km", "regression", { model: "michaelis" }, "nonlinear regression enzyme kinetics"),
+    M("Correlation", "Multiple variables", "Pearson, Spearman or Kendall, as a matrix", "multivar", { analysis: "correlation" }, "pearson spearman kendall r"),
+    M("Multiple linear regression", "Multiple variables", "One outcome, several predictors", "multivar", { analysis: "mlr" }),
+    M("Logistic regression", "Multiple variables", "Yes/no outcome; odds ratios", "multivar", { analysis: "logistic" }),
+    M("Cox regression", "Multiple variables", "Survival with several predictors", "multivar", { analysis: "cox" }, "proportional hazards"),
+    M("Principal component analysis", "Multiple variables", "PCA with scree plot and biplot", "multivar", { analysis: "pca" }, "pca"),
+    M("ROC curve", "Diagnostics", "Area under the curve, best cutoff", "diagnostic", { analysis: "roc" }, "receiver operating sensitivity specificity auc"),
+    M("Bland-Altman", "Diagnostics", "Agreement between two methods", "diagnostic", { analysis: "ba" }, "method comparison bias limits of agreement"),
+    M("Deming regression", "Diagnostics", "Line fit when both X and Y have error", "diagnostic", { analysis: "deming" }),
+    M("Survival: Kaplan-Meier", "Survival", "Curves, log-rank test, hazard ratio", "survival", {}, "kaplan meier log rank logrank mantel cox gehan"),
+    M("Chi-square / Fisher's exact test", "Contingency", "Counts in a table; odds ratio, relative risk", "contingency", { analysis: "table" }, "chi square chi-squared fisher contingency trend"),
+    M("McNemar's test", "Contingency", "Paired yes/no data", "contingency", { analysis: "mcnemar" }),
+    M("Chi-square goodness of fit", "Contingency", "Observed vs expected counts", "contingency", { analysis: "gof" }, "binomial expected"),
+    M("Power and sample size", "Planning", "How many subjects you need", "power", {}, "sample size power analysis"),
+  ];
+  let recentMethods = [], msIdx = 0, msList = [];
+  const normQ = t => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  function searchMethods(q) {
+    const words = normQ(q).split(" ").filter(Boolean);
+    if (!words.length) return recentMethods.map(n => METHODS.find(m => m.name === n)).filter(Boolean);
+    return METHODS.map(m => {
+      const name = normQ(m.name), all = `${name} ${normQ(m.cat)} ${normQ(m.desc)} ${normQ(m.syn)}`;
+      if (!words.every(w => all.includes(w))) return null;
+      return [words.every(w => name.includes(w)) ? (name.startsWith(words[0]) ? 0 : 1) : 2, m];
+    }).filter(Boolean).sort((a, b) => a[0] - b[0]).map(x => x[1]).slice(0, 9);
+  }
+  function renderMethodResults() {
+    const box = $("method-results"), q = $("method-search").value;
+    msList = searchMethods(q); msIdx = Math.min(msIdx, Math.max(0, msList.length - 1));
+    box.hidden = false;
+    box.innerHTML = (msList.length ? (q.trim() ? "" : `<div class="menu-title">Recently used</div>`) + msList.map((m, i) => `<button role="option" data-mi="${i}" class="${i === msIdx ? "on" : ""}" aria-selected="${i === msIdx}"><span class="badge t-${m.type}">${badgeText(m.type)}</span><span><b>${esc(m.name)}</b><small>${esc(m.cat)} · ${esc(m.desc)}</small></span></button>`).join("")
+      : `<div class="menu-empty">${q.trim() ? `No analysis here matches “${esc(q.trim())}”. Try a test name, e.g. ANOVA, t test, regression, correlation.` : "Type a test name, e.g. ANOVA, paired t test, linear regression, Mann-Whitney."}</div>`);
+    box.querySelectorAll("[data-mi]").forEach(b => b.onmousedown = e => { e.preventDefault(); chooseMethod(msList[+b.dataset.mi]); });
+  }
+  function chooseMethod(m) {
+    if (!m) return;
+    $("method-results").hidden = true; $("method-search").value = ""; $("method-search").blur();
+    let s = active();
+    const hasData = s.data.some(r => r.some(v => String(v ?? "").trim() !== ""));
+    if (s.type !== m.type) {
+      // another kind of table: reuse an empty analysis, otherwise start a new one (data is never thrown away)
+      if (hasData || TYPES[s.type].noData) { s = newSheet(m.type); project.sheets.push(s); project.activeId = s.id; }
+      else { const fresh = newSheet(m.type); Object.assign(s, { ...fresh, id: s.id }); }
+    } else recordUndo(true);
+    Object.assign(s.options, m.opts);
+    recentMethods = [m.name, ...recentMethods.filter(n => n !== m.name)].slice(0, 5);
+    api("/api/prefs", { method: "PUT", body: JSON.stringify({ recentMethods }) }).catch(() => {});
+    save(); renderAll(); openStack("analysis");
+    toast(`<b>${esc(m.name)}</b> is set up${hasData && s.id !== active().id ? "" : ""}. Its options are in the Analysis section; nothing else was changed.`);
+  }
+  function wireMethodSearch() {
+    const inp = $("method-search");
+    inp.addEventListener("focus", () => { msIdx = 0; renderMethodResults(); });
+    inp.addEventListener("input", () => { msIdx = 0; renderMethodResults(); });
+    inp.addEventListener("blur", () => setTimeout(() => { $("method-results").hidden = true; }, 120));
+    inp.addEventListener("keydown", e => {
+      if (e.key === "ArrowDown") { e.preventDefault(); msIdx = Math.min(msList.length - 1, msIdx + 1); renderMethodResults(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); msIdx = Math.max(0, msIdx - 1); renderMethodResults(); }
+      else if (e.key === "Enter") { e.preventDefault(); chooseMethod(msList[msIdx]); }
+      else if (e.key === "Escape") { inp.blur(); }
+    });
+    document.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); inp.focus(); inp.select(); } });
   }
 
   // ======================================================================
@@ -3696,7 +3916,7 @@
         + `<div class="menu-row"><span>Opacity</span>${[100, 75, 50, 25].map(o => `<button data-act="op:${o / 100}" class="${Math.round((sel.opacity ?? 1) * 100) === o ? "on" : ""}">${o}%</button>`).join("")}</div>`
         + item("copyshape", "Copy", "Ctrl+C") + item("dup", "Duplicate", "Ctrl+D") + item("del", "Delete", "Del") + sep : "")
       + item("text", "Add text here") + item("arrow", "Add an arrow here") + item("pasteshape", "Paste shape", "Ctrl+V", !shapeClip) + sep
-      + item("xaxis", "X axis settings…") + item("yaxis", "Y axis settings…") + item("format", document.body.dataset.view === "graph" ? "Back to split view" : "Open the graph editor") + sep
+      + item("xaxis", "X axis settings…") + item("yaxis", "Y axis settings…") + item("legend", "Legend settings…") + item("format", document.body.dataset.view === "figure" ? "Show data beside the figure" : "Figure focus") + sep
       + item("copylook", "Copy this graph's look") + item("pastelook", "Paste look", "", !lookClip) + sep
       + item("copyimg", "Copy graph as picture") + item("svg", "Save as editable SVG") + item("resetzoom", "Reset zoom and axis ranges");
     placeFloating($("graph-menu"), ev.clientX + 2, ev.clientY + 2);
@@ -3725,7 +3945,8 @@
       return;
     }
     if (act === "xaxis" || act === "yaxis") return axisPopover(act[0], ev.clientX, ev.clientY);
-    if (act === "format") return setView(document.body.dataset.view === "graph" ? "split" : "graph");
+    if (act === "format") return setView(document.body.dataset.view === "figure" ? "split" : "figure");
+    if (act === "legend") return legendPopover(ev.clientX, ev.clientY);
     if (act === "copylook") { lookClip = lookOf(g, s); return toast("Look copied. Right-click another graph → Paste look."); }
     if (act === "pastelook") { recordUndo(true); applyLook(g, s, lookClip); save(); renderFormat(); drawPlot(); return toast("Look pasted. Undo puts the previous one back."); }
     if (act === "copyimg") return copyGraphImage();
@@ -3758,6 +3979,18 @@
     });
     $("ax-auto").onclick = () => { recordUndo(true); (X ? ["xmin", "xmax", "xtick"] : ["ymin", "ymax", "ytick"]).forEach(k => { if (has(k)) g[k] = ""; }); save(); drawPlot(); axisPopover(which, x, y); };
   }
+  function legendPopover(x, y) {
+    const g = active().graph, pop = $("axis-pop");
+    const POS = [["auto", "Automatic"], ["tr", "Top right (inside)"], ["tl", "Top left (inside)"], ["outside", "Right (outside)"], ["top", "Above the figure"], ["bottom", "Below the figure"], ["hide", "Hidden"]];
+    pop.innerHTML = `<div class="sp-head"><b>Legend</b><button class="icon" id="ax-close" title="Close">✕</button></div>
+      <label>Position<select id="lg-pos">${POS.map(([v, l]) => `<option value="${v}" ${(g.legendPos || "auto") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      <label>Text size<input type="text" id="lg-size" value="${esc(g.fontSize ?? 13)}"></label>
+      <p class="hint">Drag the legend on the figure to place it freely. Click an entry to restyle that series; click its text to rename it.</p>`;
+    placeFloating(pop, x + 10, y - 30);
+    $("ax-close").onclick = () => { pop.hidden = true; };
+    $("lg-pos").onchange = e => { recordUndo(true); g.legendPos = e.target.value; delete g.legendXY; save(); drawPlot(); };
+    $("lg-size").oninput = e => { const v = num(e.target.value); if (v === null || v < 6 || v > 40) return; recordUndo(); g.fontSize = v; save(); drawPlot(); };
+  }
   function wireGraphEditing() {
     const wrap = $("plot-wrap");
     wrap.addEventListener("contextmenu", showGraphMenu);
@@ -3775,13 +4008,16 @@
     });
     document.addEventListener("keydown", e => {
       if (e.key === "Escape") { closeMenus(); $("axis-pop").hidden = true; }
-      if (e.altKey && ["1", "2", "3"].includes(e.key)) { e.preventDefault(); setView(["split", "data", "graph"][Number(e.key) - 1]); }
+      if (e.altKey && ["1", "2", "3", "4"].includes(e.key)) { e.preventDefault(); setView(VIEWS[Number(e.key) - 1]); }
+      if (e.altKey && e.key === "0") { e.preventDefault(); $("btn-compact").click(); }
+      if (e.altKey && e.key.toLowerCase() === "f") { e.preventDefault(); setZoom(1); }
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable || e.target.closest("#grid")) return;
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === "c" && drawSel >= 0) { if (copyShape()) e.preventDefault(); }
       if (mod && e.key.toLowerCase() === "v" && shapeClip && (drawSel >= 0 || document.activeElement === document.body)) { if (pasteShape()) e.preventDefault(); }
     });
     document.querySelectorAll("#view-switch [data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
+    wireStack(); wireDivider(); wireMethodSearch();
     $("zoom-in").onclick = () => setZoom(plotZoom * 1.25);
     $("zoom-out").onclick = () => setZoom(plotZoom / 1.25);
     $("zoom-fit").onclick = () => setZoom(1);
@@ -4446,18 +4682,27 @@
     project.activeId = copy.id; save(); renderAll();
     toast(`Duplicated as <b>${esc(copy.title)}</b>`);
   };
+  const THEMES = [["violet", "Violet"], ["slate", "Slate"], ["teal", "Teal"], ["indigo", "Indigo"], ["rose", "Rose"], ["amber", "Amber"], ["forest", "Forest"], ["graphite-dark", "Graphite (dark)"], ["violet-dark", "Violet (dark)"]];
   function applyTheme(t) {
-    document.documentElement.dataset.theme = t === "dark" ? "dark" : "light";
-    $("btn-theme").textContent = t === "dark" ? "☀" : "☾";
+    if (t === "dark") t = "graphite-dark";
+    if (!THEMES.some(x => x[0] === t)) t = "violet";
+    document.documentElement.dataset.theme = t;
+    $("theme-select").value = t;
   }
-  $("btn-theme").onclick = () => {
-    const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-    applyTheme(t);
-    api("/api/prefs", { method: "PUT", body: JSON.stringify({ theme: t }) }).catch(() => {});
+  $("theme-select").innerHTML = THEMES.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+  $("theme-select").onchange = () => {
+    applyTheme($("theme-select").value);   // only the app's colors change: figures are not redrawn or restyled
+    api("/api/prefs", { method: "PUT", body: JSON.stringify({ theme: $("theme-select").value }) }).catch(() => {});
   };
+  applyTheme("violet");
   api("/api/prefs").then(p => {
     applyTheme(p.theme); myStyle = p.myStyle || null; savedLooks = p.looks && typeof p.looks === "object" ? p.looks : {};
     // first launch: offer the tour (not in automated browsers)
+    recentMethods = Array.isArray(p.recentMethods) ? p.recentMethods : [];
+    if (p.stack && !navigator.webdriver) { stack.open = p.stack.open ?? "data"; stack.pins = new Set(p.stack.pins || []); stack.compact = !!p.stack.compact; }
+    if (navigator.webdriver) stack.pins = new Set(["data", "analysis"]);   // automated checks need both visible at once
+    applyStack();
+    if (p.split) setSplit(Number(p.split), false);
     if (p.view && p.view !== "split" && !navigator.webdriver) setView(p.view, false);
     if (!p.tourDone && !navigator.webdriver) setTimeout(startTour, 1200);
   }).catch(() => {});
@@ -4465,7 +4710,6 @@
   $("btn-redo").onclick = () => undoRedo("redo");
   $("btn-format").onclick = () => {
     const f = $("graph-format");
-    if (document.body.dataset.view === "graph") { setView("split"); return; }
     f.hidden = !f.hidden;
     if (!f.hidden) renderFormat();
     $("btn-format").classList.toggle("on", !f.hidden); $("btn-format").setAttribute("aria-expanded", String(!f.hidden));
