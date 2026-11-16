@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="logo">EH</span><span>Erwin's Hypothesis</span></div>
+    <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 12c3.5 0 4.5-7 7-7s3.5 14 6 14 3.500-7 7-7"/><circle cx="12" cy="12" r="1.7"/></svg></span><span>Erwin's Hypothesis</span></div>
     <div class="project-name-wrap">
       <input id="project-name" class="project-name" spellcheck="false" aria-label="Project name" title="Project name: click to rename">
       <span id="save-status" class="save-status"></span>
@@ -90,6 +90,10 @@
           <tr><td>Arrow keys, <kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>Nudge the selected shape (hold <kbd>Shift</kbd> for bigger steps) / duplicate it</td></tr>
           <tr><td><code>cm^{2}</code>, <code>CO_{2}</code></td><td>Superscript and subscript in any title or label (symbol buttons under Format → Text)</td></tr>
           <tr><td><b>SVG</b></td><td>Editable vector file: every point, line and label is its own object (Illustrator, Inkscape, Affinity, PowerPoint "Convert to Shape")</td></tr>
+          <tr><td>Right-click the graph</td><td>Add text or an arrow right there, axis settings, order and opacity of a shape, copy and paste a shape or a whole look</td></tr>
+          <tr><td>Double-click an axis</td><td>Range, tick spacing, log scale, title and number format for that axis</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd></td><td>Copy and paste the selected shape (also onto another graph)</td></tr>
+          <tr><td><kbd>Alt</kbd>+<kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd></td><td>Split view / data only / graph editor</td></tr>
           <tr><td>Size under the graph</td><td>The graph is drawn at its export size, so the file looks exactly like the screen</td></tr>
         </table>
         <h4>Everywhere</h4>
@@ -143,6 +147,11 @@
         <input id="sheet-title" class="sheet-title" spellcheck="false" aria-label="Analysis name">
         <span id="sheet-kind" class="pill"></span>
         <div class="spacer"></div>
+        <div class="view-switch" id="view-switch" role="group" aria-label="Workspace view">
+          <button data-view="split" class="on" title="Data, graph and results side by side (Alt+1)">Split</button>
+          <button data-view="data" title="Just the data table and analysis choices (Alt+2)">Data</button>
+          <button data-view="graph" title="Graph editor: a large graph with every setting beside it (Alt+3)">Graph editor</button>
+        </div>
         <button id="btn-reuse" class="ghost small" title="Analyze this same data table another way (e.g. as XY, correlation or method comparison)">Analyze another way ▾</button>
         <div id="reuse-menu" class="menu reuse-menu" hidden></div>
         <button id="btn-dup" aria-label="Duplicate this analysis" class="icon" title="Duplicate this analysis (same data and settings)">⧉</button>
@@ -151,6 +160,7 @@
         <button id="btn-delete" aria-label="Delete this analysis" class="icon danger" title="Delete this analysis">🗑</button>
       </div>
 
+      <div id="flow-strip" class="flow-strip" aria-live="polite"></div>
       <div class="panes">
         <section class="card data-card">
           <div class="card-head">
@@ -205,7 +215,8 @@
               <span class="draw-hint" id="draw-hint"></span>
             </div>
             <div id="plot-wrap" class="plot-wrap"><div id="plot" class="plot"></div></div>
-            <div class="plot-size" id="plot-size" title="The graph is drawn at its export size (change it under Format → Export)"></div>
+            <div class="stage-foot"><div class="zoom" role="group" aria-label="Zoom"><button id="zoom-out" class="icon" title="Zoom out" aria-label="Zoom out">−</button><button id="zoom-fit" class="ghost small" title="Fit the graph to the panel">Fit</button><button id="zoom-in" class="icon" title="Zoom in" aria-label="Zoom in">+</button></div>
+              <div class="plot-size" id="plot-size" title="The graph is drawn at its export size (change it under Format → Export)"></div></div>
           </section>
 
           <section class="card">
@@ -220,6 +231,9 @@
     </main>
   </div>
 
+  <footer class="statusbar" id="statusbar"><span id="sb-left"></span><span class="spacer"></span><span id="sb-right">Press <kbd>?</kbd> for help</span></footer>
+  <div id="graph-menu" class="menu ctx-menu" hidden role="menu"></div>
+  <div id="axis-pop" class="series-pop axis-pop" hidden role="dialog" aria-label="Axis settings"></div>
   <div id="series-pop" class="series-pop" hidden role="dialog" aria-label="Series look"></div>
   <script src="/static/svgclean.js"></script>
   <script src="/static/app.js"></script>

@@ -77,7 +77,9 @@
     if (tag === "image" || tag === "use") return false;
     if (tag === "path" && !/[0-9]/.test(a("d") || "")) return true;
     if (tag === "rect" && (num(a("width")) === 0 || num(a("height")) === 0) && !(a("stroke") && a("stroke") !== "none")) return true;
-    const noFill = a("fill") === "none" || a("fill") === "transparent" || num(a("fill-opacity")) === 0;
+    const fo = num(a("fill-opacity"));
+    const noFill = a("fill") === "none" || a("fill") === "transparent" || (fo !== null && fo < 0.01);
+    if (noFill) el.removeAttribute("fill-opacity");
     // missing fill = black by SVG default, but Plotly always writes one; treat missing as visible
     const noStroke = !a("stroke") || a("stroke") === "none" || num(a("stroke-opacity")) === 0 || num(a("stroke-width")) === 0;
     if (noFill && noStroke) return true;

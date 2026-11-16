@@ -72,9 +72,8 @@ def test_draw_box_bracket_arrow_and_export(server):  # noqa: F811
         sh = _user_shapes(page)
         assert len(sh) == before + 2 and sh[-1]["label"] == "P = 0.003"
         # select the box by clicking its edge, delete it with the Delete key, then undo
-        page.evaluate("document.getElementById('plot')._fullLayout._activeShapeIndex = undefined")
         idx = page.evaluate("document.getElementById('plot').layout.shapes.findIndex(s => s.editable && s.type === 'rect')")
-        page.evaluate(f"() => {{ const el = document.getElementById('plot'); el._fullLayout._activeShapeIndex = {idx}; el.dispatchEvent(new MouseEvent('mouseup')); }}")
+        page.evaluate(f"() => {{ const pth = document.querySelector('#plot .shapelayer path[data-index=\"{idx}\"]'); pth.dispatchEvent(new MouseEvent('mousedown', {{bubbles: true, button: 0}})); document.dispatchEvent(new MouseEvent('mouseup', {{bubbles: true}})); }}")
         page.wait_for_timeout(200)
         assert page.is_enabled("#draw-del")
         page.keyboard.press("Delete")
@@ -85,7 +84,7 @@ def test_draw_box_bracket_arrow_and_export(server):  # noqa: F811
         assert [s["type"] for s in _user_shapes(page)].count("rect") == 1
         # nudge with the arrow keys, duplicate with Ctrl+D
         idx = page.evaluate("document.getElementById('plot').layout.shapes.findIndex(s => s.editable && s.type === 'rect')")
-        page.evaluate(f"() => {{ const el = document.getElementById('plot'); el._fullLayout._activeShapeIndex = {idx}; el.dispatchEvent(new MouseEvent('mouseup')); }}")
+        page.evaluate(f"() => {{ const pth = document.querySelector('#plot .shapelayer path[data-index=\"{idx}\"]'); pth.dispatchEvent(new MouseEvent('mousedown', {{bubbles: true, button: 0}})); document.dispatchEvent(new MouseEvent('mouseup', {{bubbles: true}})); }}")
         page.wait_for_timeout(200)
         x0 = page.evaluate(f"document.getElementById('plot').layout.shapes[{idx}].x0")
         page.keyboard.press("ArrowRight"); page.wait_for_timeout(250)

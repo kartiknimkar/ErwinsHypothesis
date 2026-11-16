@@ -122,7 +122,7 @@
       title: g.title ? { text: esc(g.title), font: { size: (Number(g.fontSize) || 13) + 3 } } : undefined,
     };
   }
-  const PLOT_CONFIG = { displaylogo: false, responsive: true,
+  const PLOT_CONFIG = { displaylogo: false, responsive: true, displayModeBar: false,
     // click titles, axis titles, legend entries and text labels on the graph to edit them; drag legend / labels to move
     edits: { titleText: true, axisTitleText: true, legendText: true, legendPosition: true, annotationText: true, annotationPosition: true,
       annotationTail: true, shapePosition: true },
@@ -354,7 +354,8 @@
       if (nn != null) t.name = esc(nn);
     });
     layout.annotations = [...(layout.annotations || []), ...(g.notes || []).map(n => ({ text: esc(n.text || " "), x: n.x ?? 0.5, y: n.y ?? 0.95,
-      xref: "paper", yref: "paper", showarrow: false, font: { size: Number(n.size) || (Number(g.fontSize) || 13) } }))];
+      xref: "paper", yref: "paper", showarrow: false, font: { size: Number(n.size) || (Number(g.fontSize) || 13),
+        ...(n.color ? { color: n.color } : {}), ...(n.bold ? { weight: "bold" } : {}), ...(n.italic ? { style: "italic" } : {}) } }))];
     (layout.shapes || []).forEach(sh => { if (sh.line && sh.line.width) sh.line.width *= ls; });
     applyFrame(layout, g);
     const tw = g.titleWeight || "normal";
@@ -422,29 +423,40 @@
     ks.slice(0, -1).forEach(k => { o = o[k] = o[k] && typeof o[k] === "object" ? o[k] : {}; });
     o[ks[ks.length - 1]] = v;
   }
+  // "no fill" is a barely-there fill, so clicking inside a box or circle still selects it (dropped again on export)
+  const CLEAR_FILL = "rgba(0,0,0,0.004)";
   function drawStyle(g) { return { color: "#1b2130", width: 1.5, dash: "solid", fill: "none", ...((g && g.drawStyle) || {}) }; }
   function addDrawings(layout, g) {
     const st = drawStyle(g);
     layout.newshape = { line: { color: st.color, width: Number(st.width), dash: st.dash },
-      fillcolor: st.fill === "none" ? "rgba(0,0,0,0)" : hexToRgba(st.color, Number(st.fill)), opacity: 1, layer: "above", drawdirection: "diagonal" };
+      fillcolor: st.fill === "none" ? CLEAR_FILL : hexToRgba(st.color, Number(st.fill)), opacity: 1, layer: "above", drawdirection: "diagonal" };
     const d = g.draw || {};
     layout.annotations = [...(layout.annotations || []), ...(d.arrows || []).map(a => ({ x: a.x, y: a.y, xref: a.xref || "paper", yref: a.yref || "paper",
       ax: a.ax ?? -60, ay: a.ay ?? -40, text: esc(a.text || ""), showarrow: true, arrowhead: a.head ?? 2, arrowsize: 1.1,
       arrowwidth: Number(a.width) || 1.5, arrowcolor: a.color || "#1b2130", font: { color: a.color || "#1b2130", size: Number(g.fontSize) || 13 } }))];
-    layout.shapes = [...(layout.shapes || []), ...(d.shapes || []).map(sh => ({ ...JSON.parse(JSON.stringify(sh)), editable: true }))];
+    layout.shapes = [...(layout.shapes || []), ...(d.shapes || []).map(sh => {
+      const o = { ...JSON.parse(JSON.stringify(sh)), editable: true };
+      if ((o.type === "rect" || o.type === "circle") && (!o.fillcolor || /,\s*0\)$/.test(o.fillcolor))) o.fillcolor = CLEAR_FILL;
+      return o;
+    })];
   }
   function fitPlot(el = $("plot")) {
     const wrap = $("plot-wrap");
     if (!el._ehSize || !wrap) return;
-    const [W, H] = el._ehSize, avail = Math.max(200, wrap.clientWidth || W);
-    const k = Math.min(avail / W, 620 / H, 1.6);
+    const [W, H] = el._ehSize, avail = Math.max(200, (wrap.clientWidth || W) - 28);
+    const tall = document.body.dataset.view === "graph" ? Math.max(380, window.innerHeight - 250) : 620;
+    const fit = Math.min(avail / W, tall / H, document.body.dataset.view === "graph" ? 2.4 : 1.6);
+    const k = fit * plotZoom;
+    wrap.classList.toggle("zoomed", plotZoom > 1.001);
     el.style.width = `${W}px`; el.style.height = `${H}px`;
     el.style.transform = Math.abs(k - 1) < 0.005 ? "" : `scale(${k.toFixed(4)})`;
     el.style.transformOrigin = "top left";
     wrap.style.height = `${Math.round(H * k)}px`;
-    el.style.marginLeft = `${Math.max(0, Math.round((avail - W * k) / 2))}px`;
+    el.style.marginLeft = `${14 + Math.max(0, Math.round((avail - W * k) / 2))}px`;
     $("plot-size").textContent = `${(W / 96).toFixed(1)} × ${(H / 96).toFixed(1)} in${Math.abs(k - 1) < 0.005 ? "" : ` · shown at ${Math.round(k * 100)}%`}`;
   }
+  let plotZoom = 1;
+  function setZoom(z) { plotZoom = Math.min(4, Math.max(0.4, z)); fitPlot(); }
   function unfitPlot(el = $("plot")) {
     el._ehSize = null;
     el.style.width = el.style.transform = el.style.marginLeft = "";
@@ -2114,7 +2126,7 @@
           ${Object.keys(savedLooks).sort().map(k => `<span class="chip">${esc(k)}<button class="icon" data-look-del="${esc(k)}" title="Delete this saved look">✕</button></span>`).join("")}</span>
         <button class="ghost small" id="btn-style-all" title="Give every graph in this project the same fonts, colors, points, lines and axes">Apply this look to every graph</button></div>`;
       if (c.kind === "notes") return `<div class="wide notes"><p class="hint">Tip: click any title, axis title, legend entry or label on the graph to edit it; drag the legend or a label to move it.</p>
-        ${(g.notes || []).map((n, i) => `<div class="note-row"><input type="text" data-note="${i}" value="${esc(n.text || "")}" placeholder="Label text"><input type="number" data-note-size="${i}" value="${esc(n.size ?? "")}" placeholder="size" min="6" max="48"><button class="icon" data-note-del="${i}" title="Remove this label">✕</button></div>`).join("")}
+        ${(g.notes || []).map((n, i) => `<div class="note-row"><input type="text" data-note="${i}" value="${esc(n.text || "")}" placeholder="Label text"><input type="number" data-note-size="${i}" value="${esc(n.size ?? "")}" placeholder="size" min="6" max="48"><button class="icon tgl ${n.bold ? "on" : ""}" data-note-tgl="${i}:bold" title="Bold"><b>B</b></button><button class="icon tgl ${n.italic ? "on" : ""}" data-note-tgl="${i}:italic" title="Italic"><i>I</i></button><input type="color" data-note-color="${i}" value="${toHex(n.color || g.textColor || "#1b2130")}" title="Text color"><button class="icon" data-note-del="${i}" title="Remove this label">✕</button></div>`).join("")}
         ${((g.draw && g.draw.arrows) || []).map((a2, i) => `<div class="note-row"><input type="text" data-arrow="${i}" value="${esc(a2.text || "")}" placeholder="Arrow ${i + 1} (optional text at its tail)"><input type="color" data-arrow-color="${i}" value="${toHex(a2.color || "#1b2130")}" title="Arrow color"><button class="icon" data-arrow-del="${i}" title="Remove this arrow">✕</button></div>`).join("")}
         <div class="row"><button class="ghost small" id="btn-add-note">+ Add text label</button>${(g.draw && ((g.draw.shapes || []).length || (g.draw.arrows || []).length)) ? `<button class="ghost small" id="btn-clear-draw" title="Remove every arrow, line, box, circle and bracket you drew">Remove drawings</button>` : ""}${g.axisText || g.legendNames || g.legendXY ? `<button class="ghost small" id="btn-reset-edits" title="Undo text and legend edits made on the graph">Reset graph edits</button>` : ""}</div></div>`;
       if (c.kind === "color") return `<label>${c.label}<input type="color" data-g="${c.k}" value="${toHex(v)}"></label>`;
@@ -2184,6 +2196,8 @@
     if (re) re.onclick = () => { delete g.axisText; delete g.legendNames; delete g.legendXY; save(); renderFormat(); drawPlot(); };
     fmtBox.querySelectorAll("[data-note]").forEach(el => el.oninput = () => { g.notes[+el.dataset.note].text = el.value; save(); drawPlot(); });
     fmtBox.querySelectorAll("[data-note-size]").forEach(el => el.oninput = () => { g.notes[+el.dataset.noteSize].size = el.value; save(); drawPlot(); });
+    fmtBox.querySelectorAll("[data-note-tgl]").forEach(el => el.onclick = () => { const [i, k] = el.dataset.noteTgl.split(":"); recordUndo(true); g.notes[+i][k] = !g.notes[+i][k]; save(); renderFormat(); drawPlot(); });
+    fmtBox.querySelectorAll("[data-note-color]").forEach(el => el.oninput = () => { g.notes[+el.dataset.noteColor].color = el.value; save(); drawPlot(); });
     fmtBox.querySelectorAll("[data-note-del]").forEach(el => el.onclick = () => { g.notes.splice(+el.dataset.noteDel, 1); save(); renderFormat(); drawPlot(); });
     fmtBox.querySelectorAll("[data-arrow]").forEach(el => el.oninput = () => { g.draw.arrows[+el.dataset.arrow].text = el.value; save(); drawPlot(); });
     fmtBox.querySelectorAll("[data-arrow-color]").forEach(el => el.oninput = () => { g.draw.arrows[+el.dataset.arrowColor].color = el.value; save(); drawPlot(); });
@@ -2243,6 +2257,7 @@
 
   function renderResults() {
     const s = active(), box = $("results");
+    setTimeout(renderFlow, 0);
     if (lastError) { box.innerHTML = T.summary("err", `<b>Not enough to analyze yet.</b> ${esc(lastError)}`); return; }
     if (!lastResult) { box.innerHTML = ""; return; }
     box.innerHTML = TYPES[s.type].renderResults(lastResult, s);
@@ -3474,6 +3489,8 @@
     const s = active(), shapes = (s.graph.draw && s.graph.draw.shapes) || [];
     drawSel = i >= 0 && i < shapes.length ? i : -1;
     const sh = shapes[drawSel];
+    document.querySelectorAll("#plot .shapelayer path.eh-sel").forEach(x => x.classList.remove("eh-sel"));
+    if (sh) { const pth = document.querySelector(`#plot .shapelayer path[data-index="${($("plot")._ehShape0 || 0) + drawSel}"]`); if (pth) pth.classList.add("eh-sel"); }
     $("draw-del").disabled = !sh;
     $("draw-label").hidden = !(sh && (sh.name === "bracket" || sh.type === "line" || sh.type === "path"));
     if (sh) {
@@ -3530,24 +3547,24 @@
       const g = active().graph;
       const applied = updateSelected(sh => {
         sh.line = { ...(sh.line || {}), color: st.color, width: st.width, dash: st.dash };
-        if (sh.type === "rect" || sh.type === "circle") sh.fillcolor = st.fill === "none" ? "rgba(0,0,0,0)" : hexToRgba(st.color, Number(st.fill));
+        if (sh.type === "rect" || sh.type === "circle") sh.fillcolor = st.fill === "none" ? CLEAR_FILL : hexToRgba(st.color, Number(st.fill));
         if (sh.label) sh.label = { ...sh.label, font: { ...(sh.label.font || {}), color: st.color } };
       });
       g.drawStyle = st;   // the next shape uses this look too
       if (!applied) { save(); const el = $("plot"); if (el.layout) Plotly.relayout(el, { "newshape.line.color": st.color, "newshape.line.width": st.width, "newshape.line.dash": st.dash,
-        "newshape.fillcolor": st.fill === "none" ? "rgba(0,0,0,0)" : hexToRgba(st.color, Number(st.fill)) }); }
+        "newshape.fillcolor": st.fill === "none" ? CLEAR_FILL : hexToRgba(st.color, Number(st.fill)) }); }
     };
     ["draw-color", "draw-width", "draw-dash", "draw-fill"].forEach(id => $(id).onchange = restyle);
     $("draw-color").oninput = restyle;
     $("draw-label").oninput = () => updateSelected(sh => { sh.label = { textposition: sh.type === "line" ? "middle" : "top center", ...(sh.label || {}), text: esc($("draw-label").value) }; });
     $("draw-del").onclick = deleteSelected;
-    // which shape did a click select? (Plotly keeps the active shape index)
-    $("plot").addEventListener("mouseup", () => setTimeout(() => {
-      const el = $("plot"), fl = el._fullLayout;
-      if (!fl) return;
-      const i = fl._activeShapeIndex;
-      selectShape(typeof i === "number" && i >= (el._ehShape0 || 0) ? i - el._ehShape0 : -1);
-    }, 30));
+    // clicking a drawn shape selects it (pressing on empty graph space clears the selection)
+    $("plot").addEventListener("mousedown", e => {
+      if (e.button !== 0) return;
+      const el = $("plot"), path = e.target.closest && e.target.closest(".shapelayer path[data-index]");
+      const i = path ? Number(path.getAttribute("data-index")) - (el._ehShape0 || 0) : -1;
+      selectShape(i >= 0 ? i : -1);
+    }, true);
     document.addEventListener("keydown", e => {
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
       if ((e.key === "Delete" || e.key === "Backspace") && drawSel >= 0) { e.preventDefault(); deleteSelected(); }
@@ -3568,6 +3585,206 @@
     $("draw-color").value = toHex(st.color); $("draw-width").value = String(st.width); $("draw-dash").value = st.dash; $("draw-fill").value = String(st.fill);
     drawMode = "select"; document.querySelectorAll("#draw-bar [data-draw]").forEach(b => b.classList.toggle("on", b.dataset.draw === "select"));
     selectShape(-1);
+  }
+
+  // ======================================================================
+  // workflow: status strip (data → analysis → result → checks), workspace views, status bar
+  // ======================================================================
+  function renderFlow() {
+    const s = active(), r = lastResult, box = $("flow-strip");
+    if (!box) return;
+    const t = TYPES[s.type];
+    let nVals = 0;
+    if (!t.noData) s.data.forEach(row => row.forEach((v, j) => { if (isNum(v) && !isTextCol(t, j)) nVals++; }));
+    const nx = (s.excluded || []).length;
+    const steps = [];
+    if (!t.noData) steps.push({ k: "data", state: nVals ? "ok" : "todo", label: "Data", text: nVals ? `${nVals} value${nVals === 1 ? "" : "s"}${nx ? `, ${nx} excluded` : ""}` : "paste or type your numbers", to: ".data-card" });
+    steps.push({ k: "analysis", state: r ? "ok" : lastError ? "wait" : "todo", label: "Analysis", text: r ? plainText(r.test_name || t.label) : lastError ? "needs more data" : t.label, to: "#options" });
+    if (r) {
+      const p = typeof r.p === "number" ? r.p : null;
+      steps.push({ k: "result", state: "ok", label: "Result", text: p !== null ? `${plainText(fmtP(p))}${r.alpha ? (p < r.alpha ? ", significant" : ", not significant") : ""}` : "ready", to: "#results" });
+      const warns = (r.checklist || []).filter(c => c.status === "warn");
+      if (r.checklist) steps.push({ k: "checks", state: warns.length ? "warn" : "ok", label: "Checks", text: warns.length ? `${warns.length} thing${warns.length > 1 ? "s" : ""} to look at: ${warns.map(w => w.check.toLowerCase()).join(", ")}` : "assumptions look fine", to: "#results details.checklist" });
+    }
+    box.innerHTML = steps.map(st => `<button class="flow-step ${st.state}" data-to="${esc(st.to)}" title="Go to ${esc(st.label.toLowerCase())}"><span class="dot" aria-hidden="true"></span><b>${st.label}</b><span>${esc(st.text)}</span></button>`).join('<span class="flow-sep" aria-hidden="true"></span>');
+    box.querySelectorAll("[data-to]").forEach(b => b.onclick = () => {
+      const view = document.body.dataset.view || "split";
+      const needData = b.dataset.to === ".data-card" || b.dataset.to === "#options";
+      if ((needData && view === "graph") || (!needData && view === "data")) setView("split");
+      const el = document.querySelector(b.dataset.to);
+      if (!el) return;
+      if (el.tagName === "DETAILS") el.open = true;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 900);
+    });
+    $("sb-left").textContent = `${project.sheets.length} ${project.sheets.length === 1 ? "analysis" : "analyses"} in this project`;
+  }
+  function setView(v, remember = true) {
+    if (!["split", "data", "graph"].includes(v)) v = "split";
+    document.body.dataset.view = v;
+    document.querySelectorAll("#view-switch [data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === v));
+    const f = $("graph-format");
+    if (v === "graph") { f.hidden = false; renderFormat(); }
+    else if (!$("btn-format").classList.contains("on")) f.hidden = true;
+    plotZoom = 1;
+    setTimeout(() => fitPlot(), 0);
+    if (remember) api("/api/prefs", { method: "PUT", body: JSON.stringify({ view: v }) }).catch(() => {});
+  }
+
+  // ======================================================================
+  // graph editing: right-click menu, axis settings, shape order / opacity / copy-paste, copy a look
+  // ======================================================================
+  let shapeClip = null, lookClip = null, menuAt = null;
+  function plotPoint(ev) {   // where on the graph a mouse event landed, in paper coordinates (0..1)
+    const el = $("plot"), fl = el._fullLayout, r = el.getBoundingClientRect();
+    if (!fl || !el._ehSize) return null;
+    const k = r.width / el._ehSize[0], sz = fl._size;
+    const px = (ev.clientX - r.left) / k, py = (ev.clientY - r.top) / k;
+    return { x: (px - sz.l) / sz.w, y: 1 - (py - sz.t) / sz.h, px, py, sz };
+  }
+  function axisAt(ev) {
+    const p = plotPoint(ev);
+    if (!p) return null;
+    if (p.y < 0 && p.x > -0.02 && p.x < 1.02) return "x";
+    if (p.x < 0 && p.y > -0.02 && p.y < 1.02) return "y";
+    return null;
+  }
+  function closeMenus() { $("graph-menu").hidden = true; }
+  function placeFloating(box, x, y) {
+    box.hidden = false;
+    const w = box.offsetWidth, h = box.offsetHeight;
+    box.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, x))}px`;
+    box.style.top = `${Math.max(8, Math.min(window.innerHeight - h - 8, y))}px`;
+  }
+  function reorderShape(to) {
+    const shapes = (active().graph.draw && active().graph.draw.shapes) || [];
+    if (!shapes[drawSel]) return;
+    recordUndo(true);
+    const [sh] = shapes.splice(drawSel, 1);
+    if (to === "front") shapes.push(sh); else shapes.unshift(sh);
+    save(); drawPlot();
+    const i = to === "front" ? shapes.length - 1 : 0; setTimeout(() => selectShape(i), 0);
+  }
+  function copyShape() {
+    const shapes = (active().graph.draw && active().graph.draw.shapes) || [];
+    if (!shapes[drawSel]) return false;
+    shapeClip = JSON.parse(JSON.stringify(shapes[drawSel]));
+    toast("Shape copied. Ctrl+V pastes it here or on another graph.");
+    return true;
+  }
+  function pasteShape() {
+    if (!shapeClip) return false;
+    const g = active().graph;
+    recordUndo(true);
+    const copy = JSON.parse(JSON.stringify(shapeClip));
+    shiftShape(copy, 0.03, -0.03);
+    g.draw = { ...(g.draw || {}), shapes: [...((g.draw || {}).shapes || []), copy] };
+    shapeClip = JSON.parse(JSON.stringify(copy));   // the next paste steps again
+    save(); drawPlot();
+    const i = g.draw.shapes.length - 1; setTimeout(() => selectShape(i), 0);
+    return true;
+  }
+  function showGraphMenu(ev) {
+    const s = active(), g = s.graph;
+    if (!lastResult || s.type === "layout") return;
+    ev.preventDefault();
+    menuAt = plotPoint(ev);
+    const shapes = (g.draw && g.draw.shapes) || [], sel = shapes[drawSel];
+    const item = (act, label, key = "", off = false) => `<button role="menuitem" data-act="${act}" ${off ? "disabled" : ""}><span>${label}</span><kbd>${key}</kbd></button>`;
+    const sep = `<div class="sep"></div>`;
+    $("graph-menu").innerHTML = (sel ? `<div class="menu-title">Selected shape</div>` + item("front", "Bring to front") + item("back", "Send to back")
+        + `<div class="menu-row"><span>Opacity</span>${[100, 75, 50, 25].map(o => `<button data-act="op:${o / 100}" class="${Math.round((sel.opacity ?? 1) * 100) === o ? "on" : ""}">${o}%</button>`).join("")}</div>`
+        + item("copyshape", "Copy", "Ctrl+C") + item("dup", "Duplicate", "Ctrl+D") + item("del", "Delete", "Del") + sep : "")
+      + item("text", "Add text here") + item("arrow", "Add an arrow here") + item("pasteshape", "Paste shape", "Ctrl+V", !shapeClip) + sep
+      + item("xaxis", "X axis settings…") + item("yaxis", "Y axis settings…") + item("format", document.body.dataset.view === "graph" ? "Back to split view" : "Open the graph editor") + sep
+      + item("copylook", "Copy this graph's look") + item("pastelook", "Paste look", "", !lookClip) + sep
+      + item("copyimg", "Copy graph as picture") + item("svg", "Save as editable SVG") + item("resetzoom", "Reset zoom and axis ranges");
+    placeFloating($("graph-menu"), ev.clientX + 2, ev.clientY + 2);
+    $("graph-menu").querySelectorAll("[data-act]").forEach(b => b.onclick = e => { e.stopPropagation(); closeMenus(); graphAction(b.dataset.act, ev); });
+  }
+  function graphAction(act, ev) {
+    const s = active(), g = s.graph, at = menuAt || { x: 0.5, y: 0.5 };
+    const clamp = v => Math.min(1.05, Math.max(-0.05, v));
+    if (act === "front" || act === "back") return reorderShape(act);
+    if (act.startsWith("op:")) return void updateSelected(sh => { sh.opacity = Number(act.slice(3)); });
+    if (act === "copyshape") return void copyShape();
+    if (act === "pasteshape") return void pasteShape();
+    if (act === "dup") return duplicateSelected();
+    if (act === "del") return deleteSelected();
+    if (act === "text") {
+      recordUndo(true);
+      g.notes = [...(g.notes || []), { text: "Text", x: clamp(at.x), y: clamp(at.y) }];
+      save(); drawPlot(); if (!$("graph-format").hidden) renderFormat();
+      return toast("Text added. Click it to type; drag to move. Size, bold and color are under Format → Text labels.");
+    }
+    if (act === "arrow") {
+      recordUndo(true);
+      const st = drawStyle(g);
+      g.draw = { ...(g.draw || {}), arrows: [...((g.draw || {}).arrows || []), { x: clamp(at.x), y: clamp(at.y), xref: "paper", yref: "paper", ax: -60, ay: -45, text: "", color: st.color, width: st.width }] };
+      save(); drawPlot(); if (!$("graph-format").hidden) renderFormat();
+      return;
+    }
+    if (act === "xaxis" || act === "yaxis") return axisPopover(act[0], ev.clientX, ev.clientY);
+    if (act === "format") return setView(document.body.dataset.view === "graph" ? "split" : "graph");
+    if (act === "copylook") { lookClip = lookOf(g, s); return toast("Look copied. Right-click another graph → Paste look."); }
+    if (act === "pastelook") { recordUndo(true); applyLook(g, s, lookClip); save(); renderFormat(); drawPlot(); return toast("Look pasted. Undo puts the previous one back."); }
+    if (act === "copyimg") return copyGraphImage();
+    if (act === "svg") return exportPlot("svg");
+    if (act === "resetzoom") { setZoom(1); return drawPlot(); }
+  }
+  // settings for one axis, next to where you clicked
+  function axisPopover(which, x, y) {
+    const s = active(), g = s.graph, pop = $("axis-pop");
+    const keys = new Set([...TYPES[s.type].graphControls(s).map(c => c && c.k).filter(Boolean), "ymin", "ymax", "ytick", "logY", "yFormat", "xFormat", "tickAngle"]);
+    const has = k => keys.has(k);
+    const tx = (k, label, ph = "auto") => has(k) ? `<label>${label}<input type="text" data-ax="${k}" value="${esc(g[k] ?? "")}" placeholder="${ph}"></label>` : "";
+    const ck = (k, label) => has(k) ? `<label class="check"><input type="checkbox" data-ax="${k}" ${g[k] ? "checked" : ""}> ${label}</label>` : "";
+    const FM = [["auto", "Automatic"], ["d0", "1,234"], ["d1", "1,234.5"], ["d2", "1,234.56"], ["sci", "Scientific"], ["comma", "Thousands separator"]];
+    const se = (k, label, opts) => has(k) ? `<label>${label}<select data-ax="${k}">${opts.map(([o, l]) => `<option value="${o}" ${String(g[k] ?? "auto") === o ? "selected" : ""}>${l}</option>`).join("")}</select></label>` : "";
+    const X = which === "x";
+    const body = X
+      ? tx("xlabel", "Title", "") + tx("xmin", "Minimum") + tx("xmax", "Maximum") + tx("xtick", "Tick every") + ck("logX", "Log scale") + se("xFormat", "Numbers", FM)
+        + se("tickAngle", "Label angle", [["auto", "Automatic"], ["0", "Horizontal"], ["-30", "Slanted 30°"], ["-45", "Slanted 45°"], ["-90", "Vertical"]])
+      : tx("ylabel", "Title", "") + tx("ymin", "Minimum") + tx("ymax", "Maximum") + tx("ytick", "Tick every") + ck("logY", "Log scale") + se("yFormat", "Numbers", FM);
+    pop.innerHTML = `<div class="sp-head"><b>${X ? "X" : "Y"} axis</b><button class="icon" id="ax-close" title="Close">✕</button></div>${body}
+      <div class="sp-foot"><button class="ghost small" id="ax-auto">Automatic range</button></div>`;
+    placeFloating(pop, x + 10, y - 30);
+    $("ax-close").onclick = () => { pop.hidden = true; };
+    pop.querySelectorAll("[data-ax]").forEach(el => el.oninput = el.onchange = () => {
+      recordUndo();
+      g[el.dataset.ax] = el.type === "checkbox" ? el.checked : el.value;
+      if (/label$/.test(el.dataset.ax) && g.axisText) delete g.axisText[X ? "xaxis" : "yaxis"];
+      save(); drawPlot(); if (!$("graph-format").hidden && document.activeElement !== el) renderFormat();
+    });
+    $("ax-auto").onclick = () => { recordUndo(true); (X ? ["xmin", "xmax", "xtick"] : ["ymin", "ymax", "ytick"]).forEach(k => { if (has(k)) g[k] = ""; }); save(); drawPlot(); axisPopover(which, x, y); };
+  }
+  function wireGraphEditing() {
+    const wrap = $("plot-wrap");
+    wrap.addEventListener("contextmenu", showGraphMenu);
+    // Plotly swallows the browser's double-click, so time two presses ourselves
+    let lastDown = 0, lastAx = null;
+    wrap.addEventListener("mousedown", ev => {
+      if (ev.button !== 0 || !lastResult || active().type === "layout" || ev.target.closest(".annotation, .legend, .g-gtitle, .g-xtitle, .g-ytitle")) return;
+      const ax = axisAt(ev), now = Date.now();
+      if (ax && ax === lastAx && now - lastDown < 420) { lastDown = 0; setTimeout(() => axisPopover(ax, ev.clientX, ev.clientY), 60); }
+      else { lastDown = now; lastAx = ax; }
+    }, true);
+    document.addEventListener("mousedown", e => {
+      if (!e.target.closest("#graph-menu")) closeMenus();
+      const ap = $("axis-pop"); if (!ap.hidden && !ap.contains(e.target)) ap.hidden = true;
+    });
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape") { closeMenus(); $("axis-pop").hidden = true; }
+      if (e.altKey && ["1", "2", "3"].includes(e.key)) { e.preventDefault(); setView(["split", "data", "graph"][Number(e.key) - 1]); }
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable || e.target.closest("#grid")) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === "c" && drawSel >= 0) { if (copyShape()) e.preventDefault(); }
+      if (mod && e.key.toLowerCase() === "v" && shapeClip && (drawSel >= 0 || document.activeElement === document.body)) { if (pasteShape()) e.preventDefault(); }
+    });
+    document.querySelectorAll("#view-switch [data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
+    $("zoom-in").onclick = () => setZoom(plotZoom * 1.25);
+    $("zoom-out").onclick = () => setZoom(plotZoom / 1.25);
+    $("zoom-fit").onclick = () => setZoom(1);
   }
 
   function bracketLayout(pairs, top, span) {
@@ -4241,16 +4458,22 @@
   api("/api/prefs").then(p => {
     applyTheme(p.theme); myStyle = p.myStyle || null; savedLooks = p.looks && typeof p.looks === "object" ? p.looks : {};
     // first launch: offer the tour (not in automated browsers)
+    if (p.view && p.view !== "split" && !navigator.webdriver) setView(p.view, false);
     if (!p.tourDone && !navigator.webdriver) setTimeout(startTour, 1200);
   }).catch(() => {});
   $("btn-undo").onclick = () => undoRedo("undo");
   $("btn-redo").onclick = () => undoRedo("redo");
   $("btn-format").onclick = () => {
-    const f = $("graph-format"); f.hidden = !f.hidden;
+    const f = $("graph-format");
+    if (document.body.dataset.view === "graph") { setView("split"); return; }
+    f.hidden = !f.hidden;
     if (!f.hidden) renderFormat();
     $("btn-format").classList.toggle("on", !f.hidden); $("btn-format").setAttribute("aria-expanded", String(!f.hidden));
   };
   wireDrawBar();
+  wireGraphEditing();
+  // tool hints go to the status bar, so the toolbar stays on one line
+  new MutationObserver(() => { $("sb-right").innerHTML = esc($("draw-hint").textContent) || "Press <kbd>?</kbd> for help"; }).observe($("draw-hint"), { childList: true, characterData: true, subtree: true });
   // ---- drop a file anywhere to import it -------------------------------------------------
   let dragDepth = 0;
   const hasFiles = e => e.dataTransfer && [...(e.dataTransfer.types || [])].includes("Files");
