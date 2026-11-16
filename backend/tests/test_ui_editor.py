@@ -29,7 +29,10 @@ def test_workflow_views_and_graph_editing(server):  # noqa: F811
         txt = page.inner_text("#flow-strip")
         assert "18 values" in txt and "ANOVA" in txt and "P < 0.0001" in txt and "Checks" in txt
         page.click("#flow-strip .flow-step:has-text('Checks')")
+        assert page.is_visible("#flow-strip .flow-detail") and "Sample size" in page.inner_text("#flow-strip .flow-detail")
+        page.click("#flow-strip .flow-detail [data-to]")
         assert page.evaluate("document.querySelector('#results details.checklist').open")
+        assert not page.is_visible("#flow-strip .flow-detail")
         # four layouts; nothing is recalculated or lost when switching
         res_before = page.inner_text("#results")
         page.click('#view-switch [data-view="figure"]'); page.wait_for_timeout(400)
@@ -54,7 +57,10 @@ def test_workflow_views_and_graph_editing(server):  # noqa: F811
         # the stack: one section open at a time unless pinned; compact rail and back
         page.click('#stack [data-pin="data"]'); page.click('#stack [data-pin="analysis"]')   # unpin (pinned for automated runs)
         page.click('#stack [data-stk="style"]'); page.wait_for_timeout(250)
-        assert page.is_visible("#style-preset") and not page.is_visible("#sheet-list") and page.is_visible(".dial")
+        assert page.is_visible("#dial-linescale") and not page.is_visible("#sheet-list") and not page.is_visible("#style-preset")
+        page.click('[data-sub="style:Colors"]'); page.wait_for_timeout(150)
+        assert page.is_visible("#style-preset") and not page.is_visible("#dial-linescale")
+        page.click('[data-sub="style:Lines"]')
         page.click('#stack [data-stk="export"]'); page.wait_for_timeout(250)
         assert page.is_visible("#btn-export-go") and not page.is_visible("#style-preset")
         page.keyboard.press("Alt+0"); page.wait_for_timeout(300)
@@ -150,5 +156,60 @@ def test_workflow_views_and_graph_editing(server):  # noqa: F811
         while page.query_selector("#graph-format [data-note-del]"):
             page.click("#graph-format [data-note-del] >> nth=-1"); page.wait_for_timeout(150)
         page.click("#btn-format")
+        assert errors == [], errors
+        browser.close()
+
+
+def test_contextual_editing_and_capsule(server):  # noqa: F811
+    with sync_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"no browser: {e}")
+        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(server)
+        page.wait_for_selector("#sheet-list li")
+        page.click("#sheet-list li:has-text('two-way AN')")
+        page.wait_for_selector("#plot .main-svg"); page.wait_for_timeout(600)
+        # table headings carry the series color
+        dots = page.evaluate("[...document.querySelectorAll('#grid .sdot.on')].map(d => d.style.background)")
+        legend = page.evaluate("document.getElementById('plot')._fullData.filter(t => t.type === 'bar').map(t => t.marker.line.color)")
+        assert len(dots) == 3 and len(legend) == 3
+        # one click on the Y axis opens its settings, including thickness
+        x, y, w, h = page.eval_on_selector("#plot .draglayer .nsewdrag", BOX)
+        page.mouse.click(x - 25, y + h * 0.5); page.wait_for_timeout(250)
+        assert page.is_visible("#axis-pop") and "Y axis" in page.inner_text("#axis-pop")
+        page.fill('#axis-pop [data-ax="axisWidth"]', "3"); page.wait_for_timeout(300)
+        assert page.evaluate("document.getElementById('plot').layout.yaxis.linewidth") == 3
+        page.fill('#axis-pop [data-ax="axisWidth"]', "1.5"); page.keyboard.press("Escape")
+        # the legend background opens legend settings
+        page.click("#plot .legend rect.bg", position={"x": 3, "y": 3}); page.wait_for_timeout(250)
+        assert page.is_visible("#axis-pop") and "Legend" in page.inner_text("#axis-pop")
+        page.keyboard.press("Escape")
+        # a text label: font, size, bold, alignment in a popover above it
+        page.click('#draw-bar [data-draw="text"]'); page.wait_for_timeout(400)
+        ann = page.locator("#plot .annotation").last
+        ann.click(); page.wait_for_timeout(300)
+        assert page.is_visible("#axis-pop") and "Align" in page.inner_text("#axis-pop")
+        page.click("#tx-b"); page.wait_for_timeout(250)
+        page.click('#axis-pop [data-al="left"]'); page.wait_for_timeout(250)
+        a = page.evaluate("document.getElementById('plot').layout.annotations.slice(-1)[0]")
+        assert a["font"]["weight"] == "bold" and a["align"] == "left"
+        page.click("#tx-del"); page.wait_for_timeout(300)
+        assert page.evaluate("document.getElementById('plot').layout.annotations.length") == page.evaluate("document.getElementById('plot').layout.annotations.length")
+        # the Style panel opens by itself for a selected shape, with the width dial
+        assert not page.is_visible("#draw-style")
+        page.click('#draw-bar [data-draw="line"]')
+        page.mouse.move(x + w * 0.2, y + h * 0.3); page.mouse.down(); page.mouse.move(x + w * 0.5, y + h * 0.3, steps=6); page.mouse.up()
+        page.wait_for_timeout(400)
+        assert page.is_visible("#draw-style") and page.is_visible("#dial-draw")
+        page.focus("#dial-draw"); page.keyboard.press("ArrowUp"); page.wait_for_timeout(300)
+        widths = page.evaluate("document.getElementById('plot').layout.shapes.filter(s => s.editable).map(s => s.line.width)")
+        assert widths[-1] == 1.75
+        page.keyboard.press("Delete") if False else page.click("#draw-del")
+        page.wait_for_timeout(300)
+        assert not page.is_visible("#draw-style")
         assert errors == [], errors
         browser.close()

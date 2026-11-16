@@ -246,30 +246,32 @@
   // ---- Figure Stack: Data, Analysis (static in the page) + Figure, Style, Export (filled from the Format controls) ----
   const STK_ICONS = {"data": "<svg class=\"ic\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.5\"/><path d=\"M2 6.5h12M2 9.8h12M6 3v10\"/></svg>", "analysis": "<svg class=\"ic\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M2 13h12M4 13V8M8 13V4M12 13V9.5\"/></svg>", "figure": "<svg class=\"ic\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M2.5 2v11.5H14\"/><path d=\"M4.5 10.5c2-.3 3-5.800 4.500-5.800s1.500 3.300 4.500 3.300\"/></svg>", "style": "<svg class=\"ic\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><circle cx=\"8\" cy=\"8\" r=\"5.500\"/><path d=\"M8 2.500a5.500 5.500 0 010 11z\" fill=\"currentColor\"/></svg>", "export": "<svg class=\"ic\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M8 2v8M5 7l3 3 3-3M3 13h10\"/></svg>"};
   const STK_LABELS = { figure: "Figure", style: "Style", export: "Export" };
-  const HEAD_SECTION = { "Graph": "figure", "Axes & background": "figure", "Text labels": "figure", "Text": "style", "Colors": "style", "Points": "style",
-    "Lines & error bars": "style", "Bars & fills": "style", "Export": "export" };
-  const stack = { open: "data", pins: new Set(), compact: false };
+  const GROUPS = { figure: ["Graph type", "Axes", "Error bars", "Legend", "Annotations"], style: ["Lines", "Markers", "Colors", "Typography", "Dimensions"], export: ["Export"] };
+  const HEAD_SECTION = Object.fromEntries(Object.entries(GROUPS).flatMap(([sec, gs]) => gs.map(x => [x, sec])));
+  const stack = { open: "data", pins: new Set(), compact: false, sub: { figure: "Graph type", style: "Lines" } };
   function sectionFormat(box, s, g) {
-    const parts = { figure: [], style: [], export: [] };
-    let cur = "figure";
+    const parts = {};
+    let cur = "Graph type";
     [...box.children].forEach(k => {
-      if (k.classList.contains("fhead")) cur = HEAD_SECTION[k.textContent.trim()] || cur;
-      const to = k.classList.contains("series-tbl") || k.classList.contains("style-actions") || k.querySelector("#style-preset") ? "style" : cur;
-      if (k.classList.contains("fhead") && ["Graph", "Export"].includes(k.textContent.trim())) return;   // the card title says it already
-      parts[to].push(k);
+      if (k.classList.contains("fhead")) { cur = k.textContent.trim(); return; }
+      const grp = k.classList.contains("series-tbl") ? "Colors" : cur;
+      (parts[grp] = parts[grp] || []).push(k);
     });
     box.innerHTML = ["figure", "style", "export"].map(k => `<section class="stk" data-sec="${k}">
       <div class="stk-head"><button class="stk-toggle" data-stk="${k}" aria-expanded="false" title="${STK_LABELS[k]}">${STK_ICONS[k]}<span>${STK_LABELS[k]}</span><span class="chev" aria-hidden="true"></span></button><button class="icon stk-pin" data-pin="${k}" title="Keep this section open" aria-label="Keep ${STK_LABELS[k]} open">•</button></div>
-      <div class="stk-body fmt"></div></section>`).join("");
-    Object.entries(parts).forEach(([k, nodes]) => { const b = box.querySelector(`[data-sec="${k}"] .stk-body`); nodes.forEach(n => b.appendChild(n)); });
+      <div class="stk-body fmt">${GROUPS[k].length > 1 ? `<div class="subnav" role="tablist" aria-label="${STK_LABELS[k]} groups">${GROUPS[k].map(x => `<button role="tab" data-sub="${k}:${x}">${x}</button>`).join("")}</div>` : ""}
+      ${GROUPS[k].map(x => `<div class="fgrp" data-grp="${x}" role="tabpanel"></div>`).join("")}</div></section>`).join("");
+    Object.entries(parts).forEach(([grp, nodes]) => { const b = box.querySelector(`.fgrp[data-grp="${grp}"]`); if (b) nodes.forEach(n => b.appendChild(n)); });
+    box.querySelectorAll("[data-sub]").forEach(b => b.onclick = () => { const [sec, x] = b.dataset.sub.split(":"); stack.sub[sec] = x; showSubs(); saveStack(); });
+    showSubs();
     // Style: the line-width dial (same setting as the "Line thickness" slider)
-    const sb = box.querySelector('[data-sec="style"] .stk-body');
+    const sb = box.querySelector('.fgrp[data-grp="Lines"]');
     const dialWrap = document.createElement("div"); dialWrap.className = "wide dial-row";
-    dialWrap.innerHTML = dialHTML("dial-linescale", Number(g.lineScale) || 1, 0.25, 4, 0.25, "Line width", "×") + `<p class="hint">Drag the dial, use the arrow keys, or type a value. It scales every line and curve on this figure; click one series on the figure to set its own width.</p>`;
-    sb.insertBefore(dialWrap, sb.children[1] || null);
+    dialWrap.innerHTML = dialHTML("dial-linescale", Number(g.lineScale) || 1, 0.25, 4, 0.25, "Line width", "×") + `<p class="hint">Scales every line and curve. Drag, use the arrow keys, or type a value. To change one series, click it on the figure.</p>`;
+    sb.insertBefore(dialWrap, sb.firstChild);
     wireDial(dialWrap.querySelector(".dial"), v => { recordUndo(); g.lineScale = v; save(); drawPlot(); const r = box.querySelector('[data-g="lineScale"]'); if (r) { r.value = v; if (r.previousElementSibling) r.previousElementSibling.textContent = v; } });
     // Export: file name, format and one clear action (the export engine is unchanged)
-    const eb = box.querySelector('[data-sec="export"] .stk-body');
+    const eb = box.querySelector('.fgrp[data-grp="Export"]');
     const ex = document.createElement("div"); ex.className = "wide export-row";
     ex.innerHTML = `<label>File name<input type="text" id="export-name" value="${esc(g.exportName || "")}" placeholder="${esc(`${projectName} - ${s.title}`)}"></label>
       <label>Format<select id="export-fmt">${[["png", "PNG (picture)"], ["svg", "SVG (fully editable)"], ["tiff", "TIFF (journals)"], ["pdf", "PDF"]].map(([v, l]) => `<option value="${v}" ${(g.exportFmt || "png") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
@@ -281,6 +283,22 @@
     ex.querySelector("#btn-export-copy").onclick = copyGraphImage;
     applyStack();
   }
+  function showSubs() {
+    const all = !$("graph-format").hidden;   // "All settings": every group of Figure, Style and Export at once
+    document.body.classList.toggle("all-settings", all);
+    document.querySelectorAll("#graph-format .stk").forEach(sec => {
+      const k = sec.dataset.sec, want = stack.sub[k] || GROUPS[k][0];
+      sec.querySelectorAll(".fgrp").forEach(p => { p.hidden = !all && GROUPS[k].length > 1 && p.dataset.grp !== want; });
+      sec.querySelectorAll("[data-sub]").forEach(b => { const on = b.dataset.sub === `${k}:${want}`; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); });
+    });
+  }
+  // show the group that holds a given control (e.g. a test or a context menu asks for "fontFamily")
+  function revealControl(sel) {
+    const el = document.querySelector(`#graph-format ${sel}`);
+    const grp = el && el.closest(".fgrp"), sec = el && el.closest(".stk");
+    if (!grp) return;
+    stack.sub[sec.dataset.sec] = grp.dataset.grp; showSubs();
+  }
   function applyStack() {
     document.body.classList.toggle("stack-compact", stack.compact);
     document.querySelectorAll("#stack .stk").forEach(el => {
@@ -291,7 +309,7 @@
     });
     $("btn-compact").textContent = stack.compact ? "»" : "«";
   }
-  function saveStack() { api("/api/prefs", { method: "PUT", body: JSON.stringify({ stack: { open: stack.open, pins: [...stack.pins], compact: stack.compact } }) }).catch(() => {}); }
+  function saveStack() { api("/api/prefs", { method: "PUT", body: JSON.stringify({ stack: { open: stack.open, pins: [...stack.pins], compact: stack.compact, sub: stack.sub } }) }).catch(() => {}); }
   function openStack(k, toggle = false) { stack.open = toggle && stack.open === k ? null : k; applyStack(); saveStack(); }
   function wireStack() {
     $("stack").addEventListener("click", e => {
@@ -458,7 +476,8 @@
       if (nn != null) t.name = esc(nn);
     });
     layout.annotations = [...(layout.annotations || []), ...(g.notes || []).map(n => ({ text: esc(n.text || " "), x: n.x ?? 0.5, y: n.y ?? 0.95,
-      xref: "paper", yref: "paper", showarrow: false, font: { size: Number(n.size) || (Number(g.fontSize) || 13),
+      xref: "paper", yref: "paper", showarrow: false, ...(n.align ? { align: n.align, xanchor: { left: "left", center: "center", right: "right" }[n.align] } : {}),
+      font: { size: Number(n.size) || (Number(g.fontSize) || 13), ...(n.font ? { family: `${n.font}, Helvetica, Arial, sans-serif` } : {}),
         ...(n.color ? { color: n.color } : {}), ...(n.bold ? { weight: "bold" } : {}), ...(n.italic ? { style: "italic" } : {}) } }))];
     (layout.shapes || []).forEach(sh => { if (sh.line && sh.line.width) sh.line.width *= ls; });
     applyFrame(layout, g);
@@ -1521,7 +1540,7 @@
     let h = "<thead><tr><th class='rownum'></th>";
     s.cols.forEach((c, j) => {
       h += `<th><div class="colkind">${esc(t.colKind(j, s))}${canRemove(j) ? `<button class="rm" data-rm="${j}" title="Remove this column">✕</button>` : ""}</div>
-        <div class="colhead"><input data-head="${j}" value="${esc(c)}" spellcheck="false" aria-label="${esc(t.colKind(j, s))} name"></div></th>`;
+        <div class="colhead"><span class="sdot" data-sdot="${j}" aria-hidden="true"></span><input data-head="${j}" value="${esc(c)}" spellcheck="false" aria-label="${esc(t.colKind(j, s))} name"></div></th>`;
     });
     h += "</tr></thead><tbody>";
     // big tables: draw the first rows now and the rest as the table is scrolled (keeps typing and switching fast)
@@ -2189,34 +2208,42 @@
     const head = label => ({ kind: "head", label });
     const rng = (k, label, min, max, step = 1) => ({ k, label, kind: "range", min, max, step });
     const typeCtrls = TYPES[s.type].graphControls(s);
-    const ctrls = [head("Graph"), { kind: "presets" }, txt("title", "Graph title"), ...typeCtrls,
-      txt("ymin", "Y min", "auto"), txt("ymax", "Y max", "auto"), txt("ytick", "Y tick every", "auto"), chk("logY", "Log Y axis"),
-      head("Text"), sel("fontFamily", "Font", [["Arial", "Arial"], ["Helvetica", "Helvetica"], ["Times New Roman", "Times New Roman"], ["Calibri", "Calibri"], ["Verdana", "Verdana"], ["Georgia", "Georgia"], ["Courier New", "Courier New"]]),
-      rng("fontSize", "Base font size", 8, 24), txt("titleSize", "Axis title size", "auto"), txt("tickSize", "Tick label size", "auto"),
-      sel("titleWeight", "Titles", [["normal", "Regular"], ["bold", "Bold"], ["italic", "Italic"], ["bolditalic", "Bold italic"]]),
-      { k: "textColor", label: "Text & axis color", kind: "color" }, { kind: "symbols" },
-      head("Colors"), sel("palette", "Palette", [["vivid", "Vivid"], ["colorblind", "Colorblind-safe"], ["classic", "Classic"], ["pastel", "Pastel"], ["grayscale", "Grayscale"]]),
-      head("Points"), sel("pointSymbol", "Shape", [["default", "Default"], ["circle", "Circle"], ["square", "Square"], ["diamond", "Diamond"], ["triangle-up", "Triangle"],
-        ["circle-open", "Open circle"], ["square-open", "Open square"], ["triangle-up-open", "Open triangle"], ["x", "Cross"]]),
-      rng("pointSize", "Size", 2, 20), rng("pointOpacity", "Opacity", 0.1, 1, 0.05), rng("pointLine", "Outline width", 0, 3, 0.25),
-      { k: "pointLineColor", label: "Outline color", kind: "color" },
-      head("Lines & error bars"), rng("lineScale", "Line thickness", 0.25, 4, 0.25), rng("errWidth", "Error bar thickness", 0.5, 4, 0.25), rng("capWidth", "Error bar cap width", 0, 20),
-      sel("errDir", "Error bar direction", [["both", "Both directions"], ["up", "Above only (away from zero)"]]),
-      head("Bars & fills"), sel("barOpacity", "Fill opacity", [["", "Automatic"], ["0", "0% (outline only)"], ["0.15", "15%"], ["0.3", "30%"], ["0.5", "50%"], ["0.75", "75%"], ["1", "100% (solid)"]]),
-      rng("barLine", "Outline width", 0, 4, 0.25), sel("pattern", "Pattern", [["none", "None"], ["/", "Diagonal ////"], ["\\", "Diagonal \\\\"], ["x", "Cross-hatch"], [".", "Dots"], ["-", "Horizontal"], ["|", "Vertical"], ["vary", "Different per series"]]),
-      head("Axes & background"), sel("frame", "Axis lines", [["prism", "Left and bottom"], ["offset", "Left and bottom, offset (Prism style)"], ["box", "Box (all four sides)"], ["none", "No axis lines"]]),
+    // controls in small task groups: Figure (type, axes, error bars, legend, annotations), Style (lines, markers, colors, typography, size)
+    const AXIS_K = /^(x|y)(label|min|max|tick)$|^log[XY]$/, ERR_K = /^(err|repMode|errDir|meanColor)$/;
+    const tAxis = typeCtrls.filter(c => c && AXIS_K.test(c.k)), tErr = typeCtrls.filter(c => c && ERR_K.test(c.k));
+    const tRest = typeCtrls.filter(c => !(c && (AXIS_K.test(c.k) || ERR_K.test(c.k))));
+    const axisKeys = new Set(tAxis.map(c => c.k));
+    const ctrls = [head("Graph type"), txt("title", "Graph title"), ...tRest,
+      head("Axes"), ...tAxis, ...["ymin", "ymax", "ytick"].filter(k => !axisKeys.has(k)).map(k => txt(k, { ymin: "Y min", ymax: "Y max", ytick: "Y tick every" }[k], "auto")),
+      ...(axisKeys.has("logY") ? [] : [chk("logY", "Log Y axis")]),
+      sel("frame", "Axis lines", [["prism", "Left and bottom"], ["offset", "Left and bottom, offset (Prism style)"], ["box", "Box (all four sides)"], ["none", "No axis lines"]]),
       rng("axisWidth", "Axis thickness", 0.5, 4, 0.25), sel("tickDir", "Ticks", [["outside", "Outside"], ["inside", "Inside"], ["none", "None"]]),
       rng("tickLen", "Tick length", 0, 12), chk("minorTicks", "Minor ticks"), chk("grid", "Gridlines"),
       sel("yFormat", "Y numbers", [["auto", "Automatic"], ["d0", "1,234"], ["d1", "1,234.5"], ["d2", "1,234.56"], ["d3", "1.234 (3 decimals)"], ["sci", "Scientific (1.2e+3)"], ["comma", "Thousands separator"]]),
       sel("xFormat", "X numbers", [["auto", "Automatic"], ["d0", "1,234"], ["d1", "1,234.5"], ["d2", "1,234.56"], ["sci", "Scientific (1.2e+3)"], ["comma", "Thousands separator"]]),
       sel("tickAngle", "X label angle", [["auto", "Automatic"], ["0", "Horizontal"], ["-30", "Slanted 30°"], ["-45", "Slanted 45°"], ["-90", "Vertical"]]),
       ...(["ttest", "summary", "twoway", "contingency", "nested", "summary2"].includes(s.type) ? [txt("breakFrom", "Break Y axis from", "none"), txt("breakTo", "… to", "none"),
-        rng("breakSize", "Lower part height %", 15, 80, 5)] : []), sel("bg", "Background", [["white", "White"], ["transparent", "Transparent (for figures)"], ["light", "Light gray plot area"]]),
-      sel("legendPos", "Legend", [["auto", "Automatic"], ["tr", "Top right (inside)"], ["tl", "Top left (inside)"], ["outside", "Right (outside)"], ["top", "Above graph"], ["bottom", "Below graph"], ["hide", "Hide"]]),
-      head("Text labels"), { kind: "notes" },
-      head("Export"), sel("exportSize", "Size (the preview shows this size)", Object.entries(EXPORT_SIZES).map(([k, v]) => [k, v[2]])),
+        rng("breakSize", "Lower part height %", 15, 80, 5)] : []),
+      head("Error bars"), ...tErr, rng("errWidth", "Error bar thickness", 0.5, 4, 0.25), rng("capWidth", "Error bar cap width", 0, 20),
+      sel("errDir", "Error bar direction", [["both", "Both directions"], ["up", "Above only (away from zero)"]]),
+      head("Legend"), sel("legendPos", "Legend", [["auto", "Automatic"], ["tr", "Top right (inside)"], ["tl", "Top left (inside)"], ["outside", "Right (outside)"], ["top", "Above graph"], ["bottom", "Below graph"], ["hide", "Hide"]]),
+      head("Annotations"), { kind: "notes" },
+      head("Lines"), rng("lineScale", "Line thickness", 0.25, 4, 0.25),
+      head("Markers"), sel("pointSymbol", "Shape", [["default", "Default"], ["circle", "Circle"], ["square", "Square"], ["diamond", "Diamond"], ["triangle-up", "Triangle"],
+        ["circle-open", "Open circle"], ["square-open", "Open square"], ["triangle-up-open", "Open triangle"], ["x", "Cross"]]),
+      rng("pointSize", "Size", 2, 20), rng("pointOpacity", "Opacity", 0.1, 1, 0.05), rng("pointLine", "Outline width", 0, 3, 0.25),
+      { k: "pointLineColor", label: "Outline color", kind: "color" },
+      head("Colors"), { kind: "presets" }, sel("palette", "Palette", [["vivid", "Vivid"], ["colorblind", "Colorblind-safe"], ["classic", "Classic"], ["pastel", "Pastel"], ["grayscale", "Grayscale"]]),
+      sel("barOpacity", "Bar fill opacity", [["", "Automatic"], ["0", "0% (outline only)"], ["0.15", "15%"], ["0.3", "30%"], ["0.5", "50%"], ["0.75", "75%"], ["1", "100% (solid)"]]),
+      rng("barLine", "Bar outline width", 0, 4, 0.25), sel("pattern", "Bar pattern", [["none", "None"], ["/", "Diagonal ////"], ["\\", "Diagonal \\\\"], ["x", "Cross-hatch"], [".", "Dots"], ["-", "Horizontal"], ["|", "Vertical"], ["vary", "Different per series"]]),
+      sel("bg", "Background", [["white", "White"], ["transparent", "Transparent (for figures)"], ["light", "Light gray plot area"]]),
+      head("Typography"), sel("fontFamily", "Font", [["Arial", "Arial"], ["Helvetica", "Helvetica"], ["Times New Roman", "Times New Roman"], ["Calibri", "Calibri"], ["Verdana", "Verdana"], ["Georgia", "Georgia"], ["Courier New", "Courier New"]]),
+      rng("fontSize", "Base font size", 8, 24), txt("titleSize", "Axis title size", "auto"), txt("tickSize", "Tick label size", "auto"),
+      sel("titleWeight", "Titles", [["normal", "Regular"], ["bold", "Bold"], ["italic", "Italic"], ["bolditalic", "Bold italic"]]),
+      { k: "textColor", label: "Text & axis color", kind: "color" }, { kind: "symbols" },
+      head("Dimensions"), sel("exportSize", "Size (the preview shows this size)", Object.entries(EXPORT_SIZES).map(([k, v]) => [k, v[2]])),
       ...(g.exportSize === "custom" ? [txt("exportW", "Width (inches)", "5.5"), txt("exportH", "Height (inches)", "4.2")] : []),
-      sel("exportDpi", "Resolution (PNG/TIFF)", [["150", "150 DPI (screen)"], ["300", "300 DPI (print)"], ["600", "600 DPI (high)"]])];
+      head("Export"), sel("exportDpi", "Resolution (PNG/TIFF)", [["150", "150 DPI (screen)"], ["300", "300 DPI (print)"], ["600", "600 DPI (high)"]])];
     $("graph-format").innerHTML = ctrls.map(c => {
       const v = g[c.k];
       if (c.kind === "select") return `<label>${c.label}<select data-g="${c.k}">${c.opts.map(([o, l]) => `<option value="${o}" ${v === o ? "selected" : ""}>${l}</option>`).join("")}</select></label>`;
@@ -3540,6 +3567,7 @@
     if (el.querySelector(".empty")) el.innerHTML = "";
     styleCtx = s.graph;
     TYPES[s.type].draw(el, lastResult, masked(s));
+    updateGridDots();
     if (drawMode !== "select" && DRAG[drawMode] && el.layout) Plotly.relayout(el, { dragmode: DRAG[drawMode] });
     if (s.graph.legend === "hide" && el.layout && el.layout.showlegend) Plotly.relayout(el, { showlegend: false });
   }
@@ -3555,6 +3583,7 @@
   function setDrawMode(mode) {
     const el = $("plot"), s = active();
     drawMode = mode;
+    if (mode !== "select" && drawSel >= 0) selectShape(-1);   // drawing something new: put the style panel away
     document.querySelectorAll("#draw-bar [data-draw]").forEach(b => b.classList.toggle("on", b.dataset.draw === mode));
     $("draw-hint").textContent = HINTS[mode] || "";
     if (el && el.layout && el._fullLayout) Plotly.relayout(el, { dragmode: DRAG[mode] || "zoom" });
@@ -3587,6 +3616,8 @@
       save(); drawPlot();
       setTimeout(() => selectShape(shapes.length - 1), 60);
       toast("Bracket added. Type its label (e.g. ** or P = 0.01) in the box on the toolbar.");
+    } else if (shapes.length) {
+      const i = shapes.length - 1; setTimeout(() => selectShape(i), 60);   // a new shape starts selected, its style panel open
     }
     setDrawMode("select");
   }
@@ -3600,11 +3631,34 @@
     $("draw-label").hidden = !(sh && (sh.name === "bracket" || sh.type === "line" || sh.type === "path"));
     if (sh) {
       if (sh.line && sh.line.color) $("draw-color").value = toHex(sh.line.color);
-      if (sh.line && sh.line.width) $("draw-width").value = String(sh.line.width);
+      if (sh.line && sh.line.width) setWidthOption(sh.line.width);
       $("draw-dash").value = (sh.line && sh.line.dash) || "solid";
       $("draw-label").value = (sh.label && sh.label.text) || "";
       $("draw-hint").textContent = "Selected: arrow keys move it (Shift = bigger steps), Ctrl+D duplicates, Delete removes it.";
-    } else $("draw-hint").textContent = HINTS[drawMode] || "";
+      drawStyleOpen(true, "auto");
+    } else { $("draw-hint").textContent = HINTS[drawMode] || ""; if (drawStyleAuto) drawStyleOpen(false); }
+    renderDrawDial();
+  }
+  // the toolbar's Style panel: opens by itself when a shape is selected, or from the Style button
+  let drawStyleAuto = false;
+  function drawStyleOpen(on, how = "user") {
+    const p = $("draw-style");
+    if (on && !p.hidden) return;
+    p.hidden = !on; drawStyleAuto = on && how === "auto";
+    $("draw-style-btn").classList.toggle("on", on); $("draw-style-btn").setAttribute("aria-expanded", String(on));
+  }
+  function setWidthOption(v) {
+    const sel = $("draw-width"), val = String(v);
+    if (![...sel.options].some(o => o.value === val)) { const o = document.createElement("option"); o.textContent = val; sel.appendChild(o); }
+    sel.value = val;
+  }
+  function renderDrawDial() {
+    const slot = $("draw-dial-slot");
+    if (!slot) return;
+    const cur = slot.querySelector(".dial");
+    if (cur && Number(cur.dataset.value) === Number($("draw-width").value)) return;
+    slot.innerHTML = dialHTML("dial-draw", Number($("draw-width").value) || 1.5, 0.25, 8, 0.25, "Line width", "pt");
+    wireDial(slot.querySelector(".dial"), v => { setWidthOption(v); $("draw-width").dispatchEvent(new Event("change")); });
   }
   function updateSelected(fn) {
     const s = active(), shapes = (s.graph.draw && s.graph.draw.shapes) || [];
@@ -3660,6 +3714,8 @@
         "newshape.fillcolor": st.fill === "none" ? CLEAR_FILL : hexToRgba(st.color, Number(st.fill)) }); }
     };
     ["draw-color", "draw-width", "draw-dash", "draw-fill"].forEach(id => $(id).onchange = restyle);
+    $("draw-style-btn").onclick = () => drawStyleOpen($("draw-style").hidden);
+    document.addEventListener("mousedown", e => { if (!$("draw-style").hidden && !drawStyleAuto && !e.target.closest("#draw-bar")) drawStyleOpen(false); });
     $("draw-color").oninput = restyle;
     $("draw-label").oninput = () => updateSelected(sh => { sh.label = { textposition: sh.type === "line" ? "middle" : "top center", ...(sh.label || {}), text: esc($("draw-label").value) }; });
     $("draw-del").onclick = deleteSelected;
@@ -3687,7 +3743,7 @@
     const s = active(), show = !!lastResult && s.type !== "layout";
     $("draw-bar").hidden = !show;
     const st = drawStyle(s.graph);
-    $("draw-color").value = toHex(st.color); $("draw-width").value = String(st.width); $("draw-dash").value = st.dash; $("draw-fill").value = String(st.fill);
+    $("draw-color").value = toHex(st.color); setWidthOption(st.width); $("draw-dash").value = st.dash; $("draw-fill").value = String(st.fill);
     drawMode = "select"; document.querySelectorAll("#draw-bar [data-draw]").forEach(b => b.classList.toggle("on", b.dataset.draw === "select"));
     selectShape(-1);
   }
@@ -3695,6 +3751,19 @@
   // ======================================================================
   // workflow: status strip (data → analysis → result → checks), workspace views, status bar
   // ======================================================================
+  // a small dot in each column heading, in the color that column's series has on the figure
+  function updateGridDots() {
+    const s = active(), names = seriesNames(s), g = s.graph;
+    document.querySelectorAll("#grid [data-sdot]").forEach(d => {
+      const j = +d.dataset.sdot, c = s.cols[j];
+      let i = names.indexOf(c);
+      if (i < 0) i = names.indexOf(`Group ${letter(j)}`);
+      if (i < 0 && s.type === "regression" && s.options.yMode !== "datasets" && j > 0 && s.options.yMode !== "meansd") i = 0;
+      d.style.background = i >= 0 ? color(g, i, names[i]) : "";
+      d.classList.toggle("on", i >= 0);
+      d.title = i >= 0 ? `${names[i]} on the figure` : "";
+    });
+  }
   function renderFlow() {
     const s = active(), r = lastResult, box = $("flow-strip");
     if (!box) return;
@@ -3711,8 +3780,22 @@
       const warns = (r.checklist || []).filter(c => c.status === "warn");
       if (r.checklist) steps.push({ k: "checks", state: warns.length ? "warn" : "ok", label: "Checks", text: warns.length ? `${warns.length} thing${warns.length > 1 ? "s" : ""} to look at: ${warns.map(w => w.check.toLowerCase()).join(", ")}` : "assumptions look fine", to: "#results details.checklist" });
     }
-    box.innerHTML = steps.map(st => `<button class="flow-step ${st.state}" data-to="${esc(st.to)}" title="Go to ${esc(st.label.toLowerCase())}"><span class="dot" aria-hidden="true"></span><b>${st.label}</b><span>${esc(st.text)}</span></button>`).join('<span class="flow-sep" aria-hidden="true"></span>');
+    // compact chips; click one for its details (warnings are never hidden: the Checks chip says what they are)
+    const detail = st => {
+      if (st.k === "data") {
+        const cols = s.cols.filter((c, j) => !isTextCol(t, j) && s.data.some(row => isNum(row[j]))).length;
+        return `<p>${esc(st.text)} in ${cols} column${cols === 1 ? "" : "s"}.${nx ? ` Excluded values are kept in the table (blue italics) but not used.` : ""}</p>`;
+      }
+      if (st.k === "analysis") return `<p><b>${esc(st.text)}</b>${r && r.posthoc_name ? `, with ${esc(plainText(r.posthoc_name))}` : ""}${r && r.alpha ? `. Significance level α = ${r.alpha}.` : "."}</p>${lastError ? `<p class="warn">${esc(lastError)}</p>` : ""}`;
+      if (st.k === "result") { const sm = document.querySelector("#results .summary"); return `<p>${sm ? esc(sm.textContent.trim()) : esc(st.text)}</p>`; }
+      return `<ul class="flow-checks">${(r.checklist || []).map(c => `<li class="ck-${c.status}"><b>${esc(c.check)}</b> ${esc(c.text)}</li>`).join("")}</ul>`;
+    };
+    const openK = box.dataset.open || "";
+    box.innerHTML = `<div class="flow-chips">${steps.map(st => `<button class="flow-step ${st.state} ${openK === st.k ? "open" : ""}" data-k="${st.k}" aria-expanded="${openK === st.k}" title="Details"><span class="dot" aria-hidden="true"></span><b>${st.label}</b><span>${esc(st.text)}</span></button>`).join("")}</div>`
+      + steps.filter(st => st.k === openK).map(st => `<div class="flow-detail" role="region" aria-label="${st.label} details">${detail(st)}<button class="ghost small" data-to="${esc(st.to)}">Show ${st.k === "checks" ? "in the results" : st.k === "data" ? "the data" : st.k === "analysis" ? "the analysis options" : "the full results"}</button></div>`).join("");
+    box.querySelectorAll("[data-k]").forEach(b => b.onclick = () => { box.dataset.open = openK === b.dataset.k ? "" : b.dataset.k; renderFlow(); });
     box.querySelectorAll("[data-to]").forEach(b => b.onclick = () => {
+      box.dataset.open = ""; renderFlow();
       const view = document.body.dataset.view || "split";
       if (b.dataset.to === "#options") openStack("analysis");
       else if (b.dataset.to === ".data-card") { if (view === "figure" || view === "analysis") setView("split"); }
@@ -3956,7 +4039,7 @@
   // settings for one axis, next to where you clicked
   function axisPopover(which, x, y) {
     const s = active(), g = s.graph, pop = $("axis-pop");
-    const keys = new Set([...TYPES[s.type].graphControls(s).map(c => c && c.k).filter(Boolean), "ymin", "ymax", "ytick", "logY", "yFormat", "xFormat", "tickAngle"]);
+    const keys = new Set([...TYPES[s.type].graphControls(s).map(c => c && c.k).filter(Boolean), "ymin", "ymax", "ytick", "logY", "yFormat", "xFormat", "tickAngle", "axisWidth", "tickSize"]);
     const has = k => keys.has(k);
     const tx = (k, label, ph = "auto") => has(k) ? `<label>${label}<input type="text" data-ax="${k}" value="${esc(g[k] ?? "")}" placeholder="${ph}"></label>` : "";
     const ck = (k, label) => has(k) ? `<label class="check"><input type="checkbox" data-ax="${k}" ${g[k] ? "checked" : ""}> ${label}</label>` : "";
@@ -3967,17 +4050,42 @@
       ? tx("xlabel", "Title", "") + tx("xmin", "Minimum") + tx("xmax", "Maximum") + tx("xtick", "Tick every") + ck("logX", "Log scale") + se("xFormat", "Numbers", FM)
         + se("tickAngle", "Label angle", [["auto", "Automatic"], ["0", "Horizontal"], ["-30", "Slanted 30°"], ["-45", "Slanted 45°"], ["-90", "Vertical"]])
       : tx("ylabel", "Title", "") + tx("ymin", "Minimum") + tx("ymax", "Maximum") + tx("ytick", "Tick every") + ck("logY", "Log scale") + se("yFormat", "Numbers", FM);
-    pop.innerHTML = `<div class="sp-head"><b>${X ? "X" : "Y"} axis</b><button class="icon" id="ax-close" title="Close">✕</button></div>${body}
+    const both = tx("tickSize", "Tick label size") + `<label>Axis thickness<input type="text" data-ax="axisWidth" value="${esc(g.axisWidth ?? 1.5)}" placeholder="1.5"></label>`;
+    pop.innerHTML = `<div class="sp-head"><b>${X ? "X" : "Y"} axis</b><button class="icon" id="ax-close" title="Close">✕</button></div>${body}${both}<p class="hint">Thickness and tick label size apply to both axes.</p>
       <div class="sp-foot"><button class="ghost small" id="ax-auto">Automatic range</button></div>`;
     placeFloating(pop, x + 10, y - 30);
     $("ax-close").onclick = () => { pop.hidden = true; };
     pop.querySelectorAll("[data-ax]").forEach(el => el.oninput = el.onchange = () => {
       recordUndo();
-      g[el.dataset.ax] = el.type === "checkbox" ? el.checked : el.value;
+      if (el.dataset.ax === "axisWidth") { const v = num(el.value); if (v === null || v < 0 || v > 8) return; g.axisWidth = v; }
+      else g[el.dataset.ax] = el.type === "checkbox" ? el.checked : el.value;
       if (/label$/.test(el.dataset.ax) && g.axisText) delete g.axisText[X ? "xaxis" : "yaxis"];
       save(); drawPlot(); if (!$("graph-format").hidden && document.activeElement !== el) renderFormat();
     });
     $("ax-auto").onclick = () => { recordUndo(true); (X ? ["xmin", "xmax", "xtick"] : ["ymin", "ymax", "ytick"]).forEach(k => { if (has(k)) g[k] = ""; }); save(); drawPlot(); axisPopover(which, x, y); };
+  }
+  function textPopover(i, rect) {
+    const g = active().graph, n = g.notes[i], pop = $("axis-pop");
+    const FONTS = ["", "Arial", "Helvetica", "Times New Roman", "Calibri", "Verdana", "Georgia", "Courier New"];
+    pop.innerHTML = `<div class="sp-head"><b>Text</b><button class="icon" id="ax-close" title="Close">✕</button></div>
+      <label>Font<select id="tx-font">${FONTS.map(f => `<option value="${f}" ${(n.font || "") === f ? "selected" : ""}>${f || "Same as the figure"}</option>`).join("")}</select></label>
+      <label>Size<input type="text" id="tx-size" value="${esc(n.size ?? "")}" placeholder="${g.fontSize || 13}"></label>
+      <div class="tx-row"><span>Style</span><button class="icon tgl ${n.bold ? "on" : ""}" id="tx-b" title="Bold" aria-pressed="${!!n.bold}"><b>B</b></button><button class="icon tgl ${n.italic ? "on" : ""}" id="tx-i" title="Italic" aria-pressed="${!!n.italic}"><i>I</i></button>
+        <input type="color" id="tx-color" value="${toHex(n.color || g.textColor || "#1b2130")}" title="Color"></div>
+      <div class="tx-row"><span>Align</span>${["left", "center", "right"].map(a => `<button class="tgl ${(n.align || "center") === a ? "on" : ""}" data-al="${a}" aria-pressed="${(n.align || "center") === a}">${a[0].toUpperCase() + a.slice(1)}</button>`).join("")}</div>
+      <div class="sp-foot"><button class="ghost small danger" id="tx-del">Delete text</button></div>`;
+    pop.hidden = false;
+    const h = pop.offsetHeight;
+    placeFloating(pop, rect.left, rect.top - h - 10 > 8 ? rect.top - h - 10 : rect.bottom + 10);   // above the text, so it stays visible
+    const upd = (fn, re = false) => { recordUndo(true); fn(); save(); drawPlot(); if (re) textPopover(i, rect); };
+    $("ax-close").onclick = () => { pop.hidden = true; };
+    $("tx-font").onchange = e => upd(() => { n.font = e.target.value || undefined; });
+    $("tx-size").oninput = e => { const v = num(e.target.value); if (e.target.value.trim() && (v === null || v < 5 || v > 72)) return; recordUndo(); n.size = e.target.value.trim(); save(); drawPlot(); };
+    $("tx-b").onclick = () => upd(() => { n.bold = !n.bold; }, true);
+    $("tx-i").onclick = () => upd(() => { n.italic = !n.italic; }, true);
+    $("tx-color").oninput = e => { recordUndo(); n.color = e.target.value; save(); drawPlot(); };
+    pop.querySelectorAll("[data-al]").forEach(b => b.onclick = () => upd(() => { n.align = b.dataset.al; }, true));
+    $("tx-del").onclick = () => { upd(() => { g.notes.splice(i, 1); }); pop.hidden = true; };
   }
   function legendPopover(x, y) {
     const g = active().graph, pop = $("axis-pop");
@@ -3994,13 +4102,28 @@
   function wireGraphEditing() {
     const wrap = $("plot-wrap");
     wrap.addEventListener("contextmenu", showGraphMenu);
-    // Plotly swallows the browser's double-click, so time two presses ourselves
-    let lastDown = 0, lastAx = null;
+    // one click selects: an axis opens its settings, the legend's background opens legend settings,
+    // a text label opens its text settings (Plotly's own in-place typing still works)
+    let down = null;
     wrap.addEventListener("mousedown", ev => {
-      if (ev.button !== 0 || !lastResult || active().type === "layout" || ev.target.closest(".annotation, .legend, .g-gtitle, .g-xtitle, .g-ytitle")) return;
-      const ax = axisAt(ev), now = Date.now();
-      if (ax && ax === lastAx && now - lastDown < 420) { lastDown = 0; setTimeout(() => axisPopover(ax, ev.clientX, ev.clientY), 60); }
-      else { lastDown = now; lastAx = ax; }
+      down = null;
+      if (ev.button !== 0 || !lastResult || active().type === "layout") return;
+      down = { x: ev.clientX, y: ev.clientY, t: Date.now(), target: ev.target, ax: axisAt(ev) };
+    }, true);
+    // Plotly covers the page while dragging, so the release can land outside the figure: listen on the document
+    document.addEventListener("mouseup", ev => {
+      const d = down; down = null;
+      if (!d || drawMode !== "select" || Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 4 || Date.now() - d.t > 500) return;
+      const el = $("plot"), g = active().graph;
+      const ann = d.target.closest && d.target.closest(".annotation");
+      if (ann) {
+        const i = Number(ann.getAttribute("data-index")) - (el._ehNote0 || 0);
+        if (g.notes && g.notes[i] && i < g.notes.length) { const r = ann.getBoundingClientRect(); setTimeout(() => textPopover(i, r), 30); }
+        return;
+      }
+      if (d.target.closest(".legend")) { if (d.target.matches(".legend rect.bg")) { const r = d.target.getBoundingClientRect(); legendPopover(r.right, r.top + 20); } return; }
+      if (d.target.closest(".g-gtitle, .g-xtitle, .g-ytitle, .shapelayer")) return;
+      if (d.ax) axisPopover(d.ax, ev.clientX, ev.clientY);
     }, true);
     document.addEventListener("mousedown", e => {
       if (!e.target.closest("#graph-menu")) closeMenus();
@@ -4699,7 +4822,7 @@
     applyTheme(p.theme); myStyle = p.myStyle || null; savedLooks = p.looks && typeof p.looks === "object" ? p.looks : {};
     // first launch: offer the tour (not in automated browsers)
     recentMethods = Array.isArray(p.recentMethods) ? p.recentMethods : [];
-    if (p.stack && !navigator.webdriver) { stack.open = p.stack.open ?? "data"; stack.pins = new Set(p.stack.pins || []); stack.compact = !!p.stack.compact; }
+    if (p.stack && !navigator.webdriver) { stack.open = p.stack.open ?? "data"; stack.pins = new Set(p.stack.pins || []); stack.compact = !!p.stack.compact; if (p.stack.sub) stack.sub = { ...stack.sub, ...p.stack.sub }; }
     if (navigator.webdriver) stack.pins = new Set(["data", "analysis"]);   // automated checks need both visible at once
     applyStack();
     if (p.split) setSplit(Number(p.split), false);
@@ -4711,7 +4834,7 @@
   $("btn-format").onclick = () => {
     const f = $("graph-format");
     f.hidden = !f.hidden;
-    if (!f.hidden) renderFormat();
+    if (!f.hidden) renderFormat(); else showSubs();
     $("btn-format").classList.toggle("on", !f.hidden); $("btn-format").setAttribute("aria-expanded", String(!f.hidden));
   };
   wireDrawBar();

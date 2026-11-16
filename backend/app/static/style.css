@@ -652,3 +652,104 @@ body[data-view="data"] .grid-wrap { max-height: calc(100vh - 205px); }
 .stk-body .options .seg button { flex: 1 1 30%; white-space: normal; }
 .stk-body .options pre, .stk-body .options code, .stk-body .options .eq { white-space: pre-wrap; word-break: break-word; }
 .stk-body .options label { overflow-wrap: anywhere; }
+
+/* ==========================================================================
+   Refinement pass: quiet stage, floating tool capsule, grouped settings,
+   status chips, series dots in the table
+   ========================================================================== */
+:root { --r-panel: 12px; --r-input: 7px; --shadow-1: 0 1px 2px rgba(25, 18, 45, .06); --shadow-2: 0 6px 22px rgba(25, 18, 45, .10), 0 1px 3px rgba(25, 18, 45, .08);
+  --ease: cubic-bezier(.2, .7, .2, 1); font-size: 13px; letter-spacing: -.003em; }
+:root[data-theme$="dark"] { --shadow-1: 0 1px 2px rgba(0, 0, 0, .3); --shadow-2: 0 10px 28px rgba(0, 0, 0, .45), 0 1px 3px rgba(0, 0, 0, .35); }
+input[type=text], input[type=number], input[type=search], select, textarea { border-radius: var(--r-input); }
+select, input[type=text], input[type=number] { transition: border-color .12s var(--ease), box-shadow .12s var(--ease); }
+select:focus, input[type=text]:focus, input[type=number]:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+button.ghost { border-color: var(--line); }
+
+/* the stage: quiet, no dots; the figure is a white sheet */
+.stage { position: relative; }
+.plot-wrap { background: var(--stage); background-image: none; border: 0; border-radius: 10px; padding: 64px 0 22px; }
+:root:not([data-theme$="dark"]) .plot-wrap { background: color-mix(in srgb, var(--bg) 70%, var(--panel)); }
+.plot-wrap .plot { box-shadow: 0 0 0 1px rgba(20, 20, 40, .07), 0 2px 4px rgba(20, 20, 40, .06), 0 12px 32px rgba(20, 20, 40, .10); border-radius: 1px; }
+.right-col > .card:first-child { padding-bottom: 8px; }
+.right-col > .card:first-child .card-head { margin-bottom: 8px; }
+
+/* floating tool capsule, centered over the sheet */
+.draw-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 2px;
+  padding: 3px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; box-shadow: var(--shadow-2); overflow: visible; flex-wrap: nowrap; max-width: calc(100% - 16px); }
+.draw-bar .seg.tools { border: 0; background: transparent; border-radius: 999px; overflow: visible; gap: 1px; }
+.draw-bar .seg.tools button, .draw-bar .tb-btn { border: 0 !important; border-radius: 999px !important; padding: 5px 8px; gap: 5px; font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; background: transparent; }
+.draw-bar .seg.tools button:hover, .draw-bar .tb-btn:hover { background: var(--soft); color: var(--ink); }
+.draw-bar .seg.tools button.on, .draw-bar .tb-btn.on { background: var(--accent); color: var(--on-accent); }
+.draw-bar .seg.tools button span, .draw-bar .tb-btn span { font-size: 12px; }
+body:not([data-view="figure"]) .draw-bar .seg.tools button span { display: none; }
+body:not([data-view="figure"]) .draw-bar .seg.tools button { font-size: 12px; padding: 6px 8px; }
+.tb-sep { width: 1px; height: 18px; background: var(--line); margin: 0 3px; }
+.draw-bar svg { width: 15px; height: 15px; }
+.draw-style { position: absolute; top: calc(100% + 8px); right: 0; width: 300px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-panel);
+  box-shadow: var(--shadow-2); padding: 10px 12px; display: grid; gap: 10px; animation: pop-in .14s var(--ease); }
+.draw-style[hidden] { display: none; }
+.ds-row { display: flex; gap: 8px; align-items: end; }
+.ds-row .dctl { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); font-weight: 600; flex: 1; }
+.ds-row .dctl select { width: 100%; max-width: none; }
+.ds-dial { align-items: center; }
+.ds-side { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.ds-side input.dctl { width: 100%; }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+
+/* grouped settings inside Figure and Style */
+.subnav { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 4px; }
+.subnav button { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: 12px; color: var(--muted); background: var(--panel); }
+.subnav button:hover { color: var(--ink); border-color: var(--line-strong); }
+.subnav button.on { background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 600; }
+.fgrp { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 10px; align-items: end; grid-column: 1 / -1; }
+.fgrp[hidden] { display: none; }
+.stk-body.fmt { display: none; grid-template-columns: 1fr; gap: 6px; }
+body.all-settings .subnav { display: none; }
+body.all-settings .fgrp::before { content: attr(data-grp); grid-column: 1 / -1; font-weight: 650; font-size: 12px; color: var(--ink); padding-top: 6px; border-top: 1px solid var(--line); }
+.graph-format label { font-size: 11.5px; font-weight: 550; }
+.graph-format input[type=range] { accent-color: var(--accent); }
+.stk-toggle { font-size: 13.5px; }
+.stk-body { animation: none; }
+.stk.open > .stk-body { animation: stk-open .16s var(--ease); }
+@keyframes stk-open { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+
+/* status chips with details on demand */
+.flow-strip { display: block; margin: 0 0 8px; }
+.flow-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.flow-step { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 3px 10px 3px 8px; font-size: 12px; box-shadow: var(--shadow-1); max-width: 420px; }
+.flow-step span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-step:hover { background: var(--panel); border-color: var(--line-strong); }
+.flow-step.open { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.flow-step.warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.flow-sep { display: none; }
+.flow-detail { margin-top: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 12.5px; line-height: 1.5; max-width: 760px; box-shadow: var(--shadow-1); animation: pop-in .14s var(--ease); }
+.flow-detail p { margin: 0 0 6px; }
+.flow-detail .warn { color: var(--warn); }
+.flow-checks { margin: 0 0 8px; padding: 0; list-style: none; display: grid; gap: 4px; }
+.flow-checks li { padding-left: 14px; position: relative; }
+.flow-checks li::before { content: ""; position: absolute; left: 0; top: .55em; width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); }
+.flow-checks li.ck-ok::before { background: var(--good); } .flow-checks li.ck-warn::before { background: #e0a020; }
+
+/* table: series dots, calmer lines */
+.grid .colhead { gap: 4px; padding-left: 6px; }
+.sdot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: none; box-shadow: 0 0 0 2px var(--head); }
+.sdot.on { display: inline-block; }
+.grid th { font-size: 12.5px; border-bottom-color: var(--line-strong); }
+.grid .colkind { font-size: 10.5px; letter-spacing: .01em; }
+.grid tbody tr:hover td:not(.rownum) { background: color-mix(in srgb, var(--accent-soft) 35%, transparent); }
+.grid td input { font-variant-numeric: tabular-nums; }
+.grid-wrap { border-color: var(--line); border-radius: 8px; }
+
+/* text and legend popovers */
+.tx-row { display: flex; align-items: center; gap: 4px; }
+.tx-row span { flex: 1; font-size: 12px; color: var(--muted); }
+.tx-row .tgl { min-width: 28px; height: 26px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; }
+.tx-row .tgl.on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.tx-row input[type=color] { width: 30px; height: 26px; padding: 1px; border: 1px solid var(--line); border-radius: 6px; }
+.axis-pop, .series-pop { animation: pop-in .14s var(--ease); }
+.axis-pop select { width: 130px; }
+@media (prefers-reduced-motion: reduce) { .draw-style, .flow-detail, .axis-pop, .series-pop, .stk.open > .stk-body { animation: none; } }
+.flow-step.warn .dot { background: #e0a020; box-shadow: 0 0 0 3px rgba(224, 160, 32, .22); }
+body:not(.all-settings) .fgrp[data-grp="Lines"] > label:has(input[data-g="lineScale"]) { display: none; }
+.flow-strip { position: relative; }
+.flow-detail { position: absolute; left: 0; top: calc(100% + 2px); z-index: 30; box-shadow: var(--shadow-2); }

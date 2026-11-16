@@ -125,6 +125,15 @@ Every session starts by reading it and ends by updating it (then committing).
       text-label popover on click (bold/italic/color are in Figure → Text labels), column resizing, export presets,
       move Copy/PNG/SVG/TIFF/PDF quick buttons out of the figure header, Help text refresh for the new shell
 
+## PREMIUM PASS (user, 2026-11-16, "Premium UI/UX Redesign Prompt"): done
+- Figure/Style split into groups (GROUPS, subnav chips, one group shown; stack.sub remembered); "All settings" (#btn-format) shows every group
+- quiet stage (no dots), white sheet with soft shadow; floating tool capsule (#draw-bar over .stage) with a Style panel (#draw-style:
+  color, line, fill, width dial #dial-draw, label, delete) that opens by itself for a selected or newly drawn shape
+- one click: axis → axis panel (+ thickness, tick label size); legend background → legend panel; text label → text panel (font, size,
+  bold, italic, color, align, delete; notes gain font/align). Release is caught on document (Plotly's drag cover)
+- status chips with details on demand (#flow-strip, data-open); series color dots in table headings (updateGridDots)
+- tests: tests/test_ui_editor.py::test_contextual_editing_and_capsule; 236 pass
+
 ## AUTO-WORK MODE (user, 2026-11-07): keep going chunk by chunk without asking, until the session runs out.
 Each turn: schedule the next auto-continue with send_later (1 min), do one chunk, test, commit, push, tell user in one line.
 Chunk list (mark [x] when done; when all done, pick new chunks from the ideas below and add them here):

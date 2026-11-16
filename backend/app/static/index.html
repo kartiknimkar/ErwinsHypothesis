@@ -203,7 +203,7 @@
             <div class="card-head">
               <h2>Graph</h2>
               <div class="card-actions">
-                <button id="btn-format" class="ghost small" aria-expanded="false">Format ▾</button>
+                <button id="btn-format" class="ghost small" aria-expanded="false" title="Open every figure, style and export setting at once">All settings</button>
                 <button id="btn-copyimg" class="ghost small" title="Copy the graph as a picture to paste into PowerPoint, Word or an email">Copy</button>
                 <button id="btn-png" class="ghost small">PNG</button>
                 <button id="btn-svg" class="ghost small" title="Editable SVG: text, points and lines stay editable in Illustrator, Inkscape, Affinity or PowerPoint">SVG</button>
@@ -211,25 +211,32 @@
                 <button id="btn-pdf" class="ghost small" title="PDF at the chosen print size and resolution (for vector artwork use SVG)">PDF</button>
               </div>
             </div>
-            <div id="draw-bar" class="draw-bar" role="toolbar" aria-label="Draw on the graph">
+            <div class="stage">
+            <div id="draw-bar" class="draw-bar" role="toolbar" aria-label="Draw on the figure">
               <div class="seg tools">
-                <button data-draw="select" class="on" title="Select: click a shape to move or resize it (Esc)"><svg viewBox="0 0 16 16"><path d="M3 2l9 5-4 1.2L6.3 13z"/></svg>Select</button>
-                <button data-draw="text" title="Add a text label (then click it to type)"><svg viewBox="0 0 16 16"><path d="M3 3h10M8 3v10M6 13h4"/></svg>Text</button>
-                <button data-draw="arrow" title="Add an arrow; drag its head or tail to place it"><svg viewBox="0 0 16 16"><path d="M3 13L13 3M7 3h6v6"/></svg>Arrow</button>
-                <button data-draw="line" title="Draw a line: drag on the graph"><svg viewBox="0 0 16 16"><path d="M3 13L13 3"/></svg>Line</button>
-                <button data-draw="rect" title="Draw a box: drag on the graph"><svg viewBox="0 0 16 16"><rect x="3" y="4" width="10" height="8"/></svg>Box</button>
-                <button data-draw="circle" title="Draw a circle or ellipse: drag on the graph"><svg viewBox="0 0 16 16"><ellipse cx="8" cy="8" rx="5.5" ry="4.5"/></svg>Circle</button>
-                <button data-draw="bracket" title="Significance bracket: drag across the groups you compare"><svg viewBox="0 0 16 16"><path d="M3 11V5h10v6M8 2v1"/></svg>Bracket</button>
+                <button data-draw="select" class="on" title="Select: click a shape to move or resize it (Esc)"><svg viewBox="0 0 16 16"><path d="M3 2l9 5-4 1.2L6.3 13z"/></svg><span>Select</span></button>
+                <button data-draw="text" title="Add a text label (then click it to type)"><svg viewBox="0 0 16 16"><path d="M3 3h10M8 3v10M6 13h4"/></svg><span>Text</span></button>
+                <button data-draw="arrow" title="Add an arrow; drag its head or tail to place it"><svg viewBox="0 0 16 16"><path d="M3 13L13 3M7 3h6v6"/></svg><span>Arrow</span></button>
+                <button data-draw="line" title="Draw a line: drag on the graph"><svg viewBox="0 0 16 16"><path d="M3 13L13 3"/></svg><span>Line</span></button>
+                <button data-draw="rect" title="Draw a box: drag on the graph"><svg viewBox="0 0 16 16"><rect x="3" y="4" width="10" height="8"/></svg><span>Box</span></button>
+                <button data-draw="circle" title="Draw a circle or ellipse: drag on the graph"><svg viewBox="0 0 16 16"><ellipse cx="8" cy="8" rx="5.5" ry="4.5"/></svg><span>Circle</span></button>
+                <button data-draw="bracket" title="Significance bracket: drag across the groups you compare"><svg viewBox="0 0 16 16"><path d="M3 11V5h10v6M8 2v1"/></svg><span>Bracket</span></button>
               </div>
-              <label class="dctl" title="Color"><input type="color" id="draw-color" value="#1b2130"></label>
-              <label class="dctl" title="Line thickness"><select id="draw-width"><option>0.75</option><option>1</option><option selected>1.5</option><option>2</option><option>3</option><option>4</option></select></label>
-              <label class="dctl" title="Line style"><select id="draw-dash"><option value="solid">———</option><option value="dash">– – –</option><option value="dot">· · · ·</option></select></label>
-              <label class="dctl" title="Fill (boxes and circles)"><select id="draw-fill"><option value="none">No fill</option><option value="0.15">Light fill</option><option value="0.35">Medium fill</option><option value="1">Solid fill</option></select></label>
-              <input type="text" id="draw-label" class="dctl" placeholder="Label, e.g. **" title="Text on the selected bracket or line" hidden>
-              <button id="draw-del" class="ghost small" title="Delete the selected shape (Delete key)" disabled>Delete</button>
+              <span class="tb-sep" aria-hidden="true"></span>
+              <button id="draw-style-btn" class="tb-btn" title="Color, thickness and style of the selected shape (or the next one you draw)" aria-expanded="false"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5a5.5 5.5 0 010 11z" fill="currentColor"/></svg><span>Style</span></button>
+              <div id="draw-style" class="draw-style" hidden role="dialog" aria-label="Shape style">
+                <div class="ds-row"><label class="dctl" title="Color">Color<input type="color" id="draw-color" value="#1b2130"></label>
+                  <label class="dctl" title="Line style">Line<select id="draw-dash"><option value="solid">———</option><option value="dash">– – –</option><option value="dot">· · · ·</option></select></label>
+                  <label class="dctl" title="Fill (boxes and circles)">Fill<select id="draw-fill"><option value="none">No fill</option><option value="0.15">Light fill</option><option value="0.35">Medium fill</option><option value="1">Solid fill</option></select></label></div>
+                <div class="ds-row ds-dial"><div class="dial-slot" id="draw-dial-slot"></div>
+                  <label class="dctl" hidden>Thickness<select id="draw-width"><option>0.75</option><option>1</option><option selected>1.5</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
+                  <div class="ds-side"><input type="text" id="draw-label" class="dctl" placeholder="Label, e.g. **" title="Text on the selected bracket or line" hidden>
+                  <button id="draw-del" class="ghost small" title="Delete the selected shape (Delete key)" disabled>Delete shape</button></div></div>
+              </div>
               <span class="draw-hint" id="draw-hint"></span>
             </div>
             <div id="plot-wrap" class="plot-wrap"><div id="plot" class="plot"></div></div>
+            </div>
             <div class="stage-foot"><div class="zoom" role="group" aria-label="Zoom"><button id="zoom-out" class="icon" title="Zoom out" aria-label="Zoom out">−</button><button id="zoom-fit" class="ghost small" title="Fit the graph to the panel">Fit</button><button id="zoom-in" class="icon" title="Zoom in" aria-label="Zoom in">+</button></div>
               <div class="plot-size" id="plot-size" title="The graph is drawn at its export size (change it under Format → Export)"></div></div>
           </section>
